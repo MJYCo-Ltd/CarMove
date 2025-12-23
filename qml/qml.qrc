@@ -1,0 +1,7 @@
+<RCC>
+    <qresource prefix="/">
+        <file>MainWindow.qml</file>
+        <file>MapDisplay.qml</file>
+        <file>PlaybackControls.qml</file>
+    </qresource>
+</RCC>
