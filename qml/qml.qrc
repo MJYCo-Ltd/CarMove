@@ -3,5 +3,9 @@
         <file>MainWindow.qml</file>
         <file>MapDisplay.qml</file>
         <file>PlaybackControls.qml</file>
+        <file>StatusButton.qml</file>
+        <file>NotificationDialog.qml</file>
+        <file>VehicleInfoCard.qml</file>
+        <file>TimeDisplay.qml</file>
     </qresource>
 </RCC>

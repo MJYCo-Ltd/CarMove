@@ -99,22 +99,16 @@ Rectangle {
         }
         
         // 当前时间显示 - Enhanced for long-term data
-        Column {
-            spacing: 2
-            
-            Text {
-                text: formatTime(controller && controller.currentTime ? controller.currentTime : null)
-                color: "white"
-                font.pixelSize: 12
-                font.bold: true
-            }
-            
-            Text {
-                text: formatDate(controller && controller.currentTime ? controller.currentTime : null)
-                color: "#bdc3c7"
-                font.pixelSize: 9
-                visible: playbackControls.hasValidTimeRange && isLongTermData()
-            }
+        TimeDisplay {
+            id: currentTimeDisplay
+            dateTime: controller && controller.currentTime ? controller.currentTime : null
+            showTime: true
+            showDate: playbackControls.hasValidTimeRange && isLongTermData()
+            timeColor: "white"
+            dateColor: "#bdc3c7"
+            timeFontSize: 12
+            dateFontSize: 9
+            timeFontBold: true
         }
         
         // 可拖动的时间条
@@ -253,22 +247,16 @@ Rectangle {
         }
         
         // 结束时间显示 - Enhanced for long-term data
-        Column {
-            spacing: 2
-            
-            Text {
-                text: formatTime(controller && controller.endTime ? controller.endTime : null)
-                color: "white"
-                font.pixelSize: 12
-                font.bold: true
-            }
-            
-            Text {
-                text: formatDate(controller && controller.endTime ? controller.endTime : null)
-                color: "#bdc3c7"
-                font.pixelSize: 9
-                visible: playbackControls.hasValidTimeRange && isLongTermData()
-            }
+        TimeDisplay {
+            id: endTimeDisplay
+            dateTime: controller && controller.endTime ? controller.endTime : null
+            showTime: true
+            showDate: playbackControls.hasValidTimeRange && isLongTermData()
+            timeColor: "white"
+            dateColor: "#bdc3c7"
+            timeFontSize: 12
+            dateFontSize: 9
+            timeFontBold: true
         }
         
         // 播放速度控制 - Enhanced for long-term data
@@ -329,20 +317,6 @@ Rectangle {
         }
     }
     
-    function formatTime(dateTime) {
-        if (!dateTime || !dateTime.getTime || dateTime.getTime() === 0) {
-            return "--:--:--"
-        }
-        return Qt.formatDateTime(dateTime, "hh:mm:ss")
-    }
-    
-    function formatDate(dateTime) {
-        if (!dateTime || !dateTime.getTime || dateTime.getTime() === 0) {
-            return "----/--/--"
-        }
-        return Qt.formatDateTime(dateTime, "yyyy/MM/dd")
-    }
-    
     function isLongTermData() {
         if (!controller || !controller.startTime || !controller.endTime || 
             !controller.startTime.getTime || !controller.endTime.getTime) return false
@@ -357,22 +331,6 @@ Rectangle {
         if (!controller || !controller.startTime || !controller.endTime || 
             !controller.startTime.getTime || !controller.endTime.getTime) return ""
         
-        var totalMs = controller.endTime.getTime() - controller.startTime.getTime()
-        var totalDays = Math.floor(totalMs / (1000 * 60 * 60 * 24))
-        var totalHours = Math.floor(totalMs / (1000 * 60 * 60))
-        
-        if (totalDays > 365) {
-            var years = Math.floor(totalDays / 365)
-            var remainingDays = totalDays % 365
-            return years + "年" + remainingDays + "天"
-        } else if (totalDays > 30) {
-            var months = Math.floor(totalDays / 30)
-            var remainingDays = totalDays % 30
-            return months + "月" + remainingDays + "天"
-        } else if (totalDays > 0) {
-            return totalDays + "天"
-        } else {
-            return totalHours + "小时"
-        }
+        return currentTimeDisplay.getTimeRangeInfo(controller.startTime, controller.endTime)
     }
 }

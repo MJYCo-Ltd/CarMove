@@ -131,71 +131,126 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     
-                    ListView {
-                        id: vehicleListView
+                    ColumnLayout {
                         anchors.fill: parent
-                        model: (controller && controller.vehicleList) ? controller.vehicleList : []
-                        focus: true
-                        keyNavigationEnabled: true
+                        spacing: 5
                         
-                        // Empty state
-                        Text {
-                            anchors.centerIn: parent
-                            text: (controller && typeof controller.currentFolder !== 'undefined' && controller.currentFolder) ? 
-                                  "该文件夹中未找到车辆数据" : 
-                                  "请先选择包含车辆数据的文件夹"
-                            color: "#7f8c8d"
-                            font.pixelSize: 12
-                            visible: vehicleListView.count === 0
-                            horizontalAlignment: Text.AlignHCenter
-                        }
-                        
-                        delegate: ItemDelegate {
-                            width: vehicleListView.width
-                            height: 60
-                            hoverEnabled: true
+                        // 搜索框
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 5
                             
-                            Rectangle {
-                                anchors.fill: parent
-                                color: (controller && typeof controller.selectedVehicle !== 'undefined' && controller.selectedVehicle === modelData) ? "#3498db" : 
-                                       (parent.hovered ? "#ecf0f1" : "transparent")
-                                border.color: "#bdc3c7"
-                                radius: 4
+                            TextField {
+                                id: searchField
+                                Layout.fillWidth: true
+                                placeholderText: "输入车牌号前缀搜索 (如: 冀A)..."
+                                text: controller ? controller.searchText : ""
                                 
-                                Column {
+                                // Add search icon
+                                leftPadding: 30
+                                
+                                Rectangle {
                                     anchors.left: parent.left
-                                    anchors.leftMargin: 10
                                     anchors.verticalCenter: parent.verticalCenter
+                                    anchors.leftMargin: 8
+                                    width: 16
+                                    height: 16
+                                    color: "transparent"
                                     
                                     Text {
-                                        text: modelData
-                                        font.bold: true
-                                        font.pixelSize: 14
-                                        color: (controller && typeof controller.selectedVehicle !== 'undefined' && controller.selectedVehicle === modelData) ? "white" : "black"
-                                    }
-                                    
-                                    Text {
-                                        text: (controller && typeof controller.selectedVehicle !== 'undefined' && controller.selectedVehicle === modelData) ? 
-                                              "已选择 - 点击查看轨迹" : 
-                                              "点击选择此车辆"
-                                        font.pixelSize: 10
-                                        color: (controller && typeof controller.selectedVehicle !== 'undefined' && controller.selectedVehicle === modelData) ? "#ecf0f1" : "#7f8c8d"
+                                        anchors.centerIn: parent
+                                        text: "🔍"
+                                        font.pixelSize: 12
+                                        color: "#7f8c8d"
                                     }
                                 }
                                 
-                                // Selection indicator
-                                Rectangle {
-                                    width: 4
-                                    height: parent.height
-                                    color: "#3498db"
-                                    visible: controller && typeof controller.selectedVehicle !== 'undefined' && controller.selectedVehicle === modelData
-                                    anchors.left: parent.left
+                                onTextChanged: {
+                                    if (controller && typeof controller.setSearchText === 'function') {
+                                        controller.setSearchText(text)
+                                    }
+                                }
+                                
+                                // Add keyboard shortcuts
+                                Keys.onEscapePressed: {
+                                    if (controller && typeof controller.clearSearch === 'function') {
+                                        controller.clearSearch()
+                                    }
                                 }
                             }
                             
-                            onClicked: {
-                                if (controller && typeof controller.selectVehicle === 'function') {
-                                    controller.selectVehicle(modelData)
+                            Button {
+                                text: "清除"
+                                enabled: searchField.text.length > 0
+                                Layout.preferredWidth: 50
+                                
+                                onClicked: {
+                                    if (controller && typeof controller.clearSearch === 'function') {
+                                        controller.clearSearch()
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Search results info
+                        Text {
+                            Layout.fillWidth: true
+                            text: {
+                                if (controller && controller.searchText && controller.searchText.length > 0) {
+                                    var totalCount = controller.vehicleList ? controller.vehicleList.length : 0
+                                    var filteredCount = controller.filteredVehicleList ? controller.filteredVehicleList.length : 0
+                                    return "找到 " + filteredCount + " / " + totalCount + " 辆车"
+                                }
+                                return ""
+                            }
+                            font.pixelSize: 10
+                            color: "#7f8c8d"
+                            visible: controller && controller.searchText && controller.searchText.length > 0
+                        }
+                        
+                        ListView {
+                            id: vehicleListView
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            model: (controller && controller.filteredVehicleList) ? controller.filteredVehicleList : []
+                            focus: true
+                            keyNavigationEnabled: true
+                            
+                            // Empty state
+                            Text {
+                                anchors.centerIn: parent
+                                text: {
+                                    if (!controller || typeof controller.currentFolder === 'undefined' || !controller.currentFolder) {
+                                        return "请先选择包含车辆数据的文件夹"
+                                    } else if (controller.vehicleList && controller.vehicleList.length === 0) {
+                                        return "该文件夹中未找到车辆数据"
+                                    } else if (controller.searchText && controller.searchText.length > 0) {
+                                        return "未找到匹配的车辆"
+                                    } else {
+                                        return ""
+                                    }
+                                }
+                                color: "#7f8c8d"
+                                font.pixelSize: 12
+                                visible: vehicleListView.count === 0
+                                horizontalAlignment: Text.AlignHCenter
+                                wrapMode: Text.WordWrap
+                                width: parent.width - 20
+                            }
+                            
+                            delegate: VehicleInfoCard {
+                                width: vehicleListView.width
+                                height: 60
+                                
+                                plateNumber: modelData
+                                isSelected: controller && typeof controller.selectedVehicle !== 'undefined' && controller.selectedVehicle === modelData
+                                layoutMode: "horizontal"
+                                showSelectionIndicator: true
+                                
+                                onClicked: {
+                                    if (controller && typeof controller.selectVehicle === 'function') {
+                                        controller.selectVehicle(modelData)
+                                    }
                                 }
                             }
                         }
@@ -245,62 +300,32 @@ ApplicationWindow {
         }
     }
     
-    // Error dialog
-    Dialog {
+    // Error and success notifications
+    NotificationDialog {
         id: errorDialog
-        title: "错误"
-        modal: true
-        anchors.centerIn: parent
-        width: 350
-        height: 200
+        onOpened: {
+            showError(errorMessage)
+        }
         
         property string errorMessage: ""
         
-        contentItem: Column {
-            spacing: 10
-            padding: 20
-            
-            Text {
-                text: errorDialog.errorMessage
-                wrapMode: Text.WordWrap
-                width: 300
-            }
-            
-            Button {
-                text: "确定"
-                anchors.horizontalCenter: parent.horizontalCenter
-                onClicked: errorDialog.close()
-            }
+        function showErrorMessage(message) {
+            errorMessage = message
+            showError(message)
         }
     }
     
-    // Success notification
-    Dialog {
+    NotificationDialog {
         id: successDialog
-        title: "成功"
-        modal: true
-        anchors.centerIn: parent
-        width: 350
-        height: 200
+        onOpened: {
+            showSuccess(successMessage)
+        }
         
         property string successMessage: ""
         
-        contentItem: Column {
-            spacing: 10
-            padding: 20
-            
-            Text {
-                text: successDialog.successMessage
-                wrapMode: Text.WordWrap
-                width: 300
-                color: "#27ae60"
-            }
-            
-            Button {
-                text: "确定"
-                anchors.horizontalCenter: parent.horizontalCenter
-                onClicked: successDialog.close()
-            }
+        function showSuccessMessage(message) {
+            successMessage = message
+            showSuccess(message)
         }
     }
     
@@ -310,11 +335,9 @@ ApplicationWindow {
         
         function onFolderScanned(success, message) {
             if (success) {
-                successDialog.successMessage = message
-                successDialog.open()
+                successDialog.showSuccessMessage(message)
             } else {
-                errorDialog.errorMessage = message
-                errorDialog.open()
+                errorDialog.showErrorMessage(message)
             }
         }
         
@@ -330,8 +353,7 @@ ApplicationWindow {
                     }
                 }
             } else {
-                errorDialog.errorMessage = message
-                errorDialog.open()
+                errorDialog.showErrorMessage(message)
             }
         }
         
@@ -347,8 +369,7 @@ ApplicationWindow {
         }
         
         function onErrorOccurred(error) {
-            errorDialog.errorMessage = error
-            errorDialog.open()
+            errorDialog.showErrorMessage(error)
         }
         
         function onVehiclePositionUpdated(plateNumber, position, direction, speed) {

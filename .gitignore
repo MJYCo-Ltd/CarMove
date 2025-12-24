@@ -63,3 +63,9 @@ Makefile
 # OS
 .DS_Store
 Thumbs.db
+.kiro
+*.md
+carData
+install
+test
+*.bat

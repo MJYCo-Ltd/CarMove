@@ -16,6 +16,7 @@ MainController::MainController(QObject *parent)
     , m_playbackProgress(0.0)
     , m_isLoading(false)
     , m_loadingMessage("")
+    , m_searchText("")
     , m_folderScanner(new FolderScanner(this))
     , m_vehicleManager(new VehicleManager(this))
     , m_animationEngine(new VehicleAnimationEngine(this))
@@ -67,6 +68,40 @@ void MainController::setCoordinateConversionEnabled(bool enabled)
             m_vehicleManager->applyCoordinateConversion(enabled);
         }
     }
+}
+
+void MainController::setSearchText(const QString& text)
+{
+    if (m_searchText != text) {
+        m_searchText = text;
+        emit searchTextChanged();
+        updateFilteredVehicleList();
+    }
+}
+
+void MainController::clearSearch()
+{
+    setSearchText("");
+}
+
+void MainController::updateFilteredVehicleList()
+{
+    if (m_searchText.isEmpty()) {
+        // No search text, show all vehicles
+        m_filteredVehicleList = m_vehicleList;
+    } else {
+        // Simple prefix matching - exactly what user wants
+        m_filteredVehicleList.clear();
+        QString searchText = m_searchText; // Keep original case for exact matching
+        
+        for (const QString& vehicle : m_vehicleList) {
+            if (vehicle.startsWith(searchText, Qt::CaseInsensitive)) {
+                m_filteredVehicleList.append(vehicle);
+            }
+        }
+    }
+    
+    emit filteredVehicleListChanged();
 }
 
 void MainController::selectFolder(const QString& folderPath)
@@ -350,6 +385,9 @@ void MainController::onFolderScanCompleted(const QList<FolderScanner::VehicleInf
     
     // Pass vehicle list to VehicleManager
     m_vehicleManager->setVehicleList(vehicles);
+    
+    // Update filtered list
+    updateFilteredVehicleList();
     
     // Clear loading state
     m_isLoading = false;

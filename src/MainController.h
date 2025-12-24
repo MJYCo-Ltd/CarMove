@@ -35,6 +35,8 @@ class MainController : public QObject
     
     Q_PROPERTY(QString currentFolder READ currentFolder NOTIFY currentFolderChanged)
     Q_PROPERTY(QStringList vehicleList READ vehicleList NOTIFY vehicleListChanged)
+    Q_PROPERTY(QStringList filteredVehicleList READ filteredVehicleList NOTIFY filteredVehicleListChanged)
+    Q_PROPERTY(QString searchText READ searchText WRITE setSearchText NOTIFY searchTextChanged)
     Q_PROPERTY(QString selectedVehicle READ selectedVehicle NOTIFY selectedVehicleChanged)
     Q_PROPERTY(QDateTime startTime READ startTime NOTIFY timeRangeChanged)
     Q_PROPERTY(QDateTime endTime READ endTime NOTIFY timeRangeChanged)
@@ -52,6 +54,8 @@ public:
     // Property getters
     QString currentFolder() const { return m_currentFolder; }
     QStringList vehicleList() const { return m_vehicleList; }
+    QStringList filteredVehicleList() const { return m_filteredVehicleList; }
+    QString searchText() const { return m_searchText; }
     QString selectedVehicle() const { return m_selectedVehicle; }
     QDateTime startTime() const { return m_startTime; }
     QDateTime endTime() const { return m_endTime; }
@@ -64,6 +68,7 @@ public:
     
     // Property setters
     void setCoordinateConversionEnabled(bool enabled);
+    void setSearchText(const QString& text);
     
     // Invokable methods for QML
     Q_INVOKABLE void selectFolder(const QString& folderPath);
@@ -85,10 +90,13 @@ public:
     Q_INVOKABLE void takeMapScreenshot(const QString& fileName);
     Q_INVOKABLE int calculateVisitDays(const QString& plateNumber, double targetLat, double targetLon, double radiusMeters);
     Q_INVOKABLE QString getDocumentsPath();
+    Q_INVOKABLE void clearSearch();
     
 signals:
     void folderScanned(bool success, const QString& message);
     void vehicleListChanged();
+    void filteredVehicleListChanged();
+    void searchTextChanged();
     void selectedVehicleChanged();
     void trajectoryLoaded(bool success, const QString& message);
     void trajectoryConverted();
@@ -127,10 +135,13 @@ private:
     void updateTimeRange();
     void setupVehicleDataModel();
     QVariantMap vehicleRecordToVariant(const ExcelDataReader::VehicleRecord& record);
+    void updateFilteredVehicleList();
     
     // Properties
     QString m_currentFolder;
     QStringList m_vehicleList;
+    QStringList m_filteredVehicleList;
+    QString m_searchText;
     QString m_selectedVehicle;
     QDateTime m_startTime;
     QDateTime m_endTime;
