@@ -215,6 +215,7 @@ ApplicationWindow {
                             model: (controller && controller.filteredVehicleList) ? controller.filteredVehicleList : []
                             focus: true
                             keyNavigationEnabled: true
+                            clip: true
                             
                             // Empty state
                             Text {

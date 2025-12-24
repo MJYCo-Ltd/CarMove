@@ -41,7 +41,6 @@ Rectangle {
         visible: layoutMode === "horizontal"
         anchors.fill: parent
         anchors.margins: 4
-        clip: true  // 强制剪切任何溢出内容
         
         // 选择指示器
         Rectangle {
@@ -62,7 +61,6 @@ Rectangle {
             anchors.bottom: parent.bottom
             anchors.leftMargin: 8
             anchors.rightMargin: 8
-            clip: true  // 再次确保剪切
             
             Column {
                 anchors.verticalCenter: parent.verticalCenter
@@ -82,56 +80,44 @@ Rectangle {
                     wrapMode: Text.NoWrap
                     clip: true
                 }
-                
-                // 信息文本
-                Text {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    text: vehicleInfo || (isSelected ? "已选择 - 点击查看轨迹" : "点击选择此车辆")
-                    font.pixelSize: 10
-                    color: isSelected ? "#ecf0f1" : infoTextColor
-                    elide: Text.ElideRight
-                    wrapMode: Text.NoWrap
-                    clip: true
-                }
             }
         }
     }
-    
+
     // 垂直布局（用于弹窗信息）
     Column {
         visible: layoutMode === "vertical"
         anchors.fill: parent
         anchors.margins: 10
         spacing: 5
-        
+
         Text {
             text: "车辆信息"
             font.bold: true
             font.pixelSize: 14
             color: textColor
         }
-        
+
         Text {
             text: "车牌号: " + plateNumber
             font.pixelSize: 12
             color: textColor
         }
-        
+
         Text {
             text: "速度: " + speed.toFixed(1) + " km/h"
             font.pixelSize: 12
             color: textColor
             visible: speed > 0
         }
-        
+
         Text {
             text: "方向: " + direction + "°"
             font.pixelSize: 12
             color: textColor
             visible: direction >= 0
         }
-        
+
         Text {
             text: vehicleInfo
             font.pixelSize: 12
