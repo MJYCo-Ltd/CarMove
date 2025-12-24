@@ -16,6 +16,8 @@ Item {
     property int maxVehicleMarkers: 100 // Limit number of visible markers
     property bool animationsEnabled: true
     property int updateThrottleMs: 16 // ~60fps throttling
+    property bool autoFitEnabled: true  // 控制是否自动调整视图
+    property bool userHasInteracted: false  // 跟踪用户是否手动操作过地图
     
     MapView {
         id: mapView
@@ -33,6 +35,32 @@ Item {
         map.zoomLevel: 12
         map.minimumZoomLevel: 3
         map.maximumZoomLevel: 18
+        
+        // 监听用户手动操作地图
+        Connections {
+            target: mapView.map
+            function onCenterChanged() {
+                // 检查是否是用户手动操作（而不是程序设置）
+                if (mapView.map.gesture && mapView.map.gesture.enabled) {
+                    if (!userHasInteracted) {
+                        console.log("MapDisplay: 检测到用户手动移动地图，禁用自动调整")
+                        userHasInteracted = true
+                        autoFitEnabled = false
+                    }
+                }
+            }
+            function onZoomLevelChanged() {
+                // 检查是否是用户手动操作（而不是程序设置）
+                if (mapView.map.gesture && mapView.map.gesture.enabled) {
+                    if (!userHasInteracted) {
+                        console.log("MapDisplay: 检测到用户手动缩放地图，禁用自动调整")
+                        userHasInteracted = true
+                        autoFitEnabled = false
+                    }
+                }
+            }
+        }
+        
         Component.onCompleted:{
             console.log(map.supportedMapTypes)
         }
@@ -497,14 +525,19 @@ Item {
             var coord = firstPoint.coordinate || QtPositioning.coordinate(firstPoint.latitude, firstPoint.longitude)
             addVehicle(plateNumber, coord, firstPoint.direction || 0, firstPoint.speed || 0, currentVehicleColor)
             
-            // 调整地图视图以显示完整轨迹
-            fitViewportToTrajectory(trajectoryPoints)
+            // 使用智能地图视图调整功能
+            if (autoFitEnabled && !userHasInteracted) {
+                fitViewportToTrajectoryBounds(trajectoryPoints)
+            }
         }
     }
     
     function updateTrajectoryCoordinates(newTrajectoryPoints) {
         // 更新轨迹线坐标（用于坐标系转换后的更新）
         if (currentVehicle && newTrajectoryPoints && newTrajectoryPoints.length > 0) {
+            console.log("MapDisplay: 更新轨迹坐标，重新启用自动调整")
+            // 重置用户交互状态，因为这是新的轨迹数据
+            resetUserInteraction()
             addVehicleTrajectory(currentVehicle, newTrajectoryPoints, currentVehicleColor)
         }
     }
@@ -521,6 +554,10 @@ Item {
             mapView.map.removeMapItem(vehicleItems[plateNumber])
         }
         vehicleItems = {}
+        
+        // 重置自动调整状态
+        resetUserInteraction()
+        console.log("MapDisplay: 清除轨迹，重置自动调整状态")
     }
     
     function updateVehiclePosition(plateNumber, coordinate, direction, speed) {
@@ -589,8 +626,8 @@ Item {
             var plateNumber = markerKeys[i]
             var vehicle = vehicleItems[plateNumber]
             
-            if (vehicle && vehicle.lastUpdateTime && 
-                (currentTime - vehicle.lastUpdateTime) > 300000) { // 5 minutes
+            if (vehicle && vehicle.lastUpdateTime &&
+                    (currentTime - vehicle.lastUpdateTime) > 300000) { // 5 minutes
                 mapView.map.removeMapItem(vehicle)
                 delete vehicleItems[plateNumber]
             }
@@ -612,40 +649,163 @@ Item {
         direction: RotationAnimation.Shortest
     }
     
-    function fitViewportToTrajectory(trajectoryPoints) {
-        if (!trajectoryPoints || trajectoryPoints.length === 0) return
+    function fitViewportToTrajectoryBounds(trajectoryPoints) {
+        if (!trajectoryPoints) {
+            console.log("MapDisplay: 没有轨迹点，跳过视图调整")
+            return
+        }
+        
+        // 检查是否已经是 QtPositioning.path
+        var isPath = typeof trajectoryPoints === 'object' && trajectoryPoints.addCoordinate !== undefined;
+        var pointsArray;
+        var geoShape;
+        
+        if (isPath) {
+            geoShape = trajectoryPoints;
+            // 从 path 提取坐标数组用于计算边界
+            pointsArray = [];
+            for (var i = 0; i < geoShape.path.length; i++) {
+                pointsArray.push({coordinate: geoShape.path[i]});
+            }
+        } else {
+            // 假设是坐标数组
+            if (trajectoryPoints.length === 0) {
+                console.log("MapDisplay: 没有轨迹点，跳过视图调整")
+                return
+            }
+            pointsArray = trajectoryPoints;
+            // 创建 path
+            geoShape = QtPositioning.path();
+            for (var i = 0; i < trajectoryPoints.length; i++) {
+                var point = trajectoryPoints[i];
+                var coord = point.coordinate || QtPositioning.coordinate(point.latitude, point.longitude);
+                geoShape.addCoordinate(coord);
+            }
+        }
+        
+        // 计算最小包围矩形
+        var boundingRect = calculateTrajectoryBounds(pointsArray)
+        
+        if (boundingRect.isValid) {
+
+            // 使用Qt Location的标准方法调整视图
+            try {
+                mapView.map.fitViewportToGeoShape(geoShape,
+                                                  Qt.size(1, 1))
+                console.log("MapDisplay: 成功调整地图视图到轨迹范围")
+            } catch (error) {
+                console.error("MapDisplay: 调整地图视图失败:", error)
+                // 回退到手动计算的方法
+                fallbackFitViewport(boundingRect.bounds)
+            }
+        } else {
+            console.warn("MapDisplay: 无法计算有效的包围矩形")
+        }
+    }
+    
+    function calculateTrajectoryBounds(trajectoryPoints) {
+        if (!trajectoryPoints || trajectoryPoints.length === 0) {
+            return { isValid: false }
+        }
         
         var minLat = 90, maxLat = -90, minLon = 180, maxLon = -180
+        var validPointCount = 0
         
+        // 遍历所有轨迹点找到边界
         for (var i = 0; i < trajectoryPoints.length; i++) {
             var point = trajectoryPoints[i]
             var lat = point.coordinate ? point.coordinate.latitude : point.latitude
             var lon = point.coordinate ? point.coordinate.longitude : point.longitude
             
-            if (lat < minLat) minLat = lat
-            if (lat > maxLat) maxLat = lat
-            if (lon < minLon) minLon = lon
-            if (lon > maxLon) maxLon = lon
+            // 验证坐标有效性
+            if (lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) {
+                if (lat < minLat) minLat = lat
+                if (lat > maxLat) maxLat = lat
+                if (lon < minLon) minLon = lon
+                if (lon > maxLon) maxLon = lon
+                validPointCount++
+            }
         }
         
-        // 添加边距
-        var latMargin = (maxLat - minLat) * 0.1
-        var lonMargin = (maxLon - minLon) * 0.1
+        if (validPointCount === 0) {
+            console.warn("MapDisplay: 没有找到有效的坐标点")
+            return { isValid: false }
+        }
         
-        var center = QtPositioning.coordinate((minLat + maxLat) / 2, (minLon + maxLon) / 2)
+        // 如果只有一个点，创建一个小的区域
+        if (validPointCount === 1) {
+            var margin = 0.01  // 约1公里的边距
+            minLat -= margin
+            maxLat += margin
+            minLon -= margin
+            maxLon += margin
+        } else {
+            // 添加适当的边距（10%，但至少0.001度）
+            var latRange = maxLat - minLat
+            var lonRange = maxLon - minLon
+            var latMargin = Math.max(latRange * 0.1, 0.001)
+            var lonMargin = Math.max(lonRange * 0.1, 0.001)
+            
+            minLat -= latMargin
+            maxLat += latMargin
+            minLon -= lonMargin
+            maxLon += lonMargin
+        }
+        
+        // 确保坐标在有效范围内
+        minLat = Math.max(minLat, -90)
+        maxLat = Math.min(maxLat, 90)
+        minLon = Math.max(minLon, -180)
+        maxLon = Math.min(maxLon, 180)
+        
+        // 创建地理矩形
+        
+        return {
+            isValid: true,
+            bounds: {
+                minLat: minLat,
+                maxLat: maxLat,
+                minLon: minLon,
+                maxLon: maxLon
+            }
+        }
+    }
+    
+    function fallbackFitViewport(bounds) {
+        // 回退方法：手动设置中心点和缩放级别
+        console.log("MapDisplay: 使用回退方法调整视图")
+        
+        var center = QtPositioning.coordinate(
+                    (bounds.minLat + bounds.maxLat) / 2,
+                    (bounds.minLon + bounds.maxLon) / 2
+                    )
         mapView.map.center = center
         
         // 计算合适的缩放级别
-        var latDiff = maxLat - minLat + latMargin * 2
-        var lonDiff = maxLon - minLon + lonMargin * 2
+        var latDiff = bounds.maxLat - bounds.minLat
+        var lonDiff = bounds.maxLon - bounds.minLon
         var maxDiff = Math.max(latDiff, lonDiff)
         
         var zoomLevel = 15
         if (maxDiff > 0.1) zoomLevel = 10
         else if (maxDiff > 0.05) zoomLevel = 12
         else if (maxDiff > 0.01) zoomLevel = 14
+        else if (maxDiff > 0.005) zoomLevel = 15
+        else zoomLevel = 16
         
         mapView.map.zoomLevel = zoomLevel
+        console.log("MapDisplay: 设置中心点为", center.latitude.toFixed(6), center.longitude.toFixed(6), "缩放级别", zoomLevel)
+    }
+    
+    function enableAutoFit(enabled) {
+        autoFitEnabled = enabled
+        console.log("MapDisplay: 自动调整视图功能", enabled ? "启用" : "禁用")
+    }
+    
+    function resetUserInteraction() {
+        userHasInteracted = false
+        autoFitEnabled = true
+        console.log("MapDisplay: 重置用户交互状态，重新启用自动调整")
     }
     
     function generateVehicleColor(plateNumber) {
@@ -723,12 +883,12 @@ Item {
         } else {
             // 否则使用时间戳
             var now = new Date()
-            var timestamp = now.getFullYear() + 
-                          String(now.getMonth() + 1).padStart(2, '0') + 
-                          String(now.getDate()).padStart(2, '0') + "_" +
-                          String(now.getHours()).padStart(2, '0') + 
-                          String(now.getMinutes()).padStart(2, '0') + 
-                          String(now.getSeconds()).padStart(2, '0')
+            var timestamp = now.getFullYear() +
+                    String(now.getMonth() + 1).padStart(2, '0') +
+                    String(now.getDate()).padStart(2, '0') + "_" +
+                    String(now.getHours()).padStart(2, '0') +
+                    String(now.getMinutes()).padStart(2, '0') +
+                    String(now.getSeconds()).padStart(2, '0')
             fileName = "map_screenshot_" + timestamp
         }
         
