@@ -19,6 +19,10 @@ Item {
     property bool autoFitEnabled: true  // 控制是否自动调整视图
     property bool userHasInteracted: false  // 跟踪用户是否手动操作过地图
     
+    // 地图类型切换相关属性
+    property int currentMapTypeIndex: 0
+    property var availableMapTypes: []
+    
     MapView {
         id: mapView
         anchors.fill: parent
@@ -49,130 +53,24 @@ Item {
         
         Component.onCompleted:{
             console.log(map.supportedMapTypes)
-        }
-        
-        // 车辆图标组件
-        Component {
-            id: vehicleMarker
-            MapQuickItem {
-                id: marker
-                property string plateNumber: ""
-                property int direction: 0
-                property double speed: 0
-                property string vehicleColor: "yellow"
-                property int visitDays: 0  // 新增：到达目标区域的天数
-                
-                coordinate: QtPositioning.coordinate(0, 0)
-                anchorPoint.x: vehicleIcon.width / 2
-                anchorPoint.y: vehicleIcon.height / 2
-                
-                sourceItem: Item {
-                    width: 40
-                    height: 50
-                    
-                    Rectangle {
-                        id: vehicleIcon
-                        width: 24
-                        height: 24
-                        color: marker.vehicleColor
-                        radius: 12
-                        anchors.centerIn: parent
-                        anchors.verticalCenterOffset: -8
-                        rotation: marker.direction
-                        border.color: "white"
-                        border.width: 2
-                        
-                        // 车头指示箭头
-                        Rectangle {
-                            width: 8
-                            height: 2
-                            color: "white"
-                            anchors.centerIn: parent
-                            anchors.verticalCenterOffset: -6
-                            radius: 1
-                        }
-                        
-                        // 速度指示器
-                        Rectangle {
-                            width: 4
-                            height: 4
-                            color: marker.speed > 0 ? "#27ae60" : "#e74c3c"
-                            radius: 2
-                            anchors.right: parent.right
-                            anchors.top: parent.top
-                            anchors.rightMargin: -2
-                            anchors.topMargin: -2
-                        }
-                    }
-                    
-                    // 到达天数标识（右上角）
-                    Rectangle {
-                        id: visitDaysIndicator
-                        width: visitDaysText.width + 6
-                        height: visitDaysText.height + 4
-                        color: "#e74c3c"
-                        border.color: "white"
-                        border.width: 1
-                        radius: 8
-                        visible: marker.visitDays > 0
-                        anchors.right: vehicleIcon.right
-                        anchors.top: vehicleIcon.top
-                        anchors.rightMargin: -8
-                        anchors.topMargin: -8
-                        z: 10
-                        
-                        Text {
-                            id: visitDaysText
-                            text: marker.visitDays.toString()
-                            font.pixelSize: 10
-                            font.bold: true
-                            color: "white"
-                            anchors.centerIn: parent
-                        }
-                    }
-                    
-                    // 车牌号标签
-                    Rectangle {
-                        width: plateText.width + 8
-                        height: plateText.height + 4
-                        color: "yellow"  // 使用车辆颜色作为背景色
-                        border.color: "white"       // 白色边框以确保可见性
-                        border.width: 1
-                        radius: 3
-                        anchors.top: vehicleIcon.bottom
-                        anchors.horizontalCenter: vehicleIcon.horizontalCenter
-                        anchors.topMargin: 2
-                        
-                        Text {
-                            id: plateText
-                            text: marker.plateNumber
-                            font.pixelSize: 11
-                            color: "black"  // 白色文字以确保在彩色背景上的可读性
-                            style: Text.Outline
-                            styleColor: "white"
-
-                            anchors.centerIn: parent
-                        }
-                    }
-                }
-                
-                // 点击事件
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: {
-                        mapDisplay.showVehicleInfo(marker.plateNumber, marker.speed, marker.direction)
-                    }
-                    
-                    // 悬停效果
-                    hoverEnabled: true
-                    onEntered: {
-                        vehicleIcon.scale = 1.2
-                    }
-                    onExited: {
-                        vehicleIcon.scale = 1.0
-                    }
-                }
+            // 初始化可用地图类型列表
+            availableMapTypes = []
+            
+            for (var i = 0; i < map.supportedMapTypes.length; i++) {
+                var mapType = map.supportedMapTypes[i]
+                availableMapTypes.push(mapType)
+                console.log("地图类型 " + i + ":", mapType.name, mapType.description)
             }
+            
+            // 更新地图类型选择器
+            mapTypeSelector.updateMapTypes(map.supportedMapTypes)
+            
+            currentMapTypeIndex = 0
+            if (availableMapTypes.length > 0) {
+                map.activeMapType = availableMapTypes[0]
+            }
+            
+            logMapDisplayMessage("info", "初始化完成，共找到 " + availableMapTypes.length + " 种地图类型")
         }
     }
     
@@ -209,6 +107,19 @@ Item {
         
         onClicked: {
             mapDisplay.takeScreenshot()
+        }
+    }
+    
+    // 地图类型选择组件
+    MapTypeSelector {
+        id: mapTypeSelector
+        anchors.right: parent.right
+        anchors.top: screenshotButton.bottom
+        anchors.rightMargin: 20
+        anchors.topMargin: 10
+        
+        onMapTypeSelected: function(index) {
+            mapDisplay.selectMapType(index)
         }
     }
     
@@ -257,58 +168,17 @@ Item {
         }
     }
     
-    // 截屏成功通知
-    Rectangle {
-        id: screenshotNotification
-        width: 300
-        height: 80
-        color: "#2ecc71"
-        border.color: "white"
-        border.width: 2
-        radius: 8
-        visible: false
-        z: 1001
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.top: parent.top
-        anchors.topMargin: 20
-        
-        property string fileName: ""
-        
-        Column {
-            anchors.fill: parent
-            anchors.margins: 10
-            spacing: 5
-            
-            Text {
-                text: "截屏成功！"
-                font.bold: true
-                font.pixelSize: 14
-                color: "white"
-                anchors.horizontalCenter: parent.horizontalCenter
-            }
-            
-            Text {
-                text: "已保存为: " + screenshotNotification.fileName
-                font.pixelSize: 12
-                color: "white"
-                anchors.horizontalCenter: parent.horizontalCenter
-                wrapMode: Text.WordWrap
-                width: parent.width - 20
-            }
-        }
-        
-        // 自动隐藏定时器
-        Timer {
-            id: screenshotNotificationTimer
-            interval: 3000
-            onTriggered: screenshotNotification.visible = false
-        }
-        
-        // 点击关闭
-        MouseArea {
-            anchors.fill: parent
-            onClicked: screenshotNotification.visible = false
-        }
+    // 通知组件
+    MapNotifications {
+        id: mapNotifications
+        anchors.fill: parent
+    }
+    
+    // 动画组件
+    MapAnimations {
+        id: mapAnimations
+        mapTarget: mapView.map
+        animationsEnabled: mapDisplay.animationsEnabled
     }
     
     // Position update throttling timer
@@ -351,7 +221,7 @@ Item {
     // 公共函数实现
     function addVehicle(plateNumber, coordinate, direction, speed, color) {
         if (!vehicleItems[plateNumber]) {
-            var item = vehicleMarker.createObject(mapView.map)
+            var item = Qt.createComponent("VehicleMarker.qml").createObject(mapView.map)
             if (item) {
                 item.plateNumber = plateNumber
                 item.vehicleColor = color || generateVehicleColor(plateNumber)
@@ -365,6 +235,11 @@ Item {
                 } else {
                     item.visitDays = 0
                 }
+                
+                // 连接车辆点击信号
+                item.vehicleClicked.connect(function(plateNumber, speed, direction) {
+                    mapDisplay.showVehicleInfo(plateNumber, speed, direction)
+                })
                 
                 vehicleItems[plateNumber] = item
                 mapView.map.addMapItem(item)
@@ -384,7 +259,6 @@ Item {
         clearTrajectory()
         
         currentVehicle = plateNumber
-        // currentVehicleColor = vehicleColor || generateVehicleColor(plateNumber)
         
         // 添加轨迹线
         if (trajectoryPoints && trajectoryPoints.length > 1) {
@@ -490,18 +364,8 @@ Item {
                 vehicle.speed = speed
             } else {
                 // Smooth animation for normal playback
-                if (positionAnimation.target !== vehicle) {
-                    positionAnimation.target = vehicle
-                }
-                positionAnimation.to = coordinate
-                positionAnimation.start()
-                
-                if (rotationAnimation.target !== vehicle) {
-                    rotationAnimation.target = vehicle
-                }
-                rotationAnimation.to = direction
-                rotationAnimation.start()
-                
+                mapAnimations.animateVehiclePosition(vehicle, coordinate)
+                mapAnimations.animateVehicleRotation(vehicle, direction)
                 vehicle.speed = speed
             }
         }
@@ -524,169 +388,33 @@ Item {
         }
     }
     
-    // Position and rotation animations (moved here for better organization)
-    PropertyAnimation {
-        id: positionAnimation
-        property: "coordinate"
-        duration: mapDisplay.animationsEnabled ? 1000 : 0
-        easing.type: Easing.InOutQuad
-    }
-    
-    RotationAnimation {
-        id: rotationAnimation
-        property: "direction"
-        duration: mapDisplay.animationsEnabled ? 500 : 0
-        direction: RotationAnimation.Shortest
-    }
-    
     function fitViewportToTrajectoryBounds(trajectoryPoints) {
-        if (!trajectoryPoints) {
-            logMapDisplayMessage("info", "没有轨迹点，跳过视图调整")
+        if (!trajectoryPoints || trajectoryPoints.length === 0) {
+            logMapDisplayMessage("warn", "没有轨迹点数据，无法调整视图")
             return
         }
         
-        // 检查是否已经是 QtPositioning.path
-        var isPath = typeof trajectoryPoints === 'object' && trajectoryPoints.addCoordinate !== undefined;
-        var pointsArray;
-        var geoShape;
-        
-        if (isPath) {
-            geoShape = trajectoryPoints;
-            // 从 path 提取坐标数组用于计算边界
-            pointsArray = [];
-            for (var i = 0; i < geoShape.path.length; i++) {
-                pointsArray.push({coordinate: geoShape.path[i]});
-            }
-        } else {
-            // 假设是坐标数组
-            if (trajectoryPoints.length === 0) {
-                logMapDisplayMessage("info", "没有轨迹点，跳过视图调整")
-                return
-            }
-            pointsArray = trajectoryPoints;
-            // 创建 path
-            geoShape = QtPositioning.path();
-            for (var i = 0; i < trajectoryPoints.length; i++) {
-                var point = trajectoryPoints[i];
-                var coord = extractCoordinate(point);
-                if (coord) {
-                    geoShape.addCoordinate(coord);
-                }
-            }
-        }
-        
-        // 计算最小包围矩形
-        var boundingRect = calculateTrajectoryBounds(pointsArray)
-        
-        if (boundingRect.isValid) {
-
-            // 使用Qt Location的标准方法调整视图
-            try {
-                mapView.map.fitViewportToGeoShape(geoShape,
-                                                  Qt.size(1, 1))
-                logMapDisplayMessage("info", "成功调整地图视图到轨迹范围")
-            } catch (error) {
-                logMapDisplayMessage("error", "调整地图视图失败: " + error)
-                // 回退到手动计算的方法
-                fallbackFitViewport(boundingRect.bounds)
-            }
-        } else {
-            logMapDisplayMessage("warn", "无法计算有效的包围矩形")
-        }
-    }
-    
-    function calculateTrajectoryBounds(trajectoryPoints) {
-        if (!trajectoryPoints || trajectoryPoints.length === 0) {
-            return { isValid: false }
-        }
-        
-        var minLat = 90, maxLat = -90, minLon = 180, maxLon = -180
+        // 创建 GeoPath
+        var geoShape = QtPositioning.path()
         var validPointCount = 0
         
-        // 遍历所有轨迹点找到边界
         for (var i = 0; i < trajectoryPoints.length; i++) {
             var point = trajectoryPoints[i]
-            var lat = point.coordinate ? point.coordinate.latitude : point.latitude
-            var lon = point.coordinate ? point.coordinate.longitude : point.longitude
-            
-            // 验证坐标有效性
-            if (lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) {
-                if (lat < minLat) minLat = lat
-                if (lat > maxLat) maxLat = lat
-                if (lon < minLon) minLon = lon
-                if (lon > maxLon) maxLon = lon
+            var coord = extractCoordinate(point)
+            if (coord) {
+                geoShape.addCoordinate(coord)
                 validPointCount++
             }
         }
         
         if (validPointCount === 0) {
-            logMapDisplayMessage("warn", "没有找到有效的坐标点")
-            return { isValid: false }
+            logMapDisplayMessage("warn", "没有有效的坐标点，无法调整视图")
+            return
         }
         
-        // 如果只有一个点，创建一个小的区域
-        if (validPointCount === 1) {
-            var margin = 0.01  // 约1公里的边距
-            minLat -= margin
-            maxLat += margin
-            minLon -= margin
-            maxLon += margin
-        } else {
-            // 添加适当的边距（10%，但至少0.001度）
-            var latRange = maxLat - minLat
-            var lonRange = maxLon - minLon
-            var latMargin = Math.max(latRange * 0.1, 0.001)
-            var lonMargin = Math.max(lonRange * 0.1, 0.001)
-            
-            minLat -= latMargin
-            maxLat += latMargin
-            minLon -= lonMargin
-            maxLon += lonMargin
-        }
-        
-        // 确保坐标在有效范围内
-        minLat = Math.max(minLat, -90)
-        maxLat = Math.min(maxLat, 90)
-        minLon = Math.max(minLon, -180)
-        maxLon = Math.min(maxLon, 180)
-        
-        // 创建地理矩形
-        
-        return {
-            isValid: true,
-            bounds: {
-                minLat: minLat,
-                maxLat: maxLat,
-                minLon: minLon,
-                maxLon: maxLon
-            }
-        }
-    }
-    
-    function fallbackFitViewport(bounds) {
-        // 回退方法：手动设置中心点和缩放级别
-        logMapDisplayMessage("info", "使用回退方法调整视图")
-        
-        var center = QtPositioning.coordinate(
-                    (bounds.minLat + bounds.maxLat) / 2,
-                    (bounds.minLon + bounds.maxLon) / 2
-                    )
-        mapView.map.center = center
-        
-        // 计算合适的缩放级别
-        var latDiff = bounds.maxLat - bounds.minLat
-        var lonDiff = bounds.maxLon - bounds.minLon
-        var maxDiff = Math.max(latDiff, lonDiff)
-        
-        var zoomLevel = 15
-        if (maxDiff > 0.1) zoomLevel = 10
-        else if (maxDiff > 0.05) zoomLevel = 12
-        else if (maxDiff > 0.01) zoomLevel = 14
-        else if (maxDiff > 0.005) zoomLevel = 15
-        else zoomLevel = 16
-        
-        mapView.map.zoomLevel = zoomLevel
-        logMapDisplayMessage("info", "设置中心点为 " + center.latitude.toFixed(6) + ", " + center.longitude.toFixed(6) + " 缩放级别 " + zoomLevel)
+        // 直接使用 fitViewportToGeoShape 调整视图
+        mapView.map.fitViewportToGeoShape(geoShape, Qt.size(1, 1))
+        logMapDisplayMessage("info", "使用 fitViewportToGeoShape 调整视图，包含 " + validPointCount + " 个轨迹点")
     }
     
     function enableAutoFit(enabled) {
@@ -760,21 +488,15 @@ Item {
         var targetZoomLevel = 16
         
         // 使用动画平滑移动到目标位置
-        centerAnimation.to = targetCoordinate
-        zoomAnimation.to = targetZoomLevel
-        
-        centerAnimation.start()
-        zoomAnimation.start()
+        mapAnimations.animateToCenter(targetCoordinate)
+        mapAnimations.animateToZoom(targetZoomLevel)
         
         // 如果当前有车辆且到达天数不为0，将车辆移动到目标位置
         if (currentVehicle && currentVehicle !== "" && vehicleItems[currentVehicle]) {
             var vehicle = vehicleItems[currentVehicle]
             if (vehicle && vehicle.visitDays > 0) {
                 // 使用动画将车辆移动到目标坐标
-                vehicleLocationAnimation.target = vehicle
-                vehicleLocationAnimation.to = targetCoordinate
-                vehicleLocationAnimation.start()
-                
+                mapAnimations.animateVehicleToLocation(vehicle, targetCoordinate)
                 console.log("车辆", currentVehicle, "移动到目标位置，到达天数:", vehicle.visitDays)
             }
         }
@@ -803,7 +525,7 @@ Item {
                 console.log("截图尺寸:", result.image.width + "x" + result.image.height)
                 
                 // 显示截屏成功提示
-                showScreenshotNotification(fileName)
+                mapNotifications.showScreenshotNotification(fileName)
             } else {
                 console.error("保存地图截图失败:", fullPath)
             }
@@ -831,36 +553,39 @@ Item {
         return fileName + ".png"
     }
     
-    function showScreenshotNotification(fileName) {
-        screenshotNotification.fileName = fileName
-        screenshotNotification.visible = true
-        screenshotNotificationTimer.restart()
+    function selectMapType(index) {
+        if (index < 0 || index >= availableMapTypes.length) {
+            logMapDisplayMessage("error", "无效的地图类型索引: " + index)
+            return
+        }
+        
+        var selectedMapType = availableMapTypes[index]
+        if (selectedMapType) {
+            currentMapTypeIndex = index
+            mapView.map.activeMapType = selectedMapType
+            mapTypeSelector.setCurrentIndex(index)
+            
+            var typeName = selectedMapType.name || "未知类型"
+            var typeDesc = selectedMapType.description || "无描述"
+            
+            logMapDisplayMessage("info", "选择地图类型: " + typeName + " (" + typeDesc + ")")
+            
+            // 显示切换通知
+            mapNotifications.showMapTypeNotification(typeName, typeDesc)
+        } else {
+            logMapDisplayMessage("error", "无法获取地图类型信息")
+        }
     }
     
-    // 地图中心点动画
-    PropertyAnimation {
-        id: centerAnimation
-        target: mapView.map
-        property: "center"
-        duration: 1500
-        easing.type: Easing.InOutQuad
-    }
-    
-    // 地图缩放动画
-    PropertyAnimation {
-        id: zoomAnimation
-        target: mapView.map
-        property: "zoomLevel"
-        duration: 1500
-        easing.type: Easing.InOutQuad
-    }
-    
-    // 车辆位置移动动画
-    PropertyAnimation {
-        id: vehicleLocationAnimation
-        property: "coordinate"
-        duration: 2000
-        easing.type: Easing.InOutQuad
+    function switchMapType() {
+        // 保留这个函数以兼容可能的其他调用
+        if (availableMapTypes.length <= 1) {
+            logMapDisplayMessage("warn", "只有一种地图类型可用，无法切换")
+            return
+        }
+        
+        var nextIndex = (currentMapTypeIndex + 1) % availableMapTypes.length
+        selectMapType(nextIndex)
     }
     
     // 信号处理
