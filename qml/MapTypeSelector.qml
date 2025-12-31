@@ -10,11 +10,18 @@ Item {
     property int currentMapTypeIndex: 0
     property var mapTypeNames: []
     
+    // 尺寸属性 - 外部统一设置
+    property int buttonSize: 50
+    property int expandedWidth: 180
+    
+    // 内部状态 - 避免循环依赖
+    property bool expanded: false
+    
     // 信号
     signal mapTypeSelected(int index)
     
-    width: mapTypeSelectorMouseArea.containsMouse || mapTypeComboBox.popup.visible ? 180 : 40
-    height: 40
+    height: buttonSize
+    width: expanded ? expandedWidth : buttonSize
     
     // 平滑的宽度动画
     Behavior on width {
@@ -28,7 +35,7 @@ Item {
         color: "#9b59b6"
         border.color: "white"
         border.width: 1
-        radius: (mapTypeSelectorMouseArea.containsMouse || mapTypeComboBox.popup.visible) ? 6 : 20  // 圆形到圆角矩形
+        radius: expanded ? 6 : buttonSize/2  // 圆形到圆角矩形
         
         // 平滑的圆角动画
         Behavior on radius {
@@ -42,8 +49,8 @@ Item {
         text: "🗺️"
         font.pixelSize: 16
         anchors.centerIn: parent
-        visible: !mapTypeSelectorMouseArea.containsMouse && !mapTypeComboBox.popup.visible
-        opacity: (mapTypeSelectorMouseArea.containsMouse || mapTypeComboBox.popup.visible) ? 0 : 1
+        visible: !expanded
+        opacity: expanded ? 0 : 1
         
         Behavior on opacity {
             NumberAnimation { duration: 150 }
@@ -55,8 +62,8 @@ Item {
         id: mapTypeComboBox
         anchors.fill: parent
         anchors.margins: 1
-        visible: mapTypeSelectorMouseArea.containsMouse || popup.visible
-        opacity: (mapTypeSelectorMouseArea.containsMouse || popup.visible) ? 1 : 0
+        visible: expanded
+        opacity: expanded ? 1 : 0
         
         model: mapTypeSelector.mapTypeNames
         currentIndex: mapTypeSelector.currentMapTypeIndex
@@ -140,19 +147,37 @@ Item {
         }
     }
     
-    // 鼠标区域控制悬停效果 - 只在ComboBox不可见时生效
-    MouseArea {
-        id: mapTypeSelectorMouseArea
-        anchors.fill: parent
-        hoverEnabled: true
-        enabled: !mapTypeComboBox.popup.visible  // 当popup显示时禁用MouseArea
+    // 悬停处理器 - 替代MouseArea
+    HoverHandler {
+        id: hoverHandler
         
-        onContainsMouseChanged: {
-            if (!containsMouse && !mapTypeComboBox.popup.visible) {
-                // 延迟收起，给用户时间移动到下拉列表
-                collapseTimer.restart()
-            } else if (containsMouse) {
+        onHoveredChanged: {
+            if (hovered) {
+                // 鼠标进入，展开组件
                 collapseTimer.stop()
+                expanded = true
+            } else {
+                // 鼠标离开，启动延迟收起定时器
+                if (!mapTypeComboBox.popup.visible) {
+                    collapseTimer.restart()
+                }
+            }
+        }
+    }
+    
+    // 监听popup状态变化
+    Connections {
+        target: mapTypeComboBox.popup
+        function onVisibleChanged() {
+            if (mapTypeComboBox.popup.visible) {
+                // popup打开时，保持展开状态
+                collapseTimer.stop()
+                expanded = true
+            } else {
+                // popup关闭时，如果鼠标不在组件上，启动收起定时器
+                if (!hoverHandler.hovered) {
+                    collapseTimer.restart()
+                }
             }
         }
     }
@@ -160,10 +185,10 @@ Item {
     // 延迟收起定时器
     Timer {
         id: collapseTimer
-        interval: 500  // 增加到500ms延迟，给用户更多时间
+        interval: 500  // 500ms延迟，给用户足够时间
         onTriggered: {
-            if (!mapTypeSelectorMouseArea.containsMouse && !mapTypeComboBox.popup.visible) {
-                // 确保鼠标不在组件上且下拉列表未打开时才收起
+            if (!hoverHandler.hovered && !mapTypeComboBox.popup.visible) {
+                expanded = false
             }
         }
     }

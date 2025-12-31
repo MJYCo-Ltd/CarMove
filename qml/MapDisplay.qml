@@ -19,6 +19,9 @@ Item {
     property bool autoFitEnabled: true  // 控制是否自动调整视图
     property bool userHasInteracted: false  // 跟踪用户是否手动操作过地图
     
+    // 统一的按钮尺寸控制
+    property int buttonSize: 50
+    
     // 地图类型切换相关属性
     property int currentMapTypeIndex: 0
     property var availableMapTypes: []
@@ -82,6 +85,7 @@ Item {
         anchors.rightMargin: 20
         anchors.topMargin: 20
         
+        buttonSize: mapDisplay.buttonSize
         iconText: "📍"
         buttonColor: "#3498db"
         hoverColor: "#2980b9"
@@ -100,6 +104,7 @@ Item {
         anchors.rightMargin: 20
         anchors.topMargin: 10
         
+        buttonSize: mapDisplay.buttonSize
         iconText: "📷"
         buttonColor: "#27ae60"
         hoverColor: "#229954"
@@ -117,6 +122,10 @@ Item {
         anchors.top: screenshotButton.bottom
         anchors.rightMargin: 20
         anchors.topMargin: 10
+        
+        // 统一使用mapDisplay的buttonSize
+        buttonSize: mapDisplay.buttonSize
+        expandedWidth: 180
         
         onMapTypeSelected: function(index) {
             mapDisplay.selectMapType(index)
