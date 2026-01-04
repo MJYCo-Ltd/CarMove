@@ -21,6 +21,7 @@ MainController::MainController(QObject *parent)
     , m_vehicleManager(new VehicleManager(this))
     , m_animationEngine(new VehicleAnimationEngine(this))
     , m_vehicleDataModel(new VehicleDataModel(this))
+    , m_mapConfigManager(new MapConfigManager(this))
 {
     // Connect FolderScanner signals
     connect(m_folderScanner, &FolderScanner::scanCompleted,

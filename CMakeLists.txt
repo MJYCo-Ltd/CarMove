@@ -42,6 +42,7 @@ set(SOURCES
     src/VehicleDataModel.cpp
     src/VehicleAnimationEngine.cpp
     src/ErrorHandler.cpp
+    src/MapConfigManager.cpp
 )
 
 # Header files
@@ -54,6 +55,7 @@ set(HEADERS
     src/VehicleDataModel.h
     src/VehicleAnimationEngine.h
     src/ErrorHandler.h
+    src/MapConfigManager.h
 )
 
 # Test files (optional)

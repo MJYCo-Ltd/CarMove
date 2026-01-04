@@ -22,6 +22,7 @@
 #include "FolderScanner.h"
 #include "ExcelDataReader.h"
 #include "VehicleAnimationEngine.h"
+#include "MapConfigManager.h"
 
 class VehicleManager;
 class VehicleAnimationEngine;
@@ -46,6 +47,7 @@ class MainController : public QObject
     Q_PROPERTY(double playbackProgress READ playbackProgress NOTIFY progressChanged)
     Q_PROPERTY(bool isLoading READ isLoading NOTIFY loadingChanged)
     Q_PROPERTY(QString loadingMessage READ loadingMessage NOTIFY loadingMessageChanged)
+    Q_PROPERTY(MapConfigManager* mapConfigManager READ mapConfigManager CONSTANT)
     
 public:
     explicit MainController(QObject *parent = nullptr);
@@ -65,6 +67,7 @@ public:
     double playbackProgress() const { return m_playbackProgress; }
     bool isLoading() const { return m_isLoading; }
     QString loadingMessage() const { return m_loadingMessage; }
+    MapConfigManager* mapConfigManager() const { return m_mapConfigManager; }
     
     // Property setters
     void setCoordinateConversionEnabled(bool enabled);
@@ -157,6 +160,7 @@ private:
     VehicleManager* m_vehicleManager;
     VehicleAnimationEngine* m_animationEngine;
     VehicleDataModel* m_vehicleDataModel;
+    MapConfigManager* m_mapConfigManager;
     
     // Current vehicle info cache
     QList<FolderScanner::VehicleInfo> m_vehicleInfoList;

@@ -48,33 +48,35 @@ Item {
             target: mapView.map
             function onCenterChanged() {
                 handleUserMapInteraction("移动地图")
+                // 更新内存中的地图中心位置（不立即保存）
+                updateMapCenter()
             }
             function onZoomLevelChanged() {
                 handleUserMapInteraction("缩放地图")
+                // 更新内存中的缩放级别（不立即保存）
+                updateZoomLevel()
             }
         }
         
-        Component.onCompleted:{
-            console.log(map.supportedMapTypes)
-            // 初始化可用地图类型列表
-            availableMapTypes = []
-            
-            for (var i = 0; i < map.supportedMapTypes.length; i++) {
-                var mapType = map.supportedMapTypes[i]
-                availableMapTypes.push(mapType)
-                console.log("地图类型 " + i + ":", mapType.name, mapType.description)
-            }
-            
-            // 更新地图类型选择器
-            mapTypeSelector.updateMapTypes(map.supportedMapTypes)
-            
-            currentMapTypeIndex = 0
-            if (availableMapTypes.length > 0) {
-                map.activeMapType = availableMapTypes[0]
-            }
-            
-            logMapDisplayMessage("info", "初始化完成，共找到 " + availableMapTypes.length + " 种地图类型")
+    Component.onCompleted:{
+        console.log(map.supportedMapTypes)
+        // 初始化可用地图类型列表
+        availableMapTypes = []
+        
+        for (var i = 0; i < map.supportedMapTypes.length; i++) {
+            var mapType = map.supportedMapTypes[i]
+            availableMapTypes.push(mapType)
+            console.log("地图类型 " + i + ":", mapType.name, mapType.description)
         }
+        
+        // 更新地图类型选择器
+        mapTypeSelector.updateMapTypes(map.supportedMapTypes)
+        
+        // 加载保存的地图配置
+        loadMapConfiguration()
+        
+        logMapDisplayMessage("info", "初始化完成，共找到 " + availableMapTypes.length + " 种地图类型")
+    }
     }
     
     // 地图定位按钮
@@ -581,6 +583,9 @@ Item {
             
             // 显示切换通知
             mapNotifications.showMapTypeNotification(typeName, typeDesc)
+            
+            // 更新内存中的地图类型配置（不立即保存）
+            updateMapTypeIndex(index)
         } else {
             logMapDisplayMessage("error", "无法获取地图类型信息")
         }
@@ -608,5 +613,97 @@ Item {
         vehicleInfoPopup.x = mapDisplay.width / 2 - vehicleInfoPopup.width / 2
         vehicleInfoPopup.y = 20
         hideTimer.restart()
+    }
+    
+    // 地图配置管理函数
+    function loadMapConfiguration() {
+        if (typeof controller !== 'undefined' && controller && controller.mapConfigManager) {
+            var configManager = controller.mapConfigManager
+            
+            // 加载地图类型
+            var savedMapTypeIndex = configManager.mapTypeIndex
+            if (savedMapTypeIndex >= 0 && savedMapTypeIndex < availableMapTypes.length) {
+                currentMapTypeIndex = savedMapTypeIndex
+                mapView.map.activeMapType = availableMapTypes[savedMapTypeIndex]
+                mapTypeSelector.setCurrentIndex(savedMapTypeIndex)
+                logMapDisplayMessage("info", "加载保存的地图类型索引: " + savedMapTypeIndex)
+            } else {
+                // 使用默认地图类型
+                currentMapTypeIndex = 0
+                if (availableMapTypes.length > 0) {
+                    mapView.map.activeMapType = availableMapTypes[0]
+                }
+            }
+            
+            // 加载缩放级别
+            var savedZoomLevel = configManager.zoomLevel
+            if (savedZoomLevel > 0) {
+                mapView.map.zoomLevel = savedZoomLevel
+                logMapDisplayMessage("info", "加载保存的缩放级别: " + savedZoomLevel)
+            }
+            
+            // 加载地图中心
+            var savedCenter = configManager.mapCenter
+            if (savedCenter && savedCenter.isValid) {
+                mapView.map.center = savedCenter
+                logMapDisplayMessage("info", "加载保存的地图中心: " + savedCenter.latitude + ", " + savedCenter.longitude)
+            }
+            
+            // 加载坐标转换设置
+            var savedCoordConversion = configManager.coordinateConversionEnabled
+            if (typeof controller.setCoordinateConversionEnabled === 'function') {
+                controller.setCoordinateConversionEnabled(savedCoordConversion)
+                logMapDisplayMessage("info", "加载保存的坐标转换设置: " + (savedCoordConversion ? "启用" : "禁用"))
+            }
+            
+            logMapDisplayMessage("info", "地图配置加载完成")
+        } else {
+            logMapDisplayMessage("warn", "MapConfigManager 不可用，使用默认配置")
+            // 使用默认配置
+            currentMapTypeIndex = 0
+            if (availableMapTypes.length > 0) {
+                mapView.map.activeMapType = availableMapTypes[0]
+            }
+        }
+    }
+    
+    function updateMapTypeIndex(index) {
+        if (typeof controller !== 'undefined' && controller && controller.mapConfigManager) {
+            controller.mapConfigManager.mapTypeIndex = index
+            logMapDisplayMessage("info", "更新地图类型索引: " + index)
+        }
+    }
+    
+    function updateZoomLevel() {
+        if (typeof controller !== 'undefined' && controller && controller.mapConfigManager) {
+            var currentZoom = mapView.map.zoomLevel
+            controller.mapConfigManager.zoomLevel = currentZoom
+            logMapDisplayMessage("info", "更新缩放级别: " + currentZoom)
+        }
+    }
+    
+    function updateMapCenter() {
+        if (typeof controller !== 'undefined' && controller && controller.mapConfigManager) {
+            var currentCenter = mapView.map.center
+            controller.mapConfigManager.mapCenter = currentCenter
+            logMapDisplayMessage("info", "更新地图中心: " + currentCenter.latitude + ", " + currentCenter.longitude)
+        }
+    }
+    
+    function updateCoordinateConversionState(enabled) {
+        if (typeof controller !== 'undefined' && controller && controller.mapConfigManager) {
+            controller.mapConfigManager.coordinateConversionEnabled = enabled
+            logMapDisplayMessage("info", "更新坐标转换状态: " + (enabled ? "启用" : "禁用"))
+        }
+    }
+    
+    // 监听坐标转换状态变化
+    Connections {
+        target: typeof controller !== 'undefined' ? controller : null
+        function onCoordinateConversionChanged() {
+            if (controller && controller.mapConfigManager) {
+                updateCoordinateConversionState(controller.coordinateConversionEnabled)
+            }
+        }
     }
 }
