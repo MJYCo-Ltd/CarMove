@@ -43,6 +43,7 @@ set(SOURCES
     src/VehicleAnimationEngine.cpp
     src/ErrorHandler.cpp
     src/MapConfigManager.cpp
+    src/FuelUnloadingDataLoader.cpp
 )
 
 # Header files
@@ -56,6 +57,7 @@ set(HEADERS
     src/VehicleAnimationEngine.h
     src/ErrorHandler.h
     src/MapConfigManager.h
+    src/FuelUnloadingDataLoader.h
 )
 
 # Test files (optional)

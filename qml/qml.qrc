@@ -11,5 +11,8 @@
         <file>MapTypeSelector.qml</file>
         <file>MapNotifications.qml</file>
         <file>MapAnimations.qml</file>
+        <file>FuelUnloadingDisplay.qml</file>
+        <file>SidebarPanel.qml</file>
+        <file>FuelRecordsPanel.qml</file>
     </qresource>
 </RCC>

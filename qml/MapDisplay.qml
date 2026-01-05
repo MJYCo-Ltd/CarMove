@@ -2,6 +2,7 @@ import QtQuick
 import QtLocation
 import QtPositioning
 import QtQuick.Controls
+import CarMove 1.0
 
 Item {
     id: mapDisplay
@@ -190,6 +191,30 @@ Item {
         id: mapAnimations
         mapTarget: mapView.map
         animationsEnabled: mapDisplay.animationsEnabled
+    }
+    
+    // 卸油记录显示组件
+    FuelUnloadingDisplay {
+        id: fuelUnloadingDisplay
+        anchors.fill: parent
+        
+        Component.onCompleted: {
+            // 设置目标地图
+            fuelUnloadingDisplay.setTargetMap(mapView.map)
+        }
+    }
+    
+    // 卸油记录相关的代理函数
+    function clearFuelMarkers() {
+        fuelUnloadingDisplay.clearMarkers()
+    }
+    
+    function showVehicleFuelRecords(plateNumber) {
+        fuelUnloadingDisplay.showVehicleRecords(plateNumber)
+    }
+    
+    function showAllFuelRecords() {
+        fuelUnloadingDisplay.showAllRecords()
     }
     
     // Position update throttling timer

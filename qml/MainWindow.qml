@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
+import CarMove 1.0
 
 ApplicationWindow {
     id: mainWindow
@@ -70,14 +71,38 @@ ApplicationWindow {
     
     RowLayout {
         anchors.fill: parent
-        spacing: 10
+        spacing: 0
         
-        // 左侧面板：文件夹选择和车辆列表
+        // 左侧功能侧边栏
+        SidebarPanel {
+            id: sidebarPanel
+            Layout.preferredWidth: 60
+            Layout.fillHeight: true
+            
+            onModeChanged: function(mode) {
+                console.log("切换到模式:", mode)
+                if (mode === "trajectory") {
+                    leftPanel.visible = true
+                    fuelRecordsPanel.visible = false
+                    // 清除卸油标记
+                    mapDisplay.clearFuelMarkers()
+                } else if (mode === "fuel") {
+                    leftPanel.visible = false
+                    fuelRecordsPanel.visible = true
+                    // 清除轨迹
+                    mapDisplay.clearTrajectory()
+                }
+            }
+        }
+        
+        // 左侧面板：文件夹选择和车辆列表（轨迹模式）
         Rectangle {
+            id: leftPanel
             Layout.preferredWidth: 300
             Layout.fillHeight: true
             color: "#f0f0f0"
             border.color: "#ccc"
+            visible: sidebarPanel.currentMode === "trajectory"
             
             ColumnLayout {
                 anchors.fill: parent
@@ -260,6 +285,24 @@ ApplicationWindow {
             }
         }
         
+        // 卸油记录面板（卸油模式）
+        FuelRecordsPanel {
+            id: fuelRecordsPanel
+            Layout.preferredWidth: 300
+            Layout.fillHeight: true
+            visible: sidebarPanel.currentMode === "fuel"
+            
+            onVehicleSelected: function(plateNumber) {
+                console.log("选择车辆:", plateNumber)
+                mapDisplay.showVehicleFuelRecords(plateNumber)
+            }
+            
+            onShowAllRecords: {
+                console.log("显示所有卸油记录")
+                mapDisplay.showAllFuelRecords()
+            }
+        }
+        
         // 右侧：地图和控制面板
         ColumnLayout {
             Layout.fillWidth: true
@@ -284,6 +327,12 @@ ApplicationWindow {
                     if (controller && typeof controller.selectedVehicle !== 'undefined' && controller.selectedVehicle &&
                         typeof controller.getConvertedTrajectory === 'function') {
                         mapDisplay.updateTrajectoryCoordinates(controller.getConvertedTrajectory())
+                    }
+                    
+                    // Update fuel unloading display with converted coordinates
+                    if (sidebarPanel.currentMode === "fuel") {
+                        // The FuelUnloadingDisplay will automatically update via the Connections
+                        console.log("坐标转换状态已更新，卸油标记将自动更新")
                     }
                 }
             }
