@@ -42,7 +42,7 @@ set(SOURCES
     src/VehicleDataModel.cpp
     src/VehicleAnimationEngine.cpp
     src/ErrorHandler.cpp
-    src/MapConfigManager.cpp
+    src/ConfigManager.cpp
     src/FuelUnloadingDataLoader.cpp
 )
 
@@ -56,16 +56,8 @@ set(HEADERS
     src/VehicleDataModel.h
     src/VehicleAnimationEngine.h
     src/ErrorHandler.h
-    src/MapConfigManager.h
+    src/ConfigManager.h
     src/FuelUnloadingDataLoader.h
-)
-
-# Test files (optional)
-set(TEST_SOURCES
-    src/IntegrationTest.cpp
-    src/FolderScannerTest.cpp
-    src/ExcelDataReaderTest.cpp
-    src/ErrorHandlerTest.cpp
 )
 
 # QML resources

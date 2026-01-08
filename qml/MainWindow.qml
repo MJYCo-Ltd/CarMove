@@ -379,6 +379,7 @@ ApplicationWindow {
         }
     }
     
+    
     // Connect to controller signals
     Connections {
         target: controller
@@ -447,5 +448,6 @@ ApplicationWindow {
                 console.log("Playback state changed, isPlaying:", controller.isPlaying)
             }
         }
+        
     }
 }

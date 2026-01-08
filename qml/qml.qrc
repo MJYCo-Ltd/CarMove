@@ -14,5 +14,7 @@
         <file>FuelUnloadingDisplay.qml</file>
         <file>SidebarPanel.qml</file>
         <file>FuelRecordsPanel.qml</file>
+        <file>StyledButton.qml</file>
+        <file>StyledComboBox.qml</file>
     </qresource>
 </RCC>

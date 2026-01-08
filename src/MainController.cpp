@@ -3,11 +3,11 @@
 #include "VehicleManager.h"
 #include "VehicleAnimationEngine.h"
 #include "VehicleDataModel.h"
-#include "CoordinateConverter.h"
 #include "ErrorHandler.h"
 #include <QDir>
 #include <QVariantMap>
 #include <QStandardPaths>
+#include <QUrl>
 
 MainController::MainController(QObject *parent)
     : QObject(parent)
@@ -21,7 +21,6 @@ MainController::MainController(QObject *parent)
     , m_vehicleManager(new VehicleManager(this))
     , m_animationEngine(new VehicleAnimationEngine(this))
     , m_vehicleDataModel(new VehicleDataModel(this))
-    , m_mapConfigManager(new MapConfigManager(this))
 {
     // Connect FolderScanner signals
     connect(m_folderScanner, &FolderScanner::scanCompleted,
@@ -51,6 +50,7 @@ MainController::MainController(QObject *parent)
     
     // Set up animation engine with data model
     m_animationEngine->setVehicleModel(m_vehicleDataModel);
+    
 }
 
 MainController::~MainController()
@@ -79,6 +79,7 @@ void MainController::setSearchText(const QString& text)
         updateFilteredVehicleList();
     }
 }
+
 
 void MainController::clearSearch()
 {
@@ -189,6 +190,10 @@ void MainController::selectVehicle(const QString& plateNumber)
             stopPlayback();
         } catch (const std::exception& e) {
             qWarning() << "Error stopping playback:" << e.what();
+            emit errorOccurred(QString("停止播放时发生错误: %1").arg(e.what()));
+        } catch (...) {
+            qWarning() << "Unknown error stopping playback";
+            emit errorOccurred("停止播放时发生未知错误");
         }
         
         // Set loading state
@@ -535,6 +540,7 @@ void MainController::onVehiclePositionUpdate(const QString& plateNumber,
     emit vehiclePositionUpdated(plateNumber, position, direction, speed);
 }
 
+
 // Private helper methods
 
 void MainController::updateTimeRange()
@@ -598,72 +604,6 @@ QVariantMap MainController::vehicleRecordToVariant(const ExcelDataReader::Vehicl
     result["totalMileage"] = record.totalMileage;
     result["coordinate"] = QVariant::fromValue(QGeoCoordinate(record.latitude, record.longitude));
     return result;
-}
-
-void MainController::takeMapScreenshot(const QString& fileName)
-{
-    try {
-        // 获取应用程序的主窗口
-        QQuickWindow* window = nullptr;
-        
-        // 尝试从应用程序获取窗口
-        QGuiApplication* app = qobject_cast<QGuiApplication*>(QCoreApplication::instance());
-        if (app) {
-            QWindowList windows = app->allWindows();
-            for (QWindow* w : windows) {
-                if (QQuickWindow* quickWindow = qobject_cast<QQuickWindow*>(w)) {
-                    window = quickWindow;
-                    break;
-                }
-            }
-        }
-        
-        if (!window) {
-            qWarning() << "无法获取主窗口，截屏失败";
-            emit errorOccurred("无法获取主窗口，截屏失败");
-            return;
-        }
-        
-        // 创建截图保存目录
-        QString documentsPath = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
-        QString screenshotDir = documentsPath + "/CarMove_Screenshots";
-        QDir dir;
-        if (!dir.exists(screenshotDir)) {
-            if (!dir.mkpath(screenshotDir)) {
-                qWarning() << "无法创建截图目录:" << screenshotDir;
-                emit errorOccurred("无法创建截图目录");
-                return;
-            }
-        }
-        
-        // 生成完整的文件路径
-        QString fullPath = screenshotDir + "/" + fileName;
-        
-        // 捕获窗口截图
-        QPixmap screenshot = QPixmap::fromImage(window->grabWindow());
-        
-        if (screenshot.isNull()) {
-            qWarning() << "截图失败：获取的图像为空";
-            emit errorOccurred("截图失败：获取的图像为空");
-            return;
-        }
-        
-        // 保存截图
-        if (screenshot.save(fullPath, "PNG")) {
-        } else {
-            qWarning() << "保存截图失败:" << fullPath;
-            emit errorOccurred("保存截图失败");
-        }
-        
-    } catch (const std::exception& e) {
-        QString errorMsg = QString("截屏过程中发生错误: %1").arg(e.what());
-        qWarning() << errorMsg;
-        emit errorOccurred(errorMsg);
-    } catch (...) {
-        QString errorMsg = "截屏过程中发生未知错误";
-        qWarning() << errorMsg;
-        emit errorOccurred(errorMsg);
-    }
 }
 
 int MainController::calculateVisitDays(const QString& plateNumber, double targetLat, double targetLon, double radiusMeters)

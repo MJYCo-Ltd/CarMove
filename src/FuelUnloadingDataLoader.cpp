@@ -38,7 +38,6 @@ bool FuelUnloadingDataLoader::loadFromFile(const QString& filePath)
     bool success = parseJsonData(doc);
     if (success) {
         emit dataLoaded(true, QString("成功从文件加载 %1 辆车的数据").arg(m_vehicles.size()));
-        qDebug() << "FuelUnloadingDataLoader: 从文件加载数据成功:" << filePath;
     }
     
     return success;
@@ -68,7 +67,6 @@ bool FuelUnloadingDataLoader::loadFromResource(const QString& resourcePath)
     bool success = parseJsonData(doc);
     if (success) {
         emit dataLoaded(true, QString("成功从资源加载 %1 辆车的数据").arg(m_vehicles.size()));
-        qDebug() << "FuelUnloadingDataLoader: 从资源加载数据成功:" << resourcePath;
     }
     
     return success;
@@ -211,8 +209,6 @@ void FuelUnloadingDataLoader::clearData()
     
     emit vehiclesChanged();
     emit isLoadedChanged();
-    
-    qDebug() << "FuelUnloadingDataLoader: 数据已清除";
 }
 
 void FuelUnloadingDataLoader::setError(const QString& error)

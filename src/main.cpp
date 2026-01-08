@@ -13,6 +13,7 @@
 #include "VehicleManager.h"
 #include "CoordinateConverter.h"
 #include "FuelUnloadingDataLoader.h"
+#include "ConfigManager.h"
 
 int main(int argc, char *argv[])
 {
@@ -33,6 +34,7 @@ int main(int argc, char *argv[])
     qmlRegisterType<FolderScanner>("CarMove", 1, 0, "FolderScanner");
     qmlRegisterType<VehicleManager>("CarMove", 1, 0, "VehicleManager");
     qmlRegisterType<FuelUnloadingDataLoader>("CarMove", 1, 0, "FuelUnloadingDataLoader");
+    qmlRegisterType<ConfigManager>("CarMove", 1, 0, "ConfigManager");
     
     // Register uncreatable types (utility classes)
     qmlRegisterUncreatableType<CoordinateConverter>("CarMove", 1, 0, "CoordinateConverter", 

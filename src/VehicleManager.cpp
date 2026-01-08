@@ -4,10 +4,8 @@
 VehicleManager::VehicleManager(QObject *parent)
     : QObject(parent)
     , m_coordinateConversionEnabled(false)
-    , m_excelReader(new ExcelDataReader(this))  // 保留用于其他可能的用途
+    , m_excelReader(new ExcelDataReader(this))
 {
-    // 注意：现在loadVehicleTrajectory使用临时的ExcelDataReader实例
-    // 这样可以并行处理多个文件而不会有信号冲突
 }
 
 void VehicleManager::setVehicleList(const QList<FolderScanner::VehicleInfo>& vehicles)
@@ -42,6 +40,19 @@ void VehicleManager::selectVehicle(const QString& plateNumber)
         
         emit vehicleSelected(plateNumber);
         
+        // Find file paths for this vehicle
+        QStringList filePaths;
+        for (const auto& vehicleInfo : m_vehicleList) {
+            if (vehicleInfo.plateNumber == plateNumber) {
+                filePaths = vehicleInfo.filePaths;
+                break;
+            }
+        }
+        
+        // Check if column mapping is required for these files
+        // Note: Column mapping is now handled automatically in MainController
+        // No need to emit signal or wait for user input
+        
         // Load trajectory data for the selected vehicle
         loadVehicleTrajectory(plateNumber);
     }
@@ -65,6 +76,7 @@ void VehicleManager::loadVehicleTrajectory(const QString& plateNumber)
     
     if (filePaths.isEmpty()) {
         qWarning() << "Cannot find file paths for vehicle:" << plateNumber;
+        emit trajectoryLoaded(plateNumber, QList<ExcelDataReader::VehicleRecord>());
         return;
     }
     
@@ -73,31 +85,52 @@ void VehicleManager::loadVehicleTrajectory(const QString& plateNumber)
     
     // Load data from all files and merge
     QList<ExcelDataReader::VehicleRecord> allRecords;
+    int totalFiles = filePaths.size();
+    int processedFiles = 0;
+    
+    // Reuse the existing ExcelDataReader instance to avoid creating temporary objects
+    if (!m_excelReader) {
+        m_excelReader = new ExcelDataReader(this);
+    }
     
     for (const QString& filePath : filePaths) {
-        // Create a temporary reader for each file
-        ExcelDataReader tempReader;
+        // Disconnect any previous connections to avoid signal conflicts
+        m_excelReader->disconnect();
         
-        bool loadSuccess = false;
         QString errorMessage;
+        bool loadSuccess = false;
         
-        // Connect to error signal
-        connect(&tempReader, &ExcelDataReader::errorOccurred, [&errorMessage](const QString& error) {
+        // Connect to signals for error handling and progress tracking for this file
+        // Use value capture for errorMessage to avoid lifetime issues
+        connect(m_excelReader, &ExcelDataReader::errorOccurred, 
+                [&errorMessage](const QString& error) {
             errorMessage = error;
         });
         
+        // Connect progress signal with current file index
+        int currentFileIndex = processedFiles;
+        connect(m_excelReader, &ExcelDataReader::loadingProgress, 
+                [this, currentFileIndex, totalFiles](int fileProgress) {
+            // Calculate overall progress across all files
+            int overallProgress = ((currentFileIndex * 100) + fileProgress) / totalFiles;
+            emit loadingProgress(overallProgress);
+        });
+        
         try {
-            loadSuccess = tempReader.loadExcelFile(filePath);
+            // Load the file using the column mapping configuration
+            loadSuccess = m_excelReader->loadExcelFile(filePath);
         } catch (const std::exception& e) {
             errorMessage = QString("文件读取异常: %1").arg(e.what());
             loadSuccess = false;
+            qWarning() << "Exception loading file" << filePath << ":" << e.what();
         } catch (...) {
             errorMessage = "文件读取时发生未知异常";
             loadSuccess = false;
+            qWarning() << "Unknown exception loading file" << filePath;
         }
         
         if (loadSuccess && errorMessage.isEmpty()) {
-            QList<ExcelDataReader::VehicleRecord> fileRecords = tempReader.getVehicleData();
+            QList<ExcelDataReader::VehicleRecord> fileRecords = m_excelReader->getVehicleData();
             
             // Filter records for the selected vehicle and add to collection
             for (const auto& record : fileRecords) {
@@ -110,10 +143,14 @@ void VehicleManager::loadVehicleTrajectory(const QString& plateNumber)
             qWarning() << "Failed to load file" << filePath << ":" << errorMessage;
             // Continue with other files even if one fails
         }
+        
+        processedFiles++;
+        emit loadingProgress((processedFiles * 100) / totalFiles);
     }
     
     if (allRecords.isEmpty()) {
         qWarning() << "No records found for vehicle:" << plateNumber;
+        emit trajectoryLoaded(plateNumber, QList<ExcelDataReader::VehicleRecord>());
         return;
     }
     
@@ -150,7 +187,6 @@ void VehicleManager::loadVehicleTrajectory(const QString& plateNumber)
                 filteredCount++;
             }
         }
-        
     }
     
     m_currentTrajectory = filteredRecords;
@@ -163,7 +199,9 @@ void VehicleManager::loadVehicleTrajectory(const QString& plateNumber)
     }
     
     emit trajectoryLoaded(m_selectedVehicle, m_convertedTrajectory);
+    emit loadingProgress(100); // Complete
 }
+
 
 void VehicleManager::applyCoordinateConversion(bool enabled)
 {

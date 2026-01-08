@@ -35,7 +35,17 @@ Item {
             name: "QGroundControl"   // 使用 OpenStreetMap 插件
             PluginParameter {
                 name: "TiandiTuKey"
-                value: "cbc71550f33685acbd0bff46a661e63d"
+                value: ""
+            }
+            PluginParameter {
+                name: "multiLayer"
+                value: "true"
+            }
+
+            // 直接指定图层列表（按顺序从底到顶）
+            PluginParameter {
+                name: "layers"
+                value: "天地图卫星,天地图卫星注记"
             }
         }
         map.activeMapType: map.supportedMapTypes[0]
@@ -642,8 +652,8 @@ Item {
     
     // 地图配置管理函数
     function loadMapConfiguration() {
-        if (typeof controller !== 'undefined' && controller && controller.mapConfigManager) {
-            var configManager = controller.mapConfigManager
+        if (typeof controller !== 'undefined' && controller && controller.configManager) {
+            var configManager = controller.configManager
             
             // 加载地图类型
             var savedMapTypeIndex = configManager.mapTypeIndex
@@ -683,7 +693,7 @@ Item {
             
             logMapDisplayMessage("info", "地图配置加载完成")
         } else {
-            logMapDisplayMessage("warn", "MapConfigManager 不可用，使用默认配置")
+            logMapDisplayMessage("warn", "ConfigManager 不可用，使用默认配置")
             // 使用默认配置
             currentMapTypeIndex = 0
             if (availableMapTypes.length > 0) {
@@ -693,31 +703,31 @@ Item {
     }
     
     function updateMapTypeIndex(index) {
-        if (typeof controller !== 'undefined' && controller && controller.mapConfigManager) {
-            controller.mapConfigManager.mapTypeIndex = index
+        if (typeof controller !== 'undefined' && controller && controller.configManager) {
+            controller.configManager.mapTypeIndex = index
             logMapDisplayMessage("info", "更新地图类型索引: " + index)
         }
     }
     
     function updateZoomLevel() {
-        if (typeof controller !== 'undefined' && controller && controller.mapConfigManager) {
+        if (typeof controller !== 'undefined' && controller && controller.configManager) {
             var currentZoom = mapView.map.zoomLevel
-            controller.mapConfigManager.zoomLevel = currentZoom
+            controller.configManager.zoomLevel = currentZoom
             logMapDisplayMessage("info", "更新缩放级别: " + currentZoom)
         }
     }
     
     function updateMapCenter() {
-        if (typeof controller !== 'undefined' && controller && controller.mapConfigManager) {
+        if (typeof controller !== 'undefined' && controller && controller.configManager) {
             var currentCenter = mapView.map.center
-            controller.mapConfigManager.mapCenter = currentCenter
+            controller.configManager.mapCenter = currentCenter
             logMapDisplayMessage("info", "更新地图中心: " + currentCenter.latitude + ", " + currentCenter.longitude)
         }
     }
     
     function updateCoordinateConversionState(enabled) {
-        if (typeof controller !== 'undefined' && controller && controller.mapConfigManager) {
-            controller.mapConfigManager.coordinateConversionEnabled = enabled
+        if (typeof controller !== 'undefined' && controller && controller.configManager) {
+            controller.configManager.coordinateConversionEnabled = enabled
             logMapDisplayMessage("info", "更新坐标转换状态: " + (enabled ? "启用" : "禁用"))
         }
     }
@@ -726,7 +736,7 @@ Item {
     Connections {
         target: typeof controller !== 'undefined' ? controller : null
         function onCoordinateConversionChanged() {
-            if (controller && controller.mapConfigManager) {
+            if (controller && controller.configManager) {
                 updateCoordinateConversionState(controller.coordinateConversionEnabled)
             }
         }

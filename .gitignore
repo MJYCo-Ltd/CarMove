@@ -69,3 +69,4 @@ carData
 install
 test
 *.bat
+*.json

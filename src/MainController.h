@@ -6,28 +6,23 @@
 #include <QStringList>
 #include <QDateTime>
 #include <QVariantList>
+#include <QVariantMap>
 #include <QQmlEngine>
 #include <QGeoCoordinate>
-#include <QQuickItem>
-#include <QQuickWindow>
-#include <QScreen>
-#include <QPixmap>
 #include <QStandardPaths>
 #include <QDir>
-#include <QGuiApplication>
 #include <QCoreApplication>
-#include <QWindow>
 #include <QSet>
 #include <QDate>
+#include <QUrl>
 #include "FolderScanner.h"
 #include "ExcelDataReader.h"
 #include "VehicleAnimationEngine.h"
-#include "MapConfigManager.h"
+#include "ConfigManager.h"
 
 class VehicleManager;
 class VehicleAnimationEngine;
 class VehicleDataModel;
-class CoordinateConverter;
 
 class MainController : public QObject
 {
@@ -47,7 +42,7 @@ class MainController : public QObject
     Q_PROPERTY(double playbackProgress READ playbackProgress NOTIFY progressChanged)
     Q_PROPERTY(bool isLoading READ isLoading NOTIFY loadingChanged)
     Q_PROPERTY(QString loadingMessage READ loadingMessage NOTIFY loadingMessageChanged)
-    Q_PROPERTY(MapConfigManager* mapConfigManager READ mapConfigManager CONSTANT)
+    Q_PROPERTY(ConfigManager* configManager READ configManager CONSTANT)
     
 public:
     explicit MainController(QObject *parent = nullptr);
@@ -67,8 +62,7 @@ public:
     double playbackProgress() const { return m_playbackProgress; }
     bool isLoading() const { return m_isLoading; }
     QString loadingMessage() const { return m_loadingMessage; }
-    MapConfigManager* mapConfigManager() const { return m_mapConfigManager; }
-    
+    ConfigManager* configManager() const { return ConfigManager::GetInstance(); }
     // Property setters
     void setCoordinateConversionEnabled(bool enabled);
     void setSearchText(const QString& text);
@@ -90,7 +84,6 @@ public:
     Q_INVOKABLE QDateTime progressToTime(double progress);
     Q_INVOKABLE double timeToProgress(const QDateTime& time);
     Q_INVOKABLE void setDraggingMode(bool isDragging);
-    Q_INVOKABLE void takeMapScreenshot(const QString& fileName);
     Q_INVOKABLE int calculateVisitDays(const QString& plateNumber, double targetLat, double targetLon, double radiusMeters);
     Q_INVOKABLE QString getDocumentsPath();
     Q_INVOKABLE void clearSearch();
@@ -160,7 +153,6 @@ private:
     VehicleManager* m_vehicleManager;
     VehicleAnimationEngine* m_animationEngine;
     VehicleDataModel* m_vehicleDataModel;
-    MapConfigManager* m_mapConfigManager;
     
     // Current vehicle info cache
     QList<FolderScanner::VehicleInfo> m_vehicleInfoList;
