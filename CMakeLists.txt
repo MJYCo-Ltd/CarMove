@@ -20,6 +20,7 @@ find_package(Qt6 REQUIRED COMPONENTS
     Positioning
     Qml
     QuickControls2
+    Network
 )
 
 # Enable automatic MOC, UIC, and RCC
@@ -44,6 +45,7 @@ set(SOURCES
     src/ErrorHandler.cpp
     src/ConfigManager.cpp
     src/FuelUnloadingDataLoader.cpp
+    src/TiandituGeocoder.cpp
 )
 
 # Header files
@@ -58,6 +60,7 @@ set(HEADERS
     src/ErrorHandler.h
     src/ConfigManager.h
     src/FuelUnloadingDataLoader.h
+    src/TiandituGeocoder.h
 )
 
 # QML resources
@@ -79,6 +82,7 @@ target_link_libraries(${PROJECT_NAME}
     Qt6::Positioning
     Qt6::Qml
     Qt6::QuickControls2
+    Qt6::Network
     QXlsx::QXlsx
 )
 

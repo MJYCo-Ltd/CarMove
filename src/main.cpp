@@ -14,6 +14,7 @@
 #include "CoordinateConverter.h"
 #include "FuelUnloadingDataLoader.h"
 #include "ConfigManager.h"
+#include "TiandituGeocoder.h"
 
 int main(int argc, char *argv[])
 {
@@ -35,7 +36,8 @@ int main(int argc, char *argv[])
     qmlRegisterType<VehicleManager>("CarMove", 1, 0, "VehicleManager");
     qmlRegisterType<FuelUnloadingDataLoader>("CarMove", 1, 0, "FuelUnloadingDataLoader");
     qmlRegisterType<ConfigManager>("CarMove", 1, 0, "ConfigManager");
-    
+    qmlRegisterType<TiandituGeocoder>("CarMove", 1, 0, "TiandituGeocoder");
+
     // Register uncreatable types (utility classes)
     qmlRegisterUncreatableType<CoordinateConverter>("CarMove", 1, 0, "CoordinateConverter", 
                                                    "CoordinateConverter is a utility class");
@@ -46,6 +48,9 @@ int main(int argc, char *argv[])
     // Create and register main controller
     MainController controller;
     engine.rootContext()->setContextProperty("controller", &controller);
+
+    TiandituGeocoder geocoder;
+    engine.rootContext()->setContextProperty("geocoder", &geocoder);
     
     // Set default data path for easier access
     QString defaultDataPath = QDir::currentPath() + "/carData";

@@ -17,6 +17,51 @@ Item {
         mapTypeNotification.visible = true
         mapTypeNotificationTimer.restart()
     }
+
+    function showErrorNotification(message) {
+        errorNotification.message = message
+        errorNotification.visible = true
+        errorNotificationTimer.restart()
+    }
+
+    // 错误提示（如地理编码失败）
+    Rectangle {
+        id: errorNotification
+        width: 320
+        height: 70
+        color: "#e74c3c"
+        border.color: "white"
+        border.width: 2
+        radius: 8
+        visible: false
+        z: 1001
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.top: parent.top
+        anchors.topMargin: 20
+
+        property string message: ""
+
+        Text {
+            anchors.fill: parent
+            anchors.margins: 10
+            text: errorNotification.message
+            font.pixelSize: 13
+            color: "white"
+            wrapMode: Text.WordWrap
+            verticalAlignment: Text.AlignVCenter
+        }
+
+        Timer {
+            id: errorNotificationTimer
+            interval: 4000
+            onTriggered: errorNotification.visible = false
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            onClicked: errorNotification.visible = false
+        }
+    }
     
     // 截屏成功通知
     Rectangle {
