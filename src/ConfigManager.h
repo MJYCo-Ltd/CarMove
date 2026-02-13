@@ -68,9 +68,7 @@ public:
                    dataType == other.dataType;
         }
     };
-    
-    explicit ConfigManager(QObject *parent = nullptr);
-    ~ConfigManager();
+
     static ConfigManager* GetInstance();
     
     // Map property getters
@@ -126,6 +124,8 @@ signals:
     void excelColumnMappingChanged();
     
 private:
+    explicit ConfigManager(QObject *parent = nullptr);
+    ~ConfigManager();
     void loadSettings();
     void saveSettings();
     void loadExcelSettings();
