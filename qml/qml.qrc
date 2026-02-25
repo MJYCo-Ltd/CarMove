@@ -1,5 +1,6 @@
 <RCC>
     <qresource prefix="/">
+        <file alias="AdminCode.csv">../AdminCode.csv</file>
         <file>MainWindow.qml</file>
         <file>MapDisplay.qml</file>
         <file>PlaybackControls.qml</file>

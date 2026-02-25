@@ -65,7 +65,7 @@ public:
     ConfigManager* configManager() const { return ConfigManager::GetInstance(); }
     // Property setters
     void setCoordinateConversionEnabled(bool enabled);
-    void setSearchText(const QString& text);
+    Q_INVOKABLE void setSearchText(const QString& text);
     
     // Invokable methods for QML
     Q_INVOKABLE void selectFolder(const QString& folderPath);

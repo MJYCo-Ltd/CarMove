@@ -36,7 +36,7 @@ public:
     /// 已加载的行政区名称列表（用于下拉等），按 CSV 顺序
     Q_INVOKABLE QStringList adminRegionNames() const;
 
-    static constexpr const char *defaultKey = "";
+    static constexpr const char *defaultKey = "bf8fb9286c23e5b88af5b7a458b49e42";
 
 signals:
     void geocodeSucceeded(double latitude, double longitude, const QString &name, const QString &address);

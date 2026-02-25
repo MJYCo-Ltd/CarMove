@@ -51,7 +51,16 @@ int main(int argc, char *argv[])
 
     TiandituGeocoder geocoder;
     engine.rootContext()->setContextProperty("geocoder", &geocoder);
-    
+    QObject::connect(&geocoder, &TiandituGeocoder::geocodeSucceeded,
+                     [](double latitude, double longitude, const QString &name,
+                                                                        const QString &address) {
+        qDebug() << latitude<<","<< longitude<<"-" << name<<":" << address;
+    });
+    QObject::connect(&geocoder, &TiandituGeocoder::geocodeFailed,
+                     [](const QString &errorMessage) {
+                         qDebug() << errorMessage;
+                     });
+
     // Set default data path for easier access
     QString defaultDataPath = QDir::currentPath() + "/carData";
     engine.rootContext()->setContextProperty("defaultDataPath", defaultDataPath);
@@ -65,6 +74,8 @@ int main(int argc, char *argv[])
     }, Qt::QueuedConnection);
     
     engine.load(url);
+
+    geocoder.searchInAdminRegion("北方港航石化码头","天津");
     
     return app.exec();
 }

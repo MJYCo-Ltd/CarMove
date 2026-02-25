@@ -1,30 +1,27 @@
 #include "TiandituGeocoder.h"
-#include <QUrlQuery>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QJsonArray>
-#include <QFile>
-#include <QTextStream>
 #include <QCoreApplication>
 #include <QDir>
+#include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QStringConverter>
+#include <QTextStream>
+#include <QUrlQuery>
 
 TiandituGeocoder::TiandituGeocoder(QObject *parent)
-    : QObject(parent)
-    , m_network(new QNetworkAccessManager(this))
-{
+    : QObject(parent), m_network(new QNetworkAccessManager(this)) {
     loadAdminCodeCsv();
 }
 
-TiandituGeocoder::~TiandituGeocoder()
-{
+TiandituGeocoder::~TiandituGeocoder() {
     if (m_reply) {
         m_reply->abort();
     }
 }
 
-void TiandituGeocoder::searchInAdminRegion(const QString &keyWord, const QString &specifyAdminCode)
-{
+void TiandituGeocoder::searchInAdminRegion(const QString &keyWord,
+                                           const QString &specifyAdminCode) {
     QString kw = keyWord.trimmed();
     QString code = specifyAdminCode.trimmed();
     if (kw.isEmpty()) {
@@ -35,6 +32,7 @@ void TiandituGeocoder::searchInAdminRegion(const QString &keyWord, const QString
         emit geocodeFailed(tr("请指定行政区（国标码或名称）"));
         return;
     }
+
     // 若传入的是行政区名称，查国标码
     if (code.length() != 9 || !code.at(0).isDigit()) {
         QString resolved = m_adminNameToCode.value(code);
@@ -47,7 +45,9 @@ void TiandituGeocoder::searchInAdminRegion(const QString &keyWord, const QString
         if (!resolved.isEmpty())
             code = resolved;
         else {
-            emit geocodeFailed(tr("未找到行政区「%1」对应的国标码，请使用 AdminCode.csv 中的名称或 9 位国标码").arg(code));
+            emit geocodeFailed(tr("未找到行政区「%1」对应的国标码，请使用 "
+                                  "AdminCode.csv 中的名称或 9 位国标码")
+                                   .arg(code));
             return;
         }
     }
@@ -66,7 +66,7 @@ void TiandituGeocoder::searchInAdminRegion(const QString &keyWord, const QString
     postObj["count"] = 10;
 
     QByteArray postStr = QJsonDocument(postObj).toJson(QJsonDocument::Compact);
-    QUrl url("http://api.tianditu.gov.cn/v2/search");
+    QUrl url("https://api.tianditu.gov.cn/v2/search");
     QUrlQuery query;
     query.addQueryItem("postStr", QString::fromUtf8(postStr));
     query.addQueryItem("type", "query");
@@ -77,21 +77,17 @@ void TiandituGeocoder::searchInAdminRegion(const QString &keyWord, const QString
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     setBusy(true);
     m_reply = m_network->get(req);
-    connect(m_reply, &QNetworkReply::finished, this, &TiandituGeocoder::onReplyFinished);
+    connect(m_reply, &QNetworkReply::finished, this,
+            &TiandituGeocoder::onReplyFinished);
 }
 
-QString TiandituGeocoder::adminCodeForName(const QString &adminName) const
-{
+QString TiandituGeocoder::adminCodeForName(const QString &adminName) const {
     return m_adminNameToCode.value(adminName.trimmed());
 }
 
-QStringList TiandituGeocoder::adminRegionNames() const
-{
-    return m_adminNames;
-}
+QStringList TiandituGeocoder::adminRegionNames() const { return m_adminNames; }
 
-void TiandituGeocoder::loadAdminCodeCsv()
-{
+void TiandituGeocoder::loadAdminCodeCsv() {
     m_adminNameToCode.clear();
     m_adminNames.clear();
     QString path = QCoreApplication::applicationDirPath() + "/AdminCode.csv";
@@ -118,10 +114,10 @@ void TiandituGeocoder::loadAdminCodeCsv()
     }
 }
 
-void TiandituGeocoder::onReplyFinished()
-{
+void TiandituGeocoder::onReplyFinished() {
     setBusy(false);
-    if (!m_reply) return;
+    if (!m_reply)
+        return;
 
     QNetworkReply *reply = m_reply;
     m_reply = nullptr;
@@ -142,58 +138,65 @@ void TiandituGeocoder::onReplyFinished()
     emit geocodeSucceeded(lat, lon, name, address);
 }
 
-void TiandituGeocoder::setBusy(bool busy)
-{
+void TiandituGeocoder::setBusy(bool busy) {
     if (m_busy != busy) {
         m_busy = busy;
         emit busyChanged();
     }
 }
 
-bool TiandituGeocoder::parseLonLat(const QString &lonlat, double &outLat, double &outLon)
-{
-    if (lonlat.isEmpty()) return false;
+bool TiandituGeocoder::parseLonLat(const QString &lonlat, double &outLat,
+                                   double &outLon) {
+    if (lonlat.isEmpty())
+        return false;
     QStringList parts = lonlat.split(',');
-    if (parts.size() < 2) return false;
+    if (parts.size() < 2)
+        return false;
     bool ok1 = false, ok2 = false;
     double lon = parts[0].trimmed().toDouble(&ok1);
     double lat = parts[1].trimmed().toDouble(&ok2);
-    if (!ok1 || !ok2) return false;
+    if (!ok1 || !ok2)
+        return false;
     outLon = lon;
     outLat = lat;
     return true;
 }
 
-bool TiandituGeocoder::parseAdminSearchReply(const QByteArray &json, double &outLat, double &outLon,
-                                             QString &outName, QString &outAddress)
-{
+bool TiandituGeocoder::parseAdminSearchReply(const QByteArray &json,
+                                             double &outLat, double &outLon,
+                                             QString &outName,
+                                             QString &outAddress) {
     QJsonParseError err;
     QJsonDocument doc = QJsonDocument::fromJson(json, &err);
     if (err.error != QJsonParseError::NoError || !doc.isObject())
         return false;
 
     QJsonObject root = doc.object();
-    if (root["infocode"].toInt(0) != 1000)
+    if (root["status"].toObject()["infocode"].toInt() != 1000)
         return false;
 
     int resultType = root["resultType"].toInt(0);
     // 1 = 普通 POI（pois），3 = 行政区（area）
     if (resultType == 1) {
         QJsonArray pois = root["pois"].toArray();
-        if (pois.isEmpty()) return false;
+        if (pois.isEmpty())
+            return false;
         QJsonObject first = pois.at(0).toObject();
         QString lonlat = first["lonlat"].toString();
-        if (!parseLonLat(lonlat, outLat, outLon)) return false;
+        if (!parseLonLat(lonlat, outLat, outLon))
+            return false;
         outName = first["name"].toString();
         outAddress = first["address"].toString();
         return true;
     }
     if (resultType == 3) {
         QJsonArray area = root["area"].toArray();
-        if (area.isEmpty()) return false;
+        if (area.isEmpty())
+            return false;
         QJsonObject first = area.at(0).toObject();
         QString lonlat = first["lonlat"].toString();
-        if (!parseLonLat(lonlat, outLat, outLon)) return false;
+        if (!parseLonLat(lonlat, outLat, outLon))
+            return false;
         outName = first["name"].toString();
         outAddress = QString();
         return true;

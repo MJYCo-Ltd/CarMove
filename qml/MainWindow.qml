@@ -152,9 +152,21 @@ ApplicationWindow {
                 
                 // 车辆列表区域
                 GroupBox {
+                    id: vehicleListGroupBox
                     title: "车辆列表"
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+                    
+                    // 更新车辆列表 ListView 的 model（按 searchText 前缀过滤）
+                    function updateVehicleListModel() {
+                        if (!controller) {
+                            vehicleListView.model = []
+                            return
+                        }
+                        vehicleListView.model = controller.filteredVehicleList ? controller.filteredVehicleList : []
+                    }
+                    
+                    Component.onCompleted: updateVehicleListModel()
                     
                     ColumnLayout {
                         anchors.fill: parent
@@ -169,7 +181,8 @@ ApplicationWindow {
                                 id: searchField
                                 Layout.fillWidth: true
                                 placeholderText: "输入车牌号前缀搜索 (如: 冀A)..."
-                                text: controller ? controller.searchText : ""
+                                // 无焦点时从 controller 同步（如点击清除后）；有焦点时仅由 onTextChanged 写入 controller
+                                text: (controller && controller.searchText !== undefined) ? controller.searchText : ""
                                 
                                 // Add search icon
                                 leftPadding: 30
@@ -191,8 +204,18 @@ ApplicationWindow {
                                 }
                                 
                                 onTextChanged: {
-                                    if (controller && typeof controller.setSearchText === 'function') {
+                                    if (controller) {
                                         controller.setSearchText(text)
+                                        vehicleListGroupBox.updateVehicleListModel()
+                                    }
+                                }
+                                
+                                // 从 controller 同步到输入框（清除、外部设置等）
+                                Connections {
+                                    target: controller
+                                    function onSearchTextChanged() {
+                                        if (!searchField.activeFocus && controller)
+                                            searchField.text = controller.searchText
                                     }
                                 }
                                 
@@ -213,31 +236,29 @@ ApplicationWindow {
                                     if (controller && typeof controller.clearSearch === 'function') {
                                         controller.clearSearch()
                                     }
+                                    searchField.text = ""
                                 }
                             }
                         }
                         
-                        // Search results info
+                        // Search results info（与下方 ListView 使用相同过滤逻辑）
                         Text {
                             Layout.fillWidth: true
                             text: {
-                                if (controller && controller.searchText && controller.searchText.length > 0) {
-                                    var totalCount = controller.vehicleList ? controller.vehicleList.length : 0
-                                    var filteredCount = controller.filteredVehicleList ? controller.filteredVehicleList.length : 0
-                                    return "找到 " + filteredCount + " / " + totalCount + " 辆车"
-                                }
-                                return ""
+                                if (!controller) return ""
+                                return "找到 " + controller.filteredVehicleList.length + " / " + controller.vehicleList.length + " 辆车"
                             }
                             font.pixelSize: 10
                             color: "#7f8c8d"
-                            visible: controller && controller.searchText && controller.searchText.length > 0
+                            visible: controller && controller.searchText && String(controller.searchText).trim().length > 0
                         }
                         
+                        // 车辆列表：model 由 updateVehicleListModel() 方法更新
                         ListView {
                             id: vehicleListView
                             Layout.fillWidth: true
                             Layout.fillHeight: true
-                            model: (controller && controller.filteredVehicleList) ? controller.filteredVehicleList : []
+                            model: []
                             focus: true
                             keyNavigationEnabled: true
                             clip: true
@@ -383,6 +404,14 @@ ApplicationWindow {
     // Connect to controller signals
     Connections {
         target: controller
+        
+        function onSearchTextChanged() {
+            vehicleListGroupBox.updateVehicleListModel()
+        }
+        
+        function onVehicleListChanged() {
+            vehicleListGroupBox.updateVehicleListModel()
+        }
         
         function onFolderScanned(success, message) {
             if (success) {

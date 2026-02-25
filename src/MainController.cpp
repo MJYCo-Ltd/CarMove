@@ -97,7 +97,7 @@ void MainController::updateFilteredVehicleList()
         QString searchText = m_searchText; // Keep original case for exact matching
         
         for (const QString& vehicle : m_vehicleList) {
-            if (vehicle.startsWith(searchText, Qt::CaseInsensitive)) {
+            if (vehicle.contains(searchText, Qt::CaseInsensitive)) {
                 m_filteredVehicleList.append(vehicle);
             }
         }
