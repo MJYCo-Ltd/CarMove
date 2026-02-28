@@ -1,5 +1,5 @@
 #include "ConfigManager.h"
-#include <QStandardPaths>
+#include <QCoreApplication>
 #include <QDir>
 #include <QDebug>
 #include <algorithm>
@@ -15,12 +15,8 @@ ConfigManager::ConfigManager(QObject *parent)
     , m_excelDataStartRow(DEFAULT_EXCEL_DATA_START_ROW)
     , m_settings(nullptr)
 {
-    // 创建配置文件路径
-    QString configPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    QDir configDir(configPath);
-    if (!configDir.exists()) {
-        configDir.mkpath(".");
-    }
+    // 配置文件路径与 exe 相同
+    QString configPath = QCoreApplication::applicationDirPath();
     
     // 初始化QSettings
     QString configFile = configPath + "/CarMoveTracker.ini";
