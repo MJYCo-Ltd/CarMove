@@ -24,7 +24,8 @@ class ConfigManager : public QObject
     Q_PROPERTY(double zoomLevel READ zoomLevel WRITE setZoomLevel NOTIFY zoomLevelChanged)
     Q_PROPERTY(QGeoCoordinate mapCenter READ mapCenter WRITE setMapCenter NOTIFY mapCenterChanged)
     Q_PROPERTY(bool coordinateConversionEnabled READ coordinateConversionEnabled WRITE setCoordinateConversionEnabled NOTIFY coordinateConversionEnabledChanged)
-    
+    Q_PROPERTY(QString tiandituKey READ tiandituKey WRITE setTiandituKey NOTIFY tiandituKeyChanged)
+
 public:
     /**
      * @struct FieldMapping
@@ -76,13 +77,15 @@ public:
     double zoomLevel() const { return m_zoomLevel; }
     QGeoCoordinate mapCenter() const { return m_mapCenter; }
     bool coordinateConversionEnabled() const { return m_coordinateConversionEnabled; }
-    
+    QString tiandituKey() const { return m_tiandituKey; }
+
     // Map property setters
     void setMapTypeIndex(int index);
     void setZoomLevel(double level);
     void setMapCenter(const QGeoCoordinate& center);
     void setCoordinateConversionEnabled(bool enabled);
-    
+    void setTiandituKey(const QString& key);
+
     // Excel column mapping methods
     int getExcelDataStartRow() const { return m_excelDataStartRow; }
     void setExcelDataStartRow(int row) { m_excelDataStartRow = row; }
@@ -120,6 +123,7 @@ signals:
     void zoomLevelChanged();
     void mapCenterChanged();
     void coordinateConversionEnabledChanged();
+    void tiandituKeyChanged();
     void mapStateLoaded();
     void excelColumnMappingChanged();
     
@@ -136,7 +140,8 @@ private:
     double m_zoomLevel;
     QGeoCoordinate m_mapCenter;
     bool m_coordinateConversionEnabled;
-    
+    QString m_tiandituKey;
+
     // Excel configuration properties
     int m_excelDataStartRow;
     QList<FieldMapping> m_excelFieldMappings;
@@ -150,6 +155,7 @@ private:
     static inline const double DEFAULT_LATITUDE = 39.9;
     static inline const double DEFAULT_LONGITUDE = 116.4;
     static const bool DEFAULT_COORDINATE_CONVERSION = false;
+    static constexpr const char* DEFAULT_TIANDITU_KEY = "bf8fb9286c23e5b88af5b7a458b49e42";
     static const int DEFAULT_EXCEL_DATA_START_ROW = 2;
     static ConfigManager* m_pManager;
 };

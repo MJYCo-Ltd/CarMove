@@ -38,7 +38,7 @@ Item {
             name: "QGroundControl"   // 使用 OpenStreetMap 插件
             PluginParameter {
                 name: "TiandiTuKey"
-                value: ""
+                value: (typeof controller !== 'undefined' && controller && controller.configManager) ? controller.configManager.tiandituKey : ""
             }
             // PluginParameter {
             //     name: "multiLayer"

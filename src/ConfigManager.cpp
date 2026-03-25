@@ -12,6 +12,7 @@ ConfigManager::ConfigManager(QObject *parent)
     , m_zoomLevel(DEFAULT_ZOOM_LEVEL)
     , m_mapCenter(QGeoCoordinate(DEFAULT_LATITUDE, DEFAULT_LONGITUDE))
     , m_coordinateConversionEnabled(DEFAULT_COORDINATE_CONVERSION)
+    , m_tiandituKey(DEFAULT_TIANDITU_KEY)
     , m_excelDataStartRow(DEFAULT_EXCEL_DATA_START_ROW)
     , m_settings(nullptr)
 {
@@ -71,6 +72,14 @@ void ConfigManager::setCoordinateConversionEnabled(bool enabled)
     if (m_coordinateConversionEnabled != enabled) {
         m_coordinateConversionEnabled = enabled;
         emit coordinateConversionEnabledChanged();
+    }
+}
+
+void ConfigManager::setTiandituKey(const QString& key)
+{
+    if (m_tiandituKey != key) {
+        m_tiandituKey = key;
+        emit tiandituKeyChanged();
     }
 }
 
@@ -274,7 +283,8 @@ void ConfigManager::loadSettings()
     m_mapCenter = QGeoCoordinate(latitude, longitude);
     
     m_coordinateConversionEnabled = m_settings->value("coordinateConversionEnabled", DEFAULT_COORDINATE_CONVERSION).toBool();
-    
+    m_tiandituKey = m_settings->value("tiandituKey", DEFAULT_TIANDITU_KEY).toString();
+
     m_settings->endGroup();
 }
 
@@ -287,7 +297,8 @@ void ConfigManager::saveSettings()
     m_settings->setValue("centerLatitude", m_mapCenter.latitude());
     m_settings->setValue("centerLongitude", m_mapCenter.longitude());
     m_settings->setValue("coordinateConversionEnabled", m_coordinateConversionEnabled);
-    
+    m_settings->setValue("tiandituKey", m_tiandituKey);
+
     m_settings->endGroup();
     
     // 同时保存 Excel 设置

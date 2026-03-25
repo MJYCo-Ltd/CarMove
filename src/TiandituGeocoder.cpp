@@ -1,4 +1,5 @@
 #include "TiandituGeocoder.h"
+#include "ConfigManager.h"
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
@@ -70,7 +71,7 @@ void TiandituGeocoder::searchInAdminRegion(const QString &keyWord,
     QUrlQuery query;
     query.addQueryItem("postStr", QString::fromUtf8(postStr));
     query.addQueryItem("type", "query");
-    query.addQueryItem("tk", defaultKey);
+    query.addQueryItem("tk", ConfigManager::GetInstance()->tiandituKey());
     url.setQuery(query);
 
     QNetworkRequest req(url);
