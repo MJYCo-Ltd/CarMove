@@ -23,9 +23,6 @@ public:
     
     // Additional utility methods
     QString getSelectedVehicle() const;
-    bool isCoordinateConversionEnabled() const;
-    QStringList getAvailableVehicles() const;
-    bool hasTrajectoryData() const;
     
 signals:
     void vehicleSelected(const QString& plateNumber);

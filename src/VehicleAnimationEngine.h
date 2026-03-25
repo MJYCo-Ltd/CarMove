@@ -35,7 +35,6 @@ public slots:
     void pause();
     void stop();
     void seekToTime(const QDateTime& time);
-    void onTimeSliderDragged(double progress);  // 处理时间条拖动
     
 signals:
     void vehiclePositionUpdated(const QString& plateNumber, 
@@ -55,13 +54,9 @@ private:
                                      const QGeoCoordinate& end,
                                      double ratio) const;
     int interpolateDirection(int startDir, int endDir, double ratio) const;
-    VehicleDataModel::VehicleState interpolateVehicleState(double progress) const;
     
     // Performance optimization methods
     void updateTimerInterval();
-    bool shouldUpdatePosition(const QString& plateNumber, const QGeoCoordinate& newPos);
-    void cacheVehicleState(const QString& plateNumber, const VehicleDataModel::VehicleState& state);
-    VehicleDataModel::VehicleState getCachedVehicleState(const QString& plateNumber);
     
     // Core members
     VehicleDataModel* m_vehicleModel;

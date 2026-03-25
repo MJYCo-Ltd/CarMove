@@ -26,6 +26,9 @@ Item {
     // 地图类型切换相关属性
     property int currentMapTypeIndex: 0
     property var availableMapTypes: []
+
+    property double targetLat : 38.97887422901859//38.50100515357691
+    property double targetLon : 117.73397758792544//117.34659063133019
     
     MapView {
         id: mapView
@@ -37,16 +40,16 @@ Item {
                 name: "TiandiTuKey"
                 value: ""
             }
-            PluginParameter {
-                name: "multiLayer"
-                value: "true"
-            }
+            // PluginParameter {
+            //     name: "multiLayer"
+            //     value: "true"
+            // }
 
-            // 直接指定图层列表（按顺序从底到顶）
-            PluginParameter {
-                name: "layers"
-                value: "天地图卫星,天地图卫星注记"
-            }
+            // // 直接指定图层列表（按顺序从底到顶）
+            // PluginParameter {
+            //     name: "layers"
+            //     value: "天地图街道,天地图街道注记"
+            // }
         }
         map.activeMapType: map.supportedMapTypes[0]
         map.center: QtPositioning.coordinate(39.9, 116.4) // 北京坐标
@@ -70,14 +73,12 @@ Item {
         }
         
     Component.onCompleted:{
-        console.log(map.supportedMapTypes)
         // 初始化可用地图类型列表
         availableMapTypes = []
         
         for (var i = 0; i < map.supportedMapTypes.length; i++) {
             var mapType = map.supportedMapTypes[i]
             availableMapTypes.push(mapType)
-            console.log("地图类型 " + i + ":", mapType.name, mapType.description)
         }
         
         // 更新地图类型选择器
@@ -274,8 +275,6 @@ Item {
                 
                 // 计算到达目标区域的天数
                 if (typeof controller !== 'undefined' && controller) {
-                    var targetLat = 38.365533743246445
-                    var targetLon = 117.41485834121706
                     var radiusMeters = 1000
                     item.visitDays = controller.calculateVisitDays(plateNumber, targetLat, targetLon, radiusMeters)
                 } else {
@@ -529,9 +528,14 @@ Item {
     }
     
     function centerToLocation() {
-        // 定位到指定坐标：117.41485834121706, 38.365533743246445，缩放级别19
-        var targetCoordinate = QtPositioning.coordinate(38.365533743246445, 117.41485834121706)
-        var targetZoomLevel = 16
+        // 定位到指定坐标：117.60023409901743, 38.48662514109641，缩放级别19
+        // var targetCoordinate = QtPositioning.coordinate(38.365533743246445, 117.41485834121706)
+        //117.37817362854466,38.519268335160994
+        // 金诺石化 var targetCoordinate = QtPositioning.coordinate(38.519268335160994, 117.37817362854466)
+        // 中能 var targetCoordinate = QtPositioning.coordinate(38.36397211713999,117.40638828581234)
+        // 天津 var targetCoordinate = QtPositioning.coordinate(38.97887422901859,117.73397758792544)
+        var targetCoordinate = QtPositioning.coordinate(targetLat,targetLon)
+        var targetZoomLevel = 18
         
         // 使用动画平滑移动到目标位置
         mapAnimations.animateToCenter(targetCoordinate)

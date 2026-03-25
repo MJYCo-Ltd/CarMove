@@ -224,28 +224,6 @@ QList<ExcelDataReader::VehicleRecord> ExcelDataReader::getVehicleData() const
     return m_vehicleData;
 }
 
-QStringList ExcelDataReader::getUniqueVehicles() const
-{
-    QStringList vehicles;
-    for (const auto& record : m_vehicleData) {
-        if (!vehicles.contains(record.plateNumber)) {
-            vehicles.append(record.plateNumber);
-        }
-    }
-    return vehicles;
-}
-
-QList<ExcelDataReader::VehicleRecord> ExcelDataReader::getVehicleRecords(const QString& plateNumber) const
-{
-    QList<VehicleRecord> vehicleRecords;
-    for (const auto& record : m_vehicleData) {
-        if (record.plateNumber == plateNumber) {
-            vehicleRecords.append(record);
-        }
-    }
-    return vehicleRecords;
-}
-
 bool ExcelDataReader::parseDataRowWithMapping(Document& xlsx, int row,
                                               VehicleRecord& record, QString& errorMessage)
 {

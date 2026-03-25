@@ -261,22 +261,3 @@ QString VehicleManager::getSelectedVehicle() const
 {
     return m_selectedVehicle;
 }
-
-bool VehicleManager::isCoordinateConversionEnabled() const
-{
-    return m_coordinateConversionEnabled;
-}
-
-QStringList VehicleManager::getAvailableVehicles() const
-{
-    QStringList vehicles;
-    for (const auto& vehicleInfo : m_vehicleList) {
-        vehicles.append(vehicleInfo.plateNumber);
-    }
-    return vehicles;
-}
-
-bool VehicleManager::hasTrajectoryData() const
-{
-    return !m_convertedTrajectory.isEmpty();
-}

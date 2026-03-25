@@ -90,25 +90,11 @@ public:
      * @return 车辆记录列表，如果没有加载数据则返回空列表
      */
     QList<VehicleRecord> getVehicleData() const;
-    
-    /**
-     * @brief 获取已加载数据中的唯一车牌号列表
-     * @return 车牌号列表，如果没有加载数据则返回空列表
-     */
-    QStringList getUniqueVehicles() const;
-    
-    /**
-     * @brief 获取指定车牌号的所有记录
-     * @param plateNumber 车牌号
-     * @return 该车牌号的所有记录，如果没有找到则返回空列表
-     */
-    QList<VehicleRecord> getVehicleRecords(const QString& plateNumber) const;
-    
+
 signals:
     void dataLoaded(const QList<VehicleRecord>& records);
     void loadingProgress(int percentage);
     void errorOccurred(const QString& error);
-    void columnMappingValidated(bool isValid, const QStringList& errors);
     
 private:
     QList<VehicleRecord> m_vehicleData;

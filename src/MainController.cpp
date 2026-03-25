@@ -205,7 +205,6 @@ void MainController::selectVehicle(const QString& plateNumber)
         // Load vehicle trajectory with error handling
         try {
             m_vehicleManager->selectVehicle(plateNumber);
-            m_vehicleManager->loadVehicleTrajectory(plateNumber);
         } catch (const std::exception& e) {
             m_isLoading = false;
             emit loadingChanged();

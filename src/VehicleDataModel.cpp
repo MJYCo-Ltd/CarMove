@@ -191,9 +191,6 @@ void VehicleDataModel::calculateTimeRange()
         return;
     }
     
-    m_startTime = m_vehicleRecords.first().timestamp;
-    m_endTime = m_vehicleRecords.last().timestamp;
-    
     // Use std::minmax_element for better performance on large datasets
     auto minMaxPair = std::minmax_element(m_vehicleRecords.begin(), m_vehicleRecords.end(),
         [](const ExcelDataReader::VehicleRecord& a, const ExcelDataReader::VehicleRecord& b) {

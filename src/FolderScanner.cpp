@@ -192,10 +192,6 @@ void FolderScanner::scanFolder(const QString& folderPath)
                          .arg(processedFiles).arg(validFiles).arg(invalidFiles);
         }
         
-        // 显示每个车辆的文件数量
-        for (const auto& info : m_vehicleList) {
-        }
-        
         // Show warning if many files are invalid
         if (invalidFiles > validFiles * 0.2) { // More than 20% invalid
             qWarning() << QString("警告：较多文件无效 (%1/%2)，请检查文件命名格式")

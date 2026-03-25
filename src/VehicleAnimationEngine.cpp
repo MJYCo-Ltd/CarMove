@@ -123,11 +123,6 @@ void VehicleAnimationEngine::seekToTime(const QDateTime& time)
     setCurrentTime(time);
 }
 
-void VehicleAnimationEngine::onTimeSliderDragged(double progress)
-{
-    seekToProgress(progress);
-}
-
 void VehicleAnimationEngine::setDraggingMode(bool isDragging)
 {
     m_isDragging = isDragging;
@@ -215,64 +210,6 @@ int VehicleAnimationEngine::interpolateDirection(int startDir, int endDir, doubl
     if (result >= 360) result -= 360;
     
     return result;
-}
-
-VehicleDataModel::VehicleState VehicleAnimationEngine::interpolateVehicleState(double progress) const
-{
-    if (!m_vehicleModel || m_vehicleModel->rowCount() == 0) {
-        return VehicleDataModel::VehicleState();
-    }
-    
-    // Find the records that bracket the current time
-    QDateTime targetTime = m_startTime.addMSecs(static_cast<qint64>(
-        m_startTime.msecsTo(m_endTime) * progress));
-    
-    // For now, find the closest record to the target time
-    // This is a simplified implementation - in a full implementation,
-    // we would interpolate between adjacent records
-    ExcelDataReader::VehicleRecord closestRecord;
-    qint64 minTimeDiff = LLONG_MAX;
-    bool foundRecord = false;
-    
-    for (int i = 0; i < m_vehicleModel->rowCount(); ++i) {
-        QModelIndex index = m_vehicleModel->index(i);
-        QDateTime recordTime = m_vehicleModel->data(index, Qt::UserRole + 5).toDateTime(); // TimestampRole
-        qint64 timeDiff = qAbs(targetTime.msecsTo(recordTime));
-        
-        if (timeDiff < minTimeDiff) {
-            minTimeDiff = timeDiff;
-            closestRecord.plateNumber = m_vehicleModel->data(index, Qt::UserRole + 1).toString();
-            closestRecord.speed = m_vehicleModel->data(index, Qt::UserRole + 3).toDouble();
-            closestRecord.direction = m_vehicleModel->data(index, Qt::UserRole + 4).toInt();
-            closestRecord.timestamp = recordTime;
-            closestRecord.vehicleColor = m_vehicleModel->data(index, Qt::UserRole + 6).toString();
-            
-            // Get coordinate from position role
-            QVariant posVar = m_vehicleModel->data(index, Qt::UserRole + 2);
-            if (posVar.canConvert<QGeoCoordinate>()) {
-                QGeoCoordinate coord = posVar.value<QGeoCoordinate>();
-                closestRecord.longitude = coord.longitude();
-                closestRecord.latitude = coord.latitude();
-            }
-            
-            foundRecord = true;
-        }
-    }
-    
-    if (!foundRecord) {
-        return VehicleDataModel::VehicleState();
-    }
-    
-    // Convert to VehicleState
-    VehicleDataModel::VehicleState state;
-    state.plateNumber = closestRecord.plateNumber;
-    state.position = QGeoCoordinate(closestRecord.latitude, closestRecord.longitude);
-    state.speed = closestRecord.speed;
-    state.direction = closestRecord.direction;
-    state.timestamp = closestRecord.timestamp;
-    state.color = closestRecord.vehicleColor;
-    
-    return state;
 }
 
 void VehicleAnimationEngine::updateVehiclePositions()
@@ -506,48 +443,6 @@ void VehicleAnimationEngine::updateTimerInterval()
         int interval = qMax(1, static_cast<int>(1000.0 / m_targetFps / m_playbackSpeed));
         m_animationTimer->setInterval(interval);
     }
-}
-
-bool VehicleAnimationEngine::shouldUpdatePosition(const QString& plateNumber, const QGeoCoordinate& newPos)
-{
-    auto it = m_lastKnownPositions.find(plateNumber);
-    bool shouldUpdate = true;
-    
-    if (it != m_lastKnownPositions.end()) {
-        const QGeoCoordinate& lastPos = it.value();
-        double distance = lastPos.distanceTo(newPos);
-        
-        // Only update if position changed significantly (reduces unnecessary updates)
-        shouldUpdate = distance > MIN_POSITION_CHANGE * 111000; // Convert degrees to meters approximately
-    }
-    
-    return shouldUpdate;
-}
-
-void VehicleAnimationEngine::cacheVehicleState(const QString& plateNumber, const VehicleDataModel::VehicleState& state)
-{
-    // Limit cache size to prevent memory issues
-    if (m_vehicleStateCache.size() >= m_maxCacheSize) {
-        // Remove oldest entries (simple FIFO)
-        auto it = m_vehicleStateCache.begin();
-        for (int i = 0; i < m_maxCacheSize / 4 && it != m_vehicleStateCache.end(); ++i) {
-            it = m_vehicleStateCache.erase(it);
-        }
-    }
-    
-    m_vehicleStateCache[plateNumber] = state;
-    m_lastKnownPositions[plateNumber] = state.position;
-}
-
-VehicleDataModel::VehicleState VehicleAnimationEngine::getCachedVehicleState(const QString& plateNumber)
-{
-    auto it = m_vehicleStateCache.find(plateNumber);
-    VehicleDataModel::VehicleState result;
-    if (it != m_vehicleStateCache.end()) {
-        result = it.value();
-    }
-    
-    return result;
 }
 
 void VehicleAnimationEngine::cleanupCache()
