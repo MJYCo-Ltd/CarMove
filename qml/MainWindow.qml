@@ -84,13 +84,21 @@ ApplicationWindow {
                 if (mode === "trajectory") {
                     leftPanel.visible = true
                     fuelRecordsPanel.visible = false
-                    // 清除卸油标记
+                    searchPanel.visible = false
+                    // 清除卸油标记和搜索结果
                     mapDisplay.clearFuelMarkers()
+                    mapDisplay.clearSearchResult()
                 } else if (mode === "fuel") {
                     leftPanel.visible = false
                     fuelRecordsPanel.visible = true
-                    // 清除轨迹
+                    searchPanel.visible = false
+                    // 清除轨迹和搜索结果
                     mapDisplay.clearTrajectory()
+                    mapDisplay.clearSearchResult()
+                } else if (mode === "search") {
+                    leftPanel.visible = false
+                    fuelRecordsPanel.visible = false
+                    searchPanel.visible = true
                 }
             }
         }
@@ -323,6 +331,287 @@ ApplicationWindow {
                 mapDisplay.showAllFuelRecords()
             }
         }
+
+        // 地点搜索面板（搜索模式）
+        Rectangle {
+            id: searchPanel
+            Layout.preferredWidth: 300
+            Layout.fillHeight: true
+            color: "#f0f0f0"
+            border.color: "#ccc"
+            visible: false
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 10
+                spacing: 10
+
+                // 标题
+                Text {
+                    text: "地点搜索"
+                    font.pixelSize: 14
+                    font.bold: true
+                    color: "#2c3e50"
+                    Layout.fillWidth: true
+                }
+
+                // 关键词输入
+                GroupBox {
+                    title: "搜索关键词"
+                    Layout.fillWidth: true
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: 6
+
+                        TextField {
+                            id: geoKeywordField
+                            Layout.fillWidth: true
+                            placeholderText: "输入地点名称，如：火车站"
+                            Keys.onReturnPressed: doGeoSearch()
+                            Keys.onEnterPressed: doGeoSearch()
+                        }
+
+                        Text {
+                            text: "行政区范围"
+                            font.pixelSize: 12
+                            color: "#2c3e50"
+                        }
+
+                        // 行政区模糊匹配输入框
+                        Item {
+                            Layout.fillWidth: true
+                            height: adminRegionField.height
+
+                            TextField {
+                                id: adminRegionField
+                                width: parent.width
+                                placeholderText: "输入省/市名称模糊匹配，如：天津"
+                                Keys.onReturnPressed: doGeoSearch()
+                                Keys.onEnterPressed: doGeoSearch()
+                                Keys.onDownPressed: {
+                                    if (regionSuggestList.count > 0) {
+                                        regionSuggestList.currentIndex = 0
+                                        regionSuggestList.forceActiveFocus()
+                                    }
+                                }
+                                onTextChanged: regionSuggestPopup.updateSuggestions(text)
+                            }
+
+                            // 候选列表弹出层
+                            Rectangle {
+                                id: regionSuggestPopup
+                                visible: regionSuggestList.count > 0 && adminRegionField.activeFocus
+                                         || regionSuggestList.activeFocus
+                                width: adminRegionField.width
+                                height: Math.min(regionSuggestList.count, 6) * 32
+                                anchors.top: adminRegionField.bottom
+                                anchors.left: adminRegionField.left
+                                z: 999
+                                color: "white"
+                                border.color: "#bdc3c7"
+                                border.width: 1
+                                radius: 3
+                                clip: true
+
+                                property var allNames: []
+
+                                Component.onCompleted: {
+                                    allNames = (typeof geocoder !== 'undefined' && geocoder)
+                                               ? geocoder.adminRegionNames() : []
+                                }
+
+                                function updateSuggestions(input) {
+                                    var filtered = []
+                                    var kw = input.trim()
+                                    if (kw.length === 0) {
+                                        regionSuggestModel.clear()
+                                        return
+                                    }
+                                    for (var i = 0; i < allNames.length; i++) {
+                                        if (allNames[i].indexOf(kw) >= 0) {
+                                            filtered.push(allNames[i])
+                                            if (filtered.length >= 50) break
+                                        }
+                                    }
+                                    regionSuggestModel.clear()
+                                    for (var j = 0; j < filtered.length; j++) {
+                                        regionSuggestModel.append({ name: filtered[j] })
+                                    }
+                                }
+
+                                ListModel { id: regionSuggestModel }
+
+                                ListView {
+                                    id: regionSuggestList
+                                    anchors.fill: parent
+                                    model: regionSuggestModel
+                                    clip: true
+                                    keyNavigationEnabled: true
+
+                                    Keys.onReturnPressed: selectCurrentSuggestion()
+                                    Keys.onEnterPressed:  selectCurrentSuggestion()
+                                    Keys.onEscapePressed: {
+                                        regionSuggestModel.clear()
+                                        adminRegionField.forceActiveFocus()
+                                    }
+
+                                    function selectCurrentSuggestion() {
+                                        if (currentIndex >= 0 && currentIndex < count) {
+                                            adminRegionField.text = regionSuggestModel.get(currentIndex).name
+                                            regionSuggestModel.clear()
+                                            adminRegionField.forceActiveFocus()
+                                        }
+                                    }
+
+                                    delegate: Rectangle {
+                                        width: regionSuggestList.width
+                                        height: 32
+                                        color: regionSuggestList.currentIndex === index
+                                               ? "#d6eaf8" : (maArea.containsMouse ? "#eaf4fc" : "white")
+
+                                        Text {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            anchors.left: parent.left
+                                            anchors.leftMargin: 8
+                                            anchors.right: parent.right
+                                            anchors.rightMargin: 8
+                                            text: model.name
+                                            font.pixelSize: 12
+                                            color: "#2c3e50"
+                                            elide: Text.ElideRight
+                                        }
+
+                                        MouseArea {
+                                            id: maArea
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            onClicked: {
+                                                adminRegionField.text = model.name
+                                                regionSuggestModel.clear()
+                                                adminRegionField.forceActiveFocus()
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Button {
+                            text: (typeof geocoder !== 'undefined' && geocoder && geocoder.busy) ? "搜索中..." : "搜索"
+                            Layout.fillWidth: true
+                            enabled: geoKeywordField.text.trim().length > 0 &&
+                                     adminRegionField.text.trim().length > 0 &&
+                                     !(typeof geocoder !== 'undefined' && geocoder && geocoder.busy)
+                            onClicked: doGeoSearch()
+                        }
+                    }
+                }
+
+                // 忙碌指示器
+                BusyIndicator {
+                    Layout.alignment: Qt.AlignHCenter
+                    visible: typeof geocoder !== 'undefined' && geocoder && geocoder.busy
+                    running: visible
+                    Layout.preferredHeight: 32
+                }
+
+                // 搜索结果列表
+                GroupBox {
+                    title: searchResultModel.count > 0
+                           ? ("搜索结果（" + searchResultModel.count + " 条）")
+                           : "搜索结果"
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    visible: searchResultModel.count > 0
+
+                    ListModel { id: searchResultModel }
+
+                    ListView {
+                        id: searchResultListView
+                        anchors.fill: parent
+                        model: searchResultModel
+                        clip: true
+                        spacing: 6
+
+                        delegate: Rectangle {
+                            width: searchResultListView.width
+                            height: itemCol.implicitHeight + 20
+                            color: "#ffffff"
+                            border.color: "#dce0e8"
+                            border.width: 1
+                            radius: 4
+
+                            Column {
+                                id: itemCol
+                                anchors {
+                                    left: parent.left; right: parent.right
+                                    top: parent.top; margins: 8
+                                }
+                                spacing: 3
+
+                                Text {
+                                    width: parent.width
+                                    text: model.name
+                                    font.bold: true
+                                    font.pixelSize: 12
+                                    color: "#2c3e50"
+                                    wrapMode: Text.WordWrap
+                                }
+
+                                Text {
+                                    width: parent.width
+                                    text: model.address
+                                    font.pixelSize: 11
+                                    color: "#7f8c8d"
+                                    wrapMode: Text.WordWrap
+                                    visible: model.address.length > 0
+                                }
+
+                                Text {
+                                    width: parent.width
+                                    text: model.latitude.toFixed(6) + ", " + model.longitude.toFixed(6)
+                                    font.pixelSize: 10
+                                    color: "#95a5a6"
+                                }
+
+                                Button {
+                                    text: "在地图上定位"
+                                    height: 26
+                                    font.pixelSize: 11
+                                    onClicked: mapDisplay.showSearchResult(
+                                        model.latitude, model.longitude, model.name)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 错误提示
+                Rectangle {
+                    id: searchErrorBox
+                    Layout.fillWidth: true
+                    height: searchErrorText.implicitHeight + 16
+                    color: "#fdecea"
+                    border.color: "#e74c3c"
+                    border.width: 1
+                    radius: 4
+                    visible: searchErrorText.text.length > 0
+
+                    Text {
+                        id: searchErrorText
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        text: ""
+                        font.pixelSize: 11
+                        color: "#c0392b"
+                        wrapMode: Text.WordWrap
+                    }
+                }
+
+                Item { Layout.fillHeight: true }
+            }
+        }
         
         // 右侧：地图和控制面板
         ColumnLayout {
@@ -478,5 +767,46 @@ ApplicationWindow {
             }
         }
         
+    }
+
+    // 地理搜索函数
+    function doGeoSearch() {
+        var keyword = geoKeywordField.text.trim()
+        var region = adminRegionField.text.trim()
+        if (keyword.length === 0 || region.length === 0) return
+
+        // 清空上次结果和错误
+        searchResultModel.clear()
+        searchErrorText.text = ""
+
+        geocoder.searchInAdminRegion(keyword, region)
+    }
+
+    // 连接 geocoder 信号
+    Connections {
+        target: (typeof geocoder !== 'undefined') ? geocoder : null
+
+        function onGeocodeResultsReady(results) {
+            searchResultModel.clear()
+            searchErrorText.text = ""
+            for (var i = 0; i < results.length; i++) {
+                var r = results[i]
+                searchResultModel.append({
+                    name:      r.name,
+                    address:   r.address,
+                    latitude:  r.latitude,
+                    longitude: r.longitude
+                })
+            }
+            // 自动定位到第一条结果
+            if (results.length > 0) {
+                mapDisplay.showSearchResult(results[0].latitude, results[0].longitude, results[0].name)
+            }
+        }
+
+        function onGeocodeFailed(errorMessage) {
+            searchErrorText.text = errorMessage
+            searchResultModel.clear()
+        }
     }
 }

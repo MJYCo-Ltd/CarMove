@@ -10,10 +10,11 @@ Rectangle {
     border.width: 1
     
     // 当前选中的功能
-    property string currentMode: "trajectory"  // "trajectory" 或 "fuel"
-    
+    property string currentMode: "trajectory"  // "trajectory"、"fuel" 或 "search"
+
     // 信号
     signal modeChanged(string mode)
+    signal searchRequested()
     
     Column {
         anchors.fill: parent
@@ -121,6 +122,50 @@ Rectangle {
             
             ToolTip.visible: hovered
             ToolTip.text: "卸油记录查看"
+        }
+
+        // 地点搜索功能按钮
+        Button {
+            id: searchButton
+            width: parent.width - 10
+            height: 50
+            anchors.horizontalCenter: parent.horizontalCenter
+
+            background: Rectangle {
+                color: sidebarPanel.currentMode === "search" ? "#8e44ad" : "#34495e"
+                border.color: sidebarPanel.currentMode === "search" ? "#7d3c98" : "#2c3e50"
+                border.width: 1
+                radius: 4
+            }
+
+            contentItem: Column {
+                anchors.centerIn: parent
+                spacing: 2
+
+                Text {
+                    text: "🔍"
+                    font.pixelSize: 16
+                    color: "#ecf0f1"
+                    anchors.horizontalCenter: parent.horizontalCenter
+                }
+
+                Text {
+                    text: "搜索"
+                    font.pixelSize: 10
+                    color: "#ecf0f1"
+                    anchors.horizontalCenter: parent.horizontalCenter
+                }
+            }
+
+            onClicked: {
+                if (sidebarPanel.currentMode !== "search") {
+                    sidebarPanel.currentMode = "search"
+                    sidebarPanel.modeChanged("search")
+                }
+            }
+
+            ToolTip.visible: hovered
+            ToolTip.text: "地点搜索"
         }
     }
 }

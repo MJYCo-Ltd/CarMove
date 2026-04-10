@@ -40,16 +40,16 @@ Item {
                 name: "TiandiTuKey"
                 value: (typeof controller !== 'undefined' && controller && controller.configManager) ? controller.configManager.tiandituKey : ""
             }
-            // PluginParameter {
-            //     name: "multiLayer"
-            //     value: "true"
-            // }
+            PluginParameter {
+                name: "multiLayer"
+                value: "true"
+            }
 
-            // // 直接指定图层列表（按顺序从底到顶）
-            // PluginParameter {
-            //     name: "layers"
-            //     value: "天地图街道,天地图街道注记"
-            // }
+            // 直接指定图层列表（按顺序从底到顶）
+            PluginParameter {
+                name: "layers"
+                value: "天地图街道,天地图街道注记"
+            }
         }
         map.activeMapType: map.supportedMapTypes[0]
         map.center: QtPositioning.coordinate(39.9, 116.4) // 北京坐标
@@ -215,6 +215,47 @@ Item {
         }
     }
     
+    // 搜索结果图钉组件
+    Component {
+        id: searchPinComponent
+        MapQuickItem {
+            id: searchPin
+            anchorPoint.x: pinIcon.width / 2
+            anchorPoint.y: pinIcon.height
+
+            sourceItem: Column {
+                id: pinIcon
+                spacing: 0
+
+                Rectangle {
+                    width: 28
+                    height: 28
+                    radius: 14
+                    color: "#8e44ad"
+                    border.color: "white"
+                    border.width: 2
+                    anchors.horizontalCenter: parent.horizontalCenter
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "📍"
+                        font.pixelSize: 14
+                    }
+                }
+
+                Rectangle {
+                    width: 3
+                    height: 10
+                    color: "#8e44ad"
+                    anchors.horizontalCenter: parent.horizontalCenter
+                }
+            }
+        }
+    }
+
+    // 搜索结果标注
+    property var searchResultPin: null
+
     // 卸油记录相关的代理函数
     function clearFuelMarkers() {
         fuelUnloadingDisplay.clearMarkers()
@@ -223,9 +264,37 @@ Item {
     function showVehicleFuelRecords(plateNumber) {
         fuelUnloadingDisplay.showVehicleRecords(plateNumber)
     }
-    
+
     function showAllFuelRecords() {
         fuelUnloadingDisplay.showAllRecords()
+    }
+
+    // 地点搜索结果：在地图上添加图钉并定位
+    function showSearchResult(lat, lon, name) {
+        clearSearchResult()
+
+        var coord = QtPositioning.coordinate(lat, lon)
+        var pin = searchPinComponent.createObject(mapView.map)
+        if (pin) {
+            pin.coordinate = coord
+            mapView.map.addMapItem(pin)
+            searchResultPin = pin
+        }
+
+        // 动画移动到目标位置
+        mapAnimations.animateToCenter(coord)
+        mapAnimations.animateToZoom(15)
+
+        logMapDisplayMessage("info", "搜索结果定位：" + name + " (" + lat + ", " + lon + ")")
+    }
+
+    // 清除搜索结果图钉
+    function clearSearchResult() {
+        if (searchResultPin) {
+            mapView.map.removeMapItem(searchResultPin)
+            searchResultPin.destroy()
+            searchResultPin = null
+        }
     }
     
     // Position update throttling timer

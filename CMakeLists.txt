@@ -21,6 +21,7 @@ find_package(Qt6 REQUIRED COMPONENTS
     Qml
     QuickControls2
     Network
+    GuiPrivate
 )
 
 # Enable automatic MOC, UIC, and RCC

@@ -38,6 +38,8 @@ public:
 
 signals:
     void geocodeSucceeded(double latitude, double longitude, const QString &name, const QString &address);
+    /// 多结果信号，每条元素是包含 name/address/latitude/longitude 的 QVariantMap
+    void geocodeResultsReady(const QVariantList &results);
     void geocodeFailed(const QString &errorMessage);
     void busyChanged();
 
@@ -49,6 +51,7 @@ private:
     void loadAdminCodeCsv();
     bool parseAdminSearchReply(const QByteArray &json, double &outLat, double &outLon,
                                QString &outName, QString &outAddress);
+    QVariantList parseAllAdminSearchResults(const QByteArray &json);
     bool parseLonLat(const QString &lonlat, double &outLat, double &outLon);
 
     QNetworkAccessManager *m_network;

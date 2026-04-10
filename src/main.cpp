@@ -74,8 +74,6 @@ int main(int argc, char *argv[])
     }, Qt::QueuedConnection);
     
     engine.load(url);
-
-    geocoder.searchInAdminRegion("北方港航石化码头","天津");
     
     return app.exec();
 }

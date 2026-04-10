@@ -130,13 +130,16 @@ void TiandituGeocoder::onReplyFinished() {
     }
 
     QByteArray data = reply->readAll();
-    double lat = 0, lon = 0;
-    QString name, address;
-    if (!parseAdminSearchReply(data, lat, lon, name, address)) {
+    QVariantList results = parseAllAdminSearchResults(data);
+    if (results.isEmpty()) {
         emit geocodeFailed(tr("未找到该地点或解析失败"));
         return;
     }
-    emit geocodeSucceeded(lat, lon, name, address);
+    emit geocodeResultsReady(results);
+    // 兼容旧信号：发送第一条结果
+    QVariantMap first = results.at(0).toMap();
+    emit geocodeSucceeded(first["latitude"].toDouble(), first["longitude"].toDouble(),
+                          first["name"].toString(), first["address"].toString());
 }
 
 void TiandituGeocoder::setBusy(bool busy) {
@@ -167,40 +170,54 @@ bool TiandituGeocoder::parseAdminSearchReply(const QByteArray &json,
                                              double &outLat, double &outLon,
                                              QString &outName,
                                              QString &outAddress) {
+    QVariantList results = parseAllAdminSearchResults(json);
+    if (results.isEmpty()) return false;
+    QVariantMap first = results.at(0).toMap();
+    outLat     = first["latitude"].toDouble();
+    outLon     = first["longitude"].toDouble();
+    outName    = first["name"].toString();
+    outAddress = first["address"].toString();
+    return true;
+}
+
+QVariantList TiandituGeocoder::parseAllAdminSearchResults(const QByteArray &json) {
+    QVariantList results;
     QJsonParseError err;
     QJsonDocument doc = QJsonDocument::fromJson(json, &err);
     if (err.error != QJsonParseError::NoError || !doc.isObject())
-        return false;
+        return results;
 
     QJsonObject root = doc.object();
     if (root["status"].toObject()["infocode"].toInt() != 1000)
-        return false;
+        return results;
 
     int resultType = root["resultType"].toInt(0);
-    // 1 = 普通 POI（pois），3 = 行政区（area）
     if (resultType == 1) {
-        QJsonArray pois = root["pois"].toArray();
-        if (pois.isEmpty())
-            return false;
-        QJsonObject first = pois.at(0).toObject();
-        QString lonlat = first["lonlat"].toString();
-        if (!parseLonLat(lonlat, outLat, outLon))
-            return false;
-        outName = first["name"].toString();
-        outAddress = first["address"].toString();
-        return true;
+        const QJsonArray pois = root["pois"].toArray();
+        for (const QJsonValue &v : pois) {
+            QJsonObject obj = v.toObject();
+            double lat = 0, lon = 0;
+            if (!parseLonLat(obj["lonlat"].toString(), lat, lon)) continue;
+            QVariantMap item;
+            item["name"]      = obj["name"].toString();
+            item["address"]   = obj["address"].toString();
+            item["latitude"]  = lat;
+            item["longitude"] = lon;
+            results.append(item);
+        }
+    } else if (resultType == 3) {
+        const QJsonArray area = root["area"].toArray();
+        for (const QJsonValue &v : area) {
+            QJsonObject obj = v.toObject();
+            double lat = 0, lon = 0;
+            if (!parseLonLat(obj["lonlat"].toString(), lat, lon)) continue;
+            QVariantMap item;
+            item["name"]      = obj["name"].toString();
+            item["address"]   = QString();
+            item["latitude"]  = lat;
+            item["longitude"] = lon;
+            results.append(item);
+        }
     }
-    if (resultType == 3) {
-        QJsonArray area = root["area"].toArray();
-        if (area.isEmpty())
-            return false;
-        QJsonObject first = area.at(0).toObject();
-        QString lonlat = first["lonlat"].toString();
-        if (!parseLonLat(lonlat, outLat, outLon))
-            return false;
-        outName = first["name"].toString();
-        outAddress = QString();
-        return true;
-    }
-    return false;
+    return results;
 }
