@@ -64,6 +64,7 @@ Makefile
 .DS_Store
 Thumbs.db
 .kiro
+.qtcreator
 *.md
 carData
 install

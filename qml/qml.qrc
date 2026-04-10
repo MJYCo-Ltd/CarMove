@@ -17,5 +17,8 @@
         <file>FuelRecordsPanel.qml</file>
         <file>StyledButton.qml</file>
         <file>StyledComboBox.qml</file>
+        <file>TrajectoryPanel.qml</file>
+        <file>GeoSearchPanel.qml</file>
+        <file>MapVehicleLayer.qml</file>
     </qresource>
 </RCC>

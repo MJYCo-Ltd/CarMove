@@ -37,6 +37,8 @@ include_directories(src)
 set(SOURCES
     src/main.cpp
     src/MainController.cpp
+    src/MainControllerSlots.cpp
+    src/MainControllerHelpers.cpp
     src/FolderScanner.cpp
     src/ExcelDataReader.cpp
     src/CoordinateConverter.cpp
