@@ -5,7 +5,7 @@
 #include <QString>
 #include <QList>
 #include "FolderScanner.h"
-#include "ExcelDataReader.h"
+#include "ParseData/ExcelDataReader.h"
 
 class VehicleManager : public QObject
 {

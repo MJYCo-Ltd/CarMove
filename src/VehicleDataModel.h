@@ -6,7 +6,7 @@
 #include <QDateTime>
 #include <QTimer>
 #include <QHash>
-#include "ExcelDataReader.h"
+#include "ParseData/ExcelDataReader.h"
 
 class VehicleDataModel : public QAbstractListModel
 {

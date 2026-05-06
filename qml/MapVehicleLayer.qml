@@ -1,6 +1,9 @@
 import QtQuick
+import QtQuick.Controls
 import QtLocation
 import QtPositioning
+
+// 注：导航起终点名称相对位置按经度与对端比较（国内图幅下大致对应左右），名称用描边提高可读性
 
 // 车辆/轨迹/搜索图钉 统一管理层，需挂载在 MapDisplay 内部
 Item {
@@ -22,13 +25,21 @@ Item {
     property bool   autoFitEnabled:     true
     property bool   userHasInteracted:  false
     property var    searchResultPin:    null
+    property var    navigationPolyline:  null
+    property var    navigationStartPin:   null
+    property var    navigationEndPin:     null
 
     signal vehicleClicked(string plateNumber, double speed, int direction)
 
     // ── 轨迹线模板 ───────────────────────────────────────────────
     Component {
         id: trajectoryPolylineComp
-        MapPolyline { line.color: "red"; line.width: 5; opacity: 0.8 }
+        // z 勿用负值：部分地图插件会把折线画在底图之下导致「线消失」
+        MapPolyline {
+            line.color: "red"
+            line.width: 5
+            opacity: 0.8
+        }
     }
 
     // ── 搜索图钉模板 ─────────────────────────────────────────────
@@ -46,6 +57,157 @@ Item {
                     Text { anchors.centerIn: parent; text: "📍"; font.pixelSize: 14 }
                 }
                 Rectangle { width: 3; height: 10; color: "#8e44ad"; anchors.horizontalCenter: parent.horizontalCenter }
+            }
+        }
+    }
+
+    // 导航起点/终点（绿/红）：名称相对图标左右由与对端经度关系决定，大字 + 描边
+    Component {
+        id: navEndpointPinComp
+        MapQuickItem {
+            id: navEpRoot
+            z: 50
+            property bool isStartPin: true
+            property string pinName: ""
+            /// 仅起点：导航车牌（样式与 VehicleMarker 车牌一致，叠在路线之上）
+            property string pinPlateNumber: ""
+            property bool peerValid: false
+            property double peerLon: 0
+
+            readonly property bool nameLeftOfIcon: peerValid && (coordinate.longitude > peerLon)
+
+            anchorPoint.x: pinRoot.pinAnchorX
+            anchorPoint.y: pinRoot.height
+
+            sourceItem: Item {
+                id: pinRoot
+                width: innerRow.width
+                height: innerRow.height
+
+                readonly property real pinAnchorX: navEpRoot.nameLeftOfIcon
+                    ? (nameLCol.width + innerRow.spacing + pinCol.width / 2)
+                    : (pinCol.width / 2)
+
+                Row {
+                    id: innerRow
+                    spacing: 6
+
+                    Column {
+                        id: nameLCol
+                        visible: navEpRoot.nameLeftOfIcon
+                        width: visible ? 200 : 0
+                        spacing: 4
+
+                        Item {
+                            width: parent.width
+                            height: visible ? navPlateBadgeL.height : 0
+                            visible: navEpRoot.isStartPin && navEpRoot.pinPlateNumber.length > 0
+
+                            Rectangle {
+                                id: navPlateBadgeL
+                                anchors.right: parent.right
+                                width: navPlateTextL.width + 8
+                                height: navPlateTextL.height + 4
+                                color: "yellow"
+                                border.color: "white"
+                                border.width: 1
+                                radius: 3
+
+                                Text {
+                                    id: navPlateTextL
+                                    anchors.centerIn: parent
+                                    text: navEpRoot.pinPlateNumber
+                                    font.pixelSize: 15
+                                    font.bold: true
+                                    color: "black"
+                                    style: Text.Outline
+                                    styleColor: "white"
+                                }
+                            }
+                        }
+
+                        OutlinedGeoNameText {
+                            id: nameL
+                            width: 200
+                            alignEnd: true
+                            isStartStyle: navEpRoot.isStartPin
+                            fontPixelSize: 12
+                            text: navEpRoot.pinName.length > 0 ? navEpRoot.pinName : (navEpRoot.isStartPin ? "起点" : "终点")
+                        }
+                    }
+
+                    Column {
+                        id: pinCol
+                        width: 32
+                        spacing: 0
+                        Rectangle {
+                            width: 32
+                            height: 32
+                            radius: 16
+                            color: navEpRoot.isStartPin ? "#27ae60" : "#e74c3c"
+                            border.color: "white"
+                            border.width: 2
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            Text {
+                                anchors.centerIn: parent
+                                text: navEpRoot.isStartPin ? "起" : "终"
+                                color: "white"
+                                font.bold: true
+                                font.pixelSize: 15
+                            }
+                        }
+                        Rectangle {
+                            width: 3
+                            height: 8
+                            color: navEpRoot.isStartPin ? "#1e8449" : "#922b21"
+                            anchors.horizontalCenter: parent.horizontalCenter
+                        }
+                    }
+
+                    Column {
+                        id: nameRCol
+                        visible: !navEpRoot.nameLeftOfIcon
+                        width: visible ? 200 : 0
+                        spacing: 4
+
+                        Item {
+                            width: parent.width
+                            height: visible ? navPlateBadgeR.height : 0
+                            visible: navEpRoot.isStartPin && navEpRoot.pinPlateNumber.length > 0
+
+                            Rectangle {
+                                id: navPlateBadgeR
+                                anchors.left: parent.left
+                                width: navPlateTextR.width + 8
+                                height: navPlateTextR.height + 4
+                                color: "yellow"
+                                border.color: "white"
+                                border.width: 1
+                                radius: 3
+
+                                Text {
+                                    id: navPlateTextR
+                                    anchors.centerIn: parent
+                                    text: navEpRoot.pinPlateNumber
+                                    font.pixelSize: 15
+                                    font.bold: true
+                                    color: "black"
+                                    style: Text.Outline
+                                    styleColor: "white"
+                                }
+                            }
+                        }
+
+                        OutlinedGeoNameText {
+                            id: nameR
+                            width: 200
+                            alignEnd: false
+                            isStartStyle: navEpRoot.isStartPin
+                            fontPixelSize: 12
+                            text: navEpRoot.pinName.length > 0 ? navEpRoot.pinName : (navEpRoot.isStartPin ? "起点" : "终点")
+                        }
+                    }
+                }
             }
         }
     }
@@ -143,6 +305,102 @@ Item {
 
     function clearSearchResult() {
         if (searchResultPin) { mapTarget.removeMapItem(searchResultPin); searchResultPin.destroy(); searchResultPin = null }
+    }
+
+    function _syncNavigationPeerLayout() {
+        if (navigationStartPin) {
+            navigationStartPin.peerValid = navigationEndPin !== null
+            navigationStartPin.peerLon = navigationEndPin ? navigationEndPin.coordinate.longitude : 0
+        }
+        if (navigationEndPin) {
+            navigationEndPin.peerValid = navigationStartPin !== null
+            navigationEndPin.peerLon = navigationStartPin ? navigationStartPin.coordinate.longitude : 0
+        }
+    }
+
+    function setNavigationPath(points) {
+        clearNavigationRoute()
+        if (!points || points.length < 2 || !mapTarget) return
+        var line = trajectoryPolylineComp.createObject(mapTarget)
+        if (!line) return
+        line.line.color = "#e67e22"
+        line.line.width = 5
+        line.opacity = 0.88
+        for (var i = 0; i < points.length; i++) {
+            var c = _extractCoord(points[i])
+            if (c) line.addCoordinate(c)
+        }
+        mapTarget.addMapItem(line)
+        navigationPolyline = line
+        _fitViewport(points)
+    }
+
+    function clearNavigationRoute() {
+        if (navigationPolyline && mapTarget) {
+            mapTarget.removeMapItem(navigationPolyline)
+            navigationPolyline.destroy()
+            navigationPolyline = null
+        }
+    }
+
+    function setNavigationStartMarker(lat, lon, name, plateNumber) {
+        if (!mapTarget)
+            return
+        clearNavigationStartMarker()
+        var pin = navEndpointPinComp.createObject(mapTarget)
+        if (!pin)
+            return
+        pin.isStartPin = true
+        pin.pinName = name || "起点"
+        pin.pinPlateNumber = plateNumber ? plateNumber : ""
+        pin.coordinate = QtPositioning.coordinate(lat, lon)
+        mapTarget.addMapItem(pin)
+        navigationStartPin = pin
+        _syncNavigationPeerLayout()
+    }
+
+    function updateNavigationStartPlate(plateNumber) {
+        if (!navigationStartPin)
+            return
+        navigationStartPin.pinPlateNumber = plateNumber ? plateNumber : ""
+    }
+
+    function setNavigationEndMarker(lat, lon, name) {
+        if (!mapTarget)
+            return
+        clearNavigationEndMarker()
+        var pin = navEndpointPinComp.createObject(mapTarget)
+        if (!pin)
+            return
+        pin.isStartPin = false
+        pin.pinName = name || "终点"
+        pin.coordinate = QtPositioning.coordinate(lat, lon)
+        mapTarget.addMapItem(pin)
+        navigationEndPin = pin
+        _syncNavigationPeerLayout()
+    }
+
+    function clearNavigationStartMarker() {
+        if (navigationStartPin && mapTarget) {
+            mapTarget.removeMapItem(navigationStartPin)
+            navigationStartPin.destroy()
+            navigationStartPin = null
+        }
+        _syncNavigationPeerLayout()
+    }
+
+    function clearNavigationEndMarker() {
+        if (navigationEndPin && mapTarget) {
+            mapTarget.removeMapItem(navigationEndPin)
+            navigationEndPin.destroy()
+            navigationEndPin = null
+        }
+        _syncNavigationPeerLayout()
+    }
+
+    function clearNavigationEndpointMarkers() {
+        clearNavigationStartMarker()
+        clearNavigationEndMarker()
     }
 
     function resetInteraction() { userHasInteracted = false; autoFitEnabled = true }

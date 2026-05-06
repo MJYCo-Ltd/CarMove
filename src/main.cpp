@@ -14,7 +14,8 @@
 #include "CoordinateConverter.h"
 #include "FuelUnloadingDataLoader.h"
 #include "ConfigManager.h"
-#include "TiandituGeocoder.h"
+#include "TianDiTu/TiandituGeocoder.h"
+#include "TianDiTu/TiandituRoutePlanner.h"
 
 int main(int argc, char *argv[])
 {
@@ -51,6 +52,8 @@ int main(int argc, char *argv[])
 
     TiandituGeocoder geocoder;
     engine.rootContext()->setContextProperty("geocoder", &geocoder);
+    TiandituRoutePlanner routePlanner;
+    engine.rootContext()->setContextProperty("routePlanner", &routePlanner);
     QObject::connect(&geocoder, &TiandituGeocoder::geocodeSucceeded,
                      [](double latitude, double longitude, const QString &name,
                                                                         const QString &address) {

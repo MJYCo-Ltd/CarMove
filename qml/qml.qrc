@@ -14,11 +14,18 @@
         <file>MapAnimations.qml</file>
         <file>FuelUnloadingDisplay.qml</file>
         <file>SidebarPanel.qml</file>
+        <file>SidePanelContainer.qml</file>
+        <file>PanelHeader.qml</file>
+        <file>FormErrorStrip.qml</file>
+        <file>GeocodeResultCard.qml</file>
+        <file>OutlinedGeoNameText.qml</file>
         <file>FuelRecordsPanel.qml</file>
         <file>StyledButton.qml</file>
         <file>StyledComboBox.qml</file>
         <file>TrajectoryPanel.qml</file>
         <file>GeoSearchPanel.qml</file>
+        <file>GeoPickSearch.qml</file>
+        <file>NavigationPanel.qml</file>
         <file>MapVehicleLayer.qml</file>
     </qresource>
 </RCC>

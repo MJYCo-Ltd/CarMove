@@ -10,7 +10,7 @@ Rectangle {
     border.width: 1
     
     // 当前选中的功能
-    property string currentMode: "trajectory"  // "trajectory"、"fuel" 或 "search"
+    property string currentMode: "trajectory"  // "trajectory"、"fuel"、"search" 或 "nav"
 
     // 信号
     signal modeChanged(string mode)
@@ -166,6 +166,50 @@ Rectangle {
 
             ToolTip.visible: hovered
             ToolTip.text: "地点搜索"
+        }
+
+        // 驾车导航
+        Button {
+            id: navButton
+            width: parent.width - 10
+            height: 50
+            anchors.horizontalCenter: parent.horizontalCenter
+
+            background: Rectangle {
+                color: sidebarPanel.currentMode === "nav" ? "#16a085" : "#34495e"
+                border.color: sidebarPanel.currentMode === "nav" ? "#138d75" : "#2c3e50"
+                border.width: 1
+                radius: 4
+            }
+
+            contentItem: Column {
+                anchors.centerIn: parent
+                spacing: 2
+
+                Text {
+                    text: "🧭"
+                    font.pixelSize: 16
+                    color: "#ecf0f1"
+                    anchors.horizontalCenter: parent.horizontalCenter
+                }
+
+                Text {
+                    text: "导航"
+                    font.pixelSize: 10
+                    color: "#ecf0f1"
+                    anchors.horizontalCenter: parent.horizontalCenter
+                }
+            }
+
+            onClicked: {
+                if (sidebarPanel.currentMode !== "nav") {
+                    sidebarPanel.currentMode = "nav"
+                    sidebarPanel.modeChanged("nav")
+                }
+            }
+
+            ToolTip.visible: hovered
+            ToolTip.text: "天地图驾车路线"
         }
     }
 }

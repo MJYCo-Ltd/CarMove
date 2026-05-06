@@ -52,8 +52,21 @@ ApplicationWindow {
                 trajectoryPanel.visible = (mode === "trajectory")
                 fuelRecordsPanel.visible = (mode === "fuel")
                 geoSearchPanel.visible   = (mode === "search")
-                if (mode === "trajectory") { mapDisplay.clearFuelMarkers(); mapDisplay.clearSearchResult() }
-                else if (mode === "fuel")  { mapDisplay.clearTrajectory();  mapDisplay.clearSearchResult() }
+                navigationPanel.visible  = (mode === "nav")
+                if (mode === "trajectory") {
+                    mapDisplay.clearFuelMarkers()
+                    mapDisplay.clearSearchResult()
+                    mapDisplay.clearNavigationRoute()
+                    mapDisplay.clearNavigationEndpointMarkers()
+                } else if (mode === "fuel") {
+                    mapDisplay.clearTrajectory()
+                    mapDisplay.clearSearchResult()
+                    mapDisplay.clearNavigationRoute()
+                    mapDisplay.clearNavigationEndpointMarkers()
+                } else if (mode === "nav") {
+                    mapDisplay.clearFuelMarkers()
+                    mapDisplay.clearSearchResult()
+                }
             }
         }
 
@@ -101,6 +114,14 @@ ApplicationWindow {
                         mapDisplay.updateTrajectoryCoordinates(controller.getConvertedTrajectory())
                 }
             }
+        }
+
+        NavigationPanel {
+            id: navigationPanel
+            Layout.preferredWidth: 300
+            Layout.fillHeight: true
+            visible: false
+            mapRef: mapDisplay
         }
     }
 

@@ -1,4 +1,4 @@
-#include "TiandituGeocoder.h"
+#include "TianDiTu/TiandituGeocoder.h"
 #include "ConfigManager.h"
 #include <QCoreApplication>
 #include <QDir>

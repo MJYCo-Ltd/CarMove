@@ -123,6 +123,16 @@ Item {
     function updateVehiclePosition(pn, coord, dir, spd) { vehicleLayer.updateVehiclePosition(pn, coord, dir, spd) }
     function showSearchResult(lat, lon, name)            { vehicleLayer.showSearchResult(lat, lon, name) }
     function clearSearchResult()                         { vehicleLayer.clearSearchResult() }
+    function showNavigationRoute(points)                 { vehicleLayer.setNavigationPath(points) }
+    function clearNavigationRoute()                      { vehicleLayer.clearNavigationRoute() }
+    function setNavigationStartMarker(lat, lon, name, plateNumber) {
+        vehicleLayer.setNavigationStartMarker(lat, lon, name, plateNumber)
+    }
+    function updateNavigationStartPlate(plateNumber)   { vehicleLayer.updateNavigationStartPlate(plateNumber) }
+    function setNavigationEndMarker(lat, lon, name)     { vehicleLayer.setNavigationEndMarker(lat, lon, name) }
+    function clearNavigationStartMarker()               { vehicleLayer.clearNavigationStartMarker() }
+    function clearNavigationEndMarker()                 { vehicleLayer.clearNavigationEndMarker() }
+    function clearNavigationEndpointMarkers()           { vehicleLayer.clearNavigationEndpointMarkers() }
 
     // 卸油记录 代理函数
     function clearFuelMarkers()         { fuelUnloadingDisplay.clearMarkers() }

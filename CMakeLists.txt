@@ -40,7 +40,7 @@ set(SOURCES
     src/MainControllerSlots.cpp
     src/MainControllerHelpers.cpp
     src/FolderScanner.cpp
-    src/ExcelDataReader.cpp
+    src/ParseData/ExcelDataReader.cpp
     src/CoordinateConverter.cpp
     src/VehicleManager.cpp
     src/VehicleDataModel.cpp
@@ -48,14 +48,15 @@ set(SOURCES
     src/ErrorHandler.cpp
     src/ConfigManager.cpp
     src/FuelUnloadingDataLoader.cpp
-    src/TiandituGeocoder.cpp
+    src/TianDiTu/TiandituGeocoder.cpp
+    src/TianDiTu/TiandituRoutePlanner.cpp
 )
 
 # Header files
 set(HEADERS
     src/MainController.h
     src/FolderScanner.h
-    src/ExcelDataReader.h
+    src/ParseData/ExcelDataReader.h
     src/CoordinateConverter.h
     src/VehicleManager.h
     src/VehicleDataModel.h
@@ -63,7 +64,8 @@ set(HEADERS
     src/ErrorHandler.h
     src/ConfigManager.h
     src/FuelUnloadingDataLoader.h
-    src/TiandituGeocoder.h
+    src/TianDiTu/TiandituGeocoder.h
+    src/TianDiTu/TiandituRoutePlanner.h
 )
 
 # QML resources
