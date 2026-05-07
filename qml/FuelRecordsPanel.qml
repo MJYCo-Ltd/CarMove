@@ -217,7 +217,8 @@ Rectangle {
                             Rectangle {
                                 width: 40
                                 height: 40
-                                color: getVehicleColor(modelData.plateNumber)
+                                color: (typeof controller !== 'undefined' && controller)
+                                       ? controller.colorHexForPlate(modelData.plateNumber) : "#3498db"
                                 radius: 20
                                 
                                 Text {
@@ -247,7 +248,9 @@ Rectangle {
                                 }
                                 
                                 Text {
-                                    text: getTotalAmount(modelData.records) + " 吨"
+                                    text: (typeof controller !== 'undefined' && controller)
+                                          ? (controller.formatRecordsTotalAmount(modelData.records) + " 吨")
+                                          : "0.00 吨"
                                     font.pixelSize: 11
                                     color: "#e74c3c"
                                     font.bold: true
@@ -267,21 +270,4 @@ Rectangle {
         }
     }
     
-    // 辅助函数
-    function getVehicleColor(plateNumber) {
-        var colors = ["#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#9b59b6"]
-        var hash = 0
-        for (var i = 0; i < plateNumber.length; i++) {
-            hash = plateNumber.charCodeAt(i) + ((hash << 5) - hash)
-        }
-        return colors[Math.abs(hash) % colors.length]
-    }
-    
-    function getTotalAmount(records) {
-        var total = 0
-        for (var i = 0; i < records.length; i++) {
-            total += records[i].amount
-        }
-        return total.toFixed(2)
-    }
 }

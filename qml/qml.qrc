@@ -18,10 +18,12 @@
         <file>PanelHeader.qml</file>
         <file>FormErrorStrip.qml</file>
         <file>GeocodeResultCard.qml</file>
-        <file>OutlinedGeoNameText.qml</file>
+        <file>MapLine.qml</file>
+        <file>MapPlateBadge.qml</file>
+        <file>MapGeoNameLabel.qml</file>
+        <file>MapPlacemark.qml</file>
+        <file>NavEndpointNameSideColumn.qml</file>
         <file>FuelRecordsPanel.qml</file>
-        <file>StyledButton.qml</file>
-        <file>StyledComboBox.qml</file>
         <file>TrajectoryPanel.qml</file>
         <file>GeoSearchPanel.qml</file>
         <file>GeoPickSearch.qml</file>

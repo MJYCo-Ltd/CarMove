@@ -1,5 +1,6 @@
 #include "TianDiTu/TiandituGeocoder.h"
 #include "ConfigManager.h"
+#include <cmath>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
@@ -76,10 +77,49 @@ void TiandituGeocoder::searchInAdminRegion(const QString &keyWord,
 
     QNetworkRequest req(url);
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    m_requestKind = GeocoderRequestKind::AdminRegionSearch;
     setBusy(true);
     m_reply = m_network->get(req);
     connect(m_reply, &QNetworkReply::finished, this,
             &TiandituGeocoder::onReplyFinished);
+}
+
+void TiandituGeocoder::reverseGeocode(double longitude, double latitude) {
+    const QString tk = ConfigManager::GetInstance()->tiandituKey();
+    if (tk.isEmpty()) {
+        emit reverseGeocodeFailed(tr("未配置天地图密钥（tk）"));
+        return;
+    }
+    if (!std::isfinite(longitude) || !std::isfinite(latitude)) {
+        emit reverseGeocodeFailed(tr("无效的经纬度"));
+        return;
+    }
+    m_reverseRequestLon = longitude;
+    m_reverseRequestLat = latitude;
+
+    if (m_reply) {
+        m_reply->abort();
+        m_reply = nullptr;
+    }
+
+    QJsonObject postObj;
+    postObj["lon"] = longitude;
+    postObj["lat"] = latitude;
+    postObj["ver"] = 1;
+
+    const QByteArray postStr = QJsonDocument(postObj).toJson(QJsonDocument::Compact);
+    QUrl url(QStringLiteral("https://api.tianditu.gov.cn/geocoder"));
+    QUrlQuery query;
+    query.addQueryItem(QStringLiteral("postStr"), QString::fromUtf8(postStr));
+    query.addQueryItem(QStringLiteral("type"), QStringLiteral("geocode"));
+    query.addQueryItem(QStringLiteral("tk"), tk);
+    url.setQuery(query);
+
+    QNetworkRequest req(url);
+    m_requestKind = GeocoderRequestKind::ReverseGeocode;
+    setBusy(true);
+    m_reply = m_network->get(req);
+    connect(m_reply, &QNetworkReply::finished, this, &TiandituGeocoder::onReplyFinished);
 }
 
 QString TiandituGeocoder::adminCodeForName(const QString &adminName) const {
@@ -120,26 +160,43 @@ void TiandituGeocoder::onReplyFinished() {
     if (!m_reply)
         return;
 
+    const GeocoderRequestKind kind = m_requestKind;
     QNetworkReply *reply = m_reply;
     m_reply = nullptr;
+    m_requestKind = GeocoderRequestKind::None;
     reply->deleteLater();
 
     if (reply->error() != QNetworkReply::NoError) {
-        emit geocodeFailed(reply->errorString());
+        const QString err = reply->errorString();
+        if (kind == GeocoderRequestKind::ReverseGeocode)
+            emit reverseGeocodeFailed(err);
+        else
+            emit geocodeFailed(err);
         return;
     }
 
-    QByteArray data = reply->readAll();
+    const QByteArray data = reply->readAll();
+
+    if (kind == GeocoderRequestKind::ReverseGeocode) {
+        QString poi;
+        QString address;
+        double outLat = 0;
+        double outLon = 0;
+        if (!parseReverseGeocodeReply(data, m_reverseRequestLon, m_reverseRequestLat, poi, address,
+                                      outLat, outLon)) {
+            emit reverseGeocodeFailed(tr("逆地理编码无结果或解析失败"));
+            return;
+        }
+        emit reverseGeocodeSucceeded(poi, address, outLat, outLon);
+        return;
+    }
+
     QVariantList results = parseAllAdminSearchResults(data);
     if (results.isEmpty()) {
         emit geocodeFailed(tr("未找到该地点或解析失败"));
         return;
     }
     emit geocodeResultsReady(results);
-    // 兼容旧信号：发送第一条结果
-    QVariantMap first = results.at(0).toMap();
-    emit geocodeSucceeded(first["latitude"].toDouble(), first["longitude"].toDouble(),
-                          first["name"].toString(), first["address"].toString());
 }
 
 void TiandituGeocoder::setBusy(bool busy) {
@@ -163,20 +220,6 @@ bool TiandituGeocoder::parseLonLat(const QString &lonlat, double &outLat,
         return false;
     outLon = lon;
     outLat = lat;
-    return true;
-}
-
-bool TiandituGeocoder::parseAdminSearchReply(const QByteArray &json,
-                                             double &outLat, double &outLon,
-                                             QString &outName,
-                                             QString &outAddress) {
-    QVariantList results = parseAllAdminSearchResults(json);
-    if (results.isEmpty()) return false;
-    QVariantMap first = results.at(0).toMap();
-    outLat     = first["latitude"].toDouble();
-    outLon     = first["longitude"].toDouble();
-    outName    = first["name"].toString();
-    outAddress = first["address"].toString();
     return true;
 }
 
@@ -220,4 +263,66 @@ QVariantList TiandituGeocoder::parseAllAdminSearchResults(const QByteArray &json
         }
     }
     return results;
+}
+
+bool TiandituGeocoder::parseReverseGeocodeReply(const QByteArray &json, double requestLon,
+                                               double requestLat, QString &outPoi, QString &outAddress,
+                                               double &outLat, double &outLon) const {
+    outPoi.clear();
+    outAddress.clear();
+    outLat = requestLat;
+    outLon = requestLon;
+
+    QJsonParseError err{};
+    const QJsonDocument doc = QJsonDocument::fromJson(json, &err);
+    if (err.error != QJsonParseError::NoError || !doc.isObject())
+        return false;
+
+    const QJsonObject root = doc.object();
+    const auto statusToInt = [](const QJsonValue &v) -> int {
+        if (v.isString())
+            return v.toString().toInt(nullptr, 10);
+        if (v.isDouble())
+            return static_cast<int>(v.toDouble());
+        return -999;
+    };
+    if (statusToInt(root.value(QLatin1String("status"))) != 0)
+        return false;
+
+    QJsonObject result = root.value(QLatin1String("result")).toObject();
+    if (result.isEmpty()) {
+        const QString rs = root.value(QLatin1String("result")).toString();
+        if (!rs.isEmpty()) {
+            const QJsonDocument rd = QJsonDocument::fromJson(rs.toUtf8(), &err);
+            if (err.error == QJsonParseError::NoError && rd.isObject())
+                result = rd.object();
+        }
+    }
+
+    const QJsonObject ac = result.value(QLatin1String("addressComponent")).toObject();
+    outPoi = ac.value(QLatin1String("poi")).toString().trimmed();
+
+    outAddress = result.value(QLatin1String("formatted_address")).toString();
+    if (outAddress.isEmpty()) {
+        QString built;
+        const QStringList keys{QStringLiteral("nation"), QStringLiteral("province"), QStringLiteral("city"),
+                               QStringLiteral("county"), QStringLiteral("town"), QStringLiteral("road"),
+                               QStringLiteral("address")};
+        for (const QString &k : keys) {
+            const QString p = ac.value(k).toString();
+            if (!p.isEmpty())
+                built += p;
+        }
+        if (!outPoi.isEmpty())
+            built += outPoi;
+        outAddress = built;
+    }
+
+    const QJsonObject loc = result.value(QLatin1String("location")).toObject();
+    if (loc.contains(QLatin1String("lon")) && loc.contains(QLatin1String("lat"))) {
+        outLon = loc.value(QLatin1String("lon")).toDouble();
+        outLat = loc.value(QLatin1String("lat")).toDouble();
+    }
+
+    return !outAddress.isEmpty() || !outPoi.isEmpty();
 }

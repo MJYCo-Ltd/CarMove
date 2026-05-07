@@ -9,7 +9,6 @@
 #include <QQmlEngine>
 #include <QVariantMap>
 #include <QList>
-#include <QDateTime>
 
 /**
  * @class ConfigManager
@@ -108,6 +107,10 @@ public:
     // Invokable methods for QML
     Q_INVOKABLE void saveMapState();
     Q_INVOKABLE void loadMapState();
+    /// 持久化目标区域中心与名称（写入 MapSettings）
+    Q_INVOKABLE void persistTargetArea(double latitude, double longitude, const QString& name);
+    /// 读取已保存目标区域；无键时返回空 QVariantMap
+    Q_INVOKABLE QVariantMap loadPersistedTargetArea();
     Q_INVOKABLE void resetToDefaults();
     Q_INVOKABLE void saveExcelColumnMapping(int dataStartRow, const QVariantMap& fieldMappings);
     Q_INVOKABLE QVariantMap loadExcelColumnMapping();

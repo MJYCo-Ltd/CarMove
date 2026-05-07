@@ -15,27 +15,33 @@ ApplicationWindow {
     Shortcut {
         sequence: "Space"
         onActivated: {
-            if (!controller || !controller.selectedVehicle) return
-            if (controller.isPlaying) controller.pausePlayback()
-            else controller.startPlayback()
+            if (!controller || !controller.playback || !mapDisplay.mapVehicleContextActive) return
+            if (controller.playback.isPlaying) controller.playback.pausePlayback()
+            else controller.playback.startPlayback()
         }
     }
-    Shortcut { sequence: "Escape"; onActivated: { if (controller) controller.stopPlayback() } }
+    Shortcut { sequence: "Escape"; onActivated: { if (controller && controller.playback) controller.playback.stopPlayback() } }
 
     footer: ToolBar {
         RowLayout {
             anchors.fill: parent
             anchors.margins: 5
+            /// 与 MapDisplay.mapVehicleContextActive、回放栏、坐标切换按钮同源
             Label {
-                text: (controller && controller.selectedVehicle) ? "已选择车辆: " + controller.selectedVehicle : "未选择车辆"
+                text: mapDisplay.mapVehicleContextActive
+                      ? ("已选择车辆: " + controller.selectedVehicle)
+                      : "未选择车辆"
                 Layout.fillWidth: true
             }
             Label {
-                text: (controller && controller.vehicleList) ? "车辆数量: " + controller.vehicleList.length : "无车辆数据"
+                text: (controller && controller.vehicleList)
+                      ? ("车辆数量: " + controller.vehicleList.length)
+                      : "无车辆数据"
             }
             Label {
-                text: (controller && controller.isPlaying) ? "播放中" : "已暂停"
-                color: (controller && controller.isPlaying) ? "#27ae60" : "#7f8c8d"
+                visible: mapDisplay.mapVehicleContextActive
+                text: (controller && controller.playback && controller.playback.isPlaying) ? "播放中" : "已暂停"
+                color: (controller && controller.playback && controller.playback.isPlaying) ? "#27ae60" : "#7f8c8d"
             }
         }
     }
@@ -93,6 +99,7 @@ ApplicationWindow {
             Layout.fillHeight: true
             visible: false
             onLocateRequested: function(lat, lon, name) { mapDisplay.showSearchResult(lat, lon, name) }
+            onTargetAreaRequested: function(lat, lon, name) { mapDisplay.setTargetAreaFromSearch(lat, lon, name) }
         }
 
         ColumnLayout {
@@ -109,10 +116,7 @@ ApplicationWindow {
                 id: playbackControls
                 Layout.fillWidth: true
                 Layout.preferredHeight: 80
-                onCoordinateConversionToggled: {
-                    if (controller && controller.selectedVehicle)
-                        mapDisplay.updateTrajectoryCoordinates(controller.getConvertedTrajectory())
-                }
+                mapVehicleContextActive: mapDisplay.mapVehicleContextActive
             }
         }
 

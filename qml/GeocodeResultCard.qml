@@ -11,8 +11,10 @@ Rectangle {
     property double resultLatitude: 0
     property double resultLongitude: 0
     property string actionButtonText: ""
+    property string secondaryButtonText: ""
 
     signal actionTriggered()
+    signal secondaryActionTriggered()
 
     implicitHeight: col.implicitHeight + 24
     color: "white"
@@ -56,11 +58,27 @@ Rectangle {
             color: "#95a5a6"
         }
 
-        Button {
-            text: root.actionButtonText
-            height: 32
-            font.pixelSize: 11
-            onClicked: root.actionTriggered()
+        RowLayout {
+            width: parent.width
+            spacing: 6
+
+            Button {
+                Layout.fillWidth: true
+                text: root.actionButtonText
+                height: 32
+                font.pixelSize: 11
+                onClicked: root.actionTriggered()
+            }
+
+            Button {
+                visible: root.secondaryButtonText.length > 0
+                text: root.secondaryButtonText
+                height: 32
+                font.pixelSize: 10
+                Layout.preferredWidth: implicitWidth
+                Layout.minimumWidth: 128
+                onClicked: root.secondaryActionTriggered()
+            }
         }
     }
 }

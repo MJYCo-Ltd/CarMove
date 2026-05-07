@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Controls
 import QtLocation
 import QtPositioning
 
@@ -31,185 +30,14 @@ Item {
 
     signal vehicleClicked(string plateNumber, double speed, int direction)
 
-    // ── 轨迹线模板 ───────────────────────────────────────────────
-    Component {
-        id: trajectoryPolylineComp
-        // z 勿用负值：部分地图插件会把折线画在底图之下导致「线消失」
-        MapPolyline {
-            line.color: "red"
-            line.width: 5
-            opacity: 0.8
+    function _createPlacemark(initialProps) {
+        var comp = Qt.createComponent("MapPlacemark.qml")
+        if (comp.status !== Component.Ready) {
+            if (comp.status === Component.Error)
+                console.warn("MapPlacemark:", comp.errorString())
+            return null
         }
-    }
-
-    // ── 搜索图钉模板 ─────────────────────────────────────────────
-    Component {
-        id: searchPinComp
-        MapQuickItem {
-            anchorPoint.x: pinCol.width / 2
-            anchorPoint.y: pinCol.height
-            sourceItem: Column {
-                id: pinCol; spacing: 0
-                Rectangle {
-                    width: 28; height: 28; radius: 14
-                    color: "#8e44ad"; border.color: "white"; border.width: 2
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    Text { anchors.centerIn: parent; text: "📍"; font.pixelSize: 14 }
-                }
-                Rectangle { width: 3; height: 10; color: "#8e44ad"; anchors.horizontalCenter: parent.horizontalCenter }
-            }
-        }
-    }
-
-    // 导航起点/终点（绿/红）：名称相对图标左右由与对端经度关系决定，大字 + 描边
-    Component {
-        id: navEndpointPinComp
-        MapQuickItem {
-            id: navEpRoot
-            z: 50
-            property bool isStartPin: true
-            property string pinName: ""
-            /// 仅起点：导航车牌（样式与 VehicleMarker 车牌一致，叠在路线之上）
-            property string pinPlateNumber: ""
-            property bool peerValid: false
-            property double peerLon: 0
-
-            readonly property bool nameLeftOfIcon: peerValid && (coordinate.longitude > peerLon)
-
-            anchorPoint.x: pinRoot.pinAnchorX
-            anchorPoint.y: pinRoot.height
-
-            sourceItem: Item {
-                id: pinRoot
-                width: innerRow.width
-                height: innerRow.height
-
-                readonly property real pinAnchorX: navEpRoot.nameLeftOfIcon
-                    ? (nameLCol.width + innerRow.spacing + pinCol.width / 2)
-                    : (pinCol.width / 2)
-
-                Row {
-                    id: innerRow
-                    spacing: 6
-
-                    Column {
-                        id: nameLCol
-                        visible: navEpRoot.nameLeftOfIcon
-                        width: visible ? 200 : 0
-                        spacing: 4
-
-                        Item {
-                            width: parent.width
-                            height: visible ? navPlateBadgeL.height : 0
-                            visible: navEpRoot.isStartPin && navEpRoot.pinPlateNumber.length > 0
-
-                            Rectangle {
-                                id: navPlateBadgeL
-                                anchors.right: parent.right
-                                width: navPlateTextL.width + 8
-                                height: navPlateTextL.height + 4
-                                color: "yellow"
-                                border.color: "white"
-                                border.width: 1
-                                radius: 3
-
-                                Text {
-                                    id: navPlateTextL
-                                    anchors.centerIn: parent
-                                    text: navEpRoot.pinPlateNumber
-                                    font.pixelSize: 15
-                                    font.bold: true
-                                    color: "black"
-                                    style: Text.Outline
-                                    styleColor: "white"
-                                }
-                            }
-                        }
-
-                        OutlinedGeoNameText {
-                            id: nameL
-                            width: 200
-                            alignEnd: true
-                            isStartStyle: navEpRoot.isStartPin
-                            fontPixelSize: 12
-                            text: navEpRoot.pinName.length > 0 ? navEpRoot.pinName : (navEpRoot.isStartPin ? "起点" : "终点")
-                        }
-                    }
-
-                    Column {
-                        id: pinCol
-                        width: 32
-                        spacing: 0
-                        Rectangle {
-                            width: 32
-                            height: 32
-                            radius: 16
-                            color: navEpRoot.isStartPin ? "#27ae60" : "#e74c3c"
-                            border.color: "white"
-                            border.width: 2
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            Text {
-                                anchors.centerIn: parent
-                                text: navEpRoot.isStartPin ? "起" : "终"
-                                color: "white"
-                                font.bold: true
-                                font.pixelSize: 15
-                            }
-                        }
-                        Rectangle {
-                            width: 3
-                            height: 8
-                            color: navEpRoot.isStartPin ? "#1e8449" : "#922b21"
-                            anchors.horizontalCenter: parent.horizontalCenter
-                        }
-                    }
-
-                    Column {
-                        id: nameRCol
-                        visible: !navEpRoot.nameLeftOfIcon
-                        width: visible ? 200 : 0
-                        spacing: 4
-
-                        Item {
-                            width: parent.width
-                            height: visible ? navPlateBadgeR.height : 0
-                            visible: navEpRoot.isStartPin && navEpRoot.pinPlateNumber.length > 0
-
-                            Rectangle {
-                                id: navPlateBadgeR
-                                anchors.left: parent.left
-                                width: navPlateTextR.width + 8
-                                height: navPlateTextR.height + 4
-                                color: "yellow"
-                                border.color: "white"
-                                border.width: 1
-                                radius: 3
-
-                                Text {
-                                    id: navPlateTextR
-                                    anchors.centerIn: parent
-                                    text: navEpRoot.pinPlateNumber
-                                    font.pixelSize: 15
-                                    font.bold: true
-                                    color: "black"
-                                    style: Text.Outline
-                                    styleColor: "white"
-                                }
-                            }
-                        }
-
-                        OutlinedGeoNameText {
-                            id: nameR
-                            width: 200
-                            alignEnd: false
-                            isStartStyle: navEpRoot.isStartPin
-                            fontPixelSize: 12
-                            text: navEpRoot.pinName.length > 0 ? navEpRoot.pinName : (navEpRoot.isStartPin ? "起点" : "终点")
-                        }
-                    }
-                }
-            }
-        }
+        return comp.createObject(mapTarget, initialProps || {})
     }
 
     // ── 节流更新定时器 ────────────────────────────────────────────
@@ -233,9 +61,10 @@ Item {
             var item = Qt.createComponent("VehicleMarker.qml").createObject(mapTarget)
             if (item) {
                 item.plateNumber = plateNumber
-                item.vehicleColor = color || _colorForPlate(plateNumber)
+                item.vehicleColor = color || ((typeof controller !== 'undefined' && controller)
+                    ? controller.colorHexForPlate(plateNumber) : "#3498db")
                 if (typeof controller !== 'undefined' && controller)
-                    item.visitDays = controller.calculateVisitDays(plateNumber, targetLat, targetLon, 1000)
+                    item.visitDays = controller.calculateTargetAreaVisitCount(plateNumber, targetLat, targetLon, 1000)
                 item.vehicleClicked.connect(function(pn, spd, dir) { vehicleLayer.vehicleClicked(pn, spd, dir) })
                 vehicleItems[plateNumber] = item
                 mapTarget.addMapItem(item)
@@ -249,21 +78,18 @@ Item {
         clearTrajectory()
         currentVehicle = plateNumber
         if (trajectoryPoints && trajectoryPoints.length > 1) {
-            var line = trajectoryPolylineComp.createObject(mapTarget)
+            var line = _createMapLineOnMap(trajectoryPoints, currentVehicleColor, 3)
             if (line) {
-                line.line.color = currentVehicleColor; line.line.width = 3
-                for (var i = 0; i < trajectoryPoints.length; i++) {
-                    var c = _extractCoord(trajectoryPoints[i])
-                    if (c) line.addCoordinate(c)
-                }
                 mapTarget.addMapItem(line)
                 trajectoryItems.push(line)
             }
         }
         if (trajectoryPoints && trajectoryPoints.length > 0) {
             var first = trajectoryPoints[0]
-            var fc = _extractCoord(first)
-            if (fc) {
+            var fc = (typeof controller !== 'undefined' && controller)
+                ? controller.trajectoryPointToCoordinate(first)
+                : null
+            if (fc && fc.isValid) {
                 addVehicle(plateNumber, fc, first.direction || 0, first.speed || 0, currentVehicleColor)
                 if (autoFitEnabled && !userHasInteracted) _fitViewport(trajectoryPoints)
             }
@@ -285,6 +111,21 @@ Item {
         resetInteraction()
     }
 
+    /// 目标区域中心变更后，刷新地图上已有车辆标记角标（经过次数）
+    function recalculateTargetAreaVisitCounts(lat, lon) {
+        if (typeof controller === 'undefined' || !controller)
+            return
+        var plates = []
+        for (var p in vehicleItems)
+            plates.push(p)
+        var counts = controller.batchTargetAreaVisitCounts(plates, lat, lon, 1000)
+        for (var q in vehicleItems) {
+            var v = vehicleItems[q]
+            if (v)
+                v.visitDays = counts[q]
+        }
+    }
+
     function updateVehiclePosition(plateNumber, coordinate, direction, speed) {
         if (throttleTimer.running) {
             throttleTimer.pending[plateNumber] = { coordinate: coordinate, direction: direction, speed: speed }
@@ -295,10 +136,10 @@ Item {
         }
     }
 
-    function showSearchResult(lat, lon, name) {
+    function showSearchResult(lat, lon) {
         clearSearchResult()
         var coord = QtPositioning.coordinate(lat, lon)
-        var pin = searchPinComp.createObject(mapTarget)
+        var pin = _createPlacemark({ placemarkKind: "searchPin" })
         if (pin) { pin.coordinate = coord; mapTarget.addMapItem(pin); searchResultPin = pin }
         if (animationsRef) { animationsRef.animateToCenter(coord); animationsRef.animateToZoom(15) }
     }
@@ -321,15 +162,9 @@ Item {
     function setNavigationPath(points) {
         clearNavigationRoute()
         if (!points || points.length < 2 || !mapTarget) return
-        var line = trajectoryPolylineComp.createObject(mapTarget)
-        if (!line) return
-        line.line.color = "#e67e22"
-        line.line.width = 5
-        line.opacity = 0.88
-        for (var i = 0; i < points.length; i++) {
-            var c = _extractCoord(points[i])
-            if (c) line.addCoordinate(c)
-        }
+        var line = _createMapLineOnMap(points, "#e67e22", 5, 0.88)
+        if (!line)
+            return
         mapTarget.addMapItem(line)
         navigationPolyline = line
         _fitViewport(points)
@@ -347,10 +182,9 @@ Item {
         if (!mapTarget)
             return
         clearNavigationStartMarker()
-        var pin = navEndpointPinComp.createObject(mapTarget)
+        var pin = _createPlacemark({ placemarkKind: "navEndpoint", isStartPin: true })
         if (!pin)
             return
-        pin.isStartPin = true
         pin.pinName = name || "起点"
         pin.pinPlateNumber = plateNumber ? plateNumber : ""
         pin.coordinate = QtPositioning.coordinate(lat, lon)
@@ -369,10 +203,9 @@ Item {
         if (!mapTarget)
             return
         clearNavigationEndMarker()
-        var pin = navEndpointPinComp.createObject(mapTarget)
+        var pin = _createPlacemark({ placemarkKind: "navEndpoint", isStartPin: false })
         if (!pin)
             return
-        pin.isStartPin = false
         pin.pinName = name || "终点"
         pin.coordinate = QtPositioning.coordinate(lat, lon)
         mapTarget.addMapItem(pin)
@@ -407,11 +240,32 @@ Item {
 
     // ── 私有辅助 ─────────────────────────────────────────────────
 
+    /// 传入 opacity 时覆盖 MapLine 默认透明度；省略则保留组件默认
+    function _createMapLineOnMap(points, lineColor, lineWidth, opacity) {
+        var comp = Qt.createComponent("MapLine.qml")
+        if (comp.status !== Component.Ready) {
+            if (comp.status === Component.Error)
+                console.warn("MapLine:", comp.errorString())
+            return null
+        }
+        var line = comp.createObject(mapTarget)
+        if (!line)
+            return null
+        line.lineColor = lineColor
+        line.lineWidth = lineWidth
+        if (opacity !== undefined)
+            line.opacity = opacity
+        line.coordinateSequence = points
+        return line
+    }
+
     function _updatePositionNow(plateNumber, coordinate, direction, speed) {
         if (!vehicleItems[plateNumber]) return
         var v = vehicleItems[plateNumber]
-        if (v.coordinate && coordinate && v.coordinate.distanceTo(coordinate) < 1.0) return
-        var realtime = (typeof controller !== 'undefined') && controller && controller.isPlaying === false
+        if (v.coordinate && coordinate && typeof controller !== 'undefined' && controller
+            && controller.isVehicleMoveBelowDistanceThreshold(v.coordinate, coordinate, 1.0))
+            return
+        var realtime = (typeof controller !== 'undefined') && controller && controller.playback && controller.playback.isPlaying === false
         if (realtime || !animationsEnabled) {
             v.coordinate = coordinate; v.direction = direction; v.speed = speed
         } else if (animationsRef) {
@@ -422,27 +276,17 @@ Item {
     }
 
     function _fitViewport(trajectoryPoints) {
-        var geoShape = QtPositioning.path()
-        for (var i = 0; i < trajectoryPoints.length; i++) {
-            var c = _extractCoord(trajectoryPoints[i])
-            if (c) geoShape.addCoordinate(c)
+        if (typeof controller === 'undefined' || !controller || !mapTarget)
+            return
+        var shape = controller.geoPathFromTrajectory(trajectoryPoints)
+        mapTarget.fitViewportToGeoShape(shape, Qt.size(1, 1))
+    }
+
+    Connections {
+        target: typeof controller !== 'undefined' ? controller : null
+        function onTargetAreaChanged() {
+            if (controller)
+                vehicleLayer.recalculateTargetAreaVisitCounts(controller.targetAreaLatitude, controller.targetAreaLongitude)
         }
-        mapTarget.fitViewportToGeoShape(geoShape, Qt.size(1, 1))
-    }
-
-    function _extractCoord(point) {
-        if (!point) return null
-        if (point.coordinate) return point.coordinate
-        if (point.latitude !== undefined && point.longitude !== undefined)
-            return QtPositioning.coordinate(point.latitude, point.longitude)
-        return null
-    }
-
-    function _colorForPlate(plateNumber) {
-        var colors = ["#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#9b59b6", "#1abc9c", "#e67e22", "#34495e"]
-        var hash = 0
-        for (var i = 0; i < plateNumber.length; i++)
-            hash = plateNumber.charCodeAt(i) + ((hash << 5) - hash)
-        return colors[Math.abs(hash) % colors.length]
     }
 }

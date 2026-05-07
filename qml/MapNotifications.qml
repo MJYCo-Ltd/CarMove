@@ -24,6 +24,13 @@ Item {
         errorNotificationTimer.restart()
     }
 
+    /// 地图右键逆地理编码：仅展示 POI（addressComponent.poi）
+    function showReverseGeocodePoiNotification(poiText) {
+        reverseGeocodeNotification.poiText = poiText
+        reverseGeocodeNotification.visible = true
+        reverseGeocodeNotificationTimer.restart()
+    }
+
     // 错误提示（如地理编码失败）
     Rectangle {
         id: errorNotification
@@ -60,6 +67,48 @@ Item {
         MouseArea {
             anchors.fill: parent
             onClicked: errorNotification.visible = false
+        }
+    }
+
+    // 逆地理编码：仅 POI 文案
+    Rectangle {
+        id: reverseGeocodeNotification
+        width: Math.min(420, parent.width - 40)
+        height: Math.max(46, poiLabel.implicitHeight + 28)
+        color: "#1f618d"
+        border.color: "white"
+        border.width: 2
+        radius: 8
+        visible: false
+        z: 1002
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.top: parent.top
+        anchors.topMargin: 200
+
+        property string poiText: ""
+
+        Text {
+            id: poiLabel
+            width: parent.width - 28
+            x: 14
+            y: 14
+            text: reverseGeocodeNotification.poiText.length > 0
+                  ? ("POI: " + reverseGeocodeNotification.poiText)
+                  : "POI: （无）"
+            font.pixelSize: 13
+            color: "white"
+            wrapMode: Text.WordWrap
+        }
+
+        Timer {
+            id: reverseGeocodeNotificationTimer
+            interval: 6000
+            onTriggered: reverseGeocodeNotification.visible = false
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            onClicked: reverseGeocodeNotification.visible = false
         }
     }
     

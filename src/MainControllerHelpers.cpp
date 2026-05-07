@@ -5,10 +5,10 @@
 #include "VehicleDataModel.h"
 #include "VehicleAnimationEngine.h"
 #include <QGeoCoordinate>
-#include <QSet>
+#include <QGeoPath>
 #include <QStandardPaths>
+#include <QVariantMap>
 #include <QDir>
-#include <QDebug>
 
 void MainController::updateFilteredVehicleList()
 {
@@ -26,22 +26,8 @@ void MainController::updateFilteredVehicleList()
 
 void MainController::updateTimeRange()
 {
-    if (!m_vehicleDataModel) return;
-
-    QDateTime newStart = m_vehicleDataModel->getStartTime();
-    QDateTime newEnd   = m_vehicleDataModel->getEndTime();
-    bool changed = false;
-
-    if (m_startTime != newStart) { m_startTime = newStart; changed = true; }
-    if (m_endTime   != newEnd)   { m_endTime   = newEnd;   changed = true; }
-
-    if (changed) {
-        emit timeRangeChanged();
-        if (!m_currentTime.isValid() || m_currentTime < m_startTime || m_currentTime > m_endTime) {
-            m_currentTime = m_startTime;
-            emit currentTimeChanged();
-        }
-    }
+    if (m_playbackControl)
+        m_playbackControl->notifyModelTimeRangeUpdated();
 }
 
 void MainController::setupVehicleDataModel()
@@ -74,24 +60,127 @@ QVariantMap MainController::vehicleRecordToVariant(const ExcelDataReader::Vehicl
     return result;
 }
 
-int MainController::calculateVisitDays(const QString& plateNumber, double targetLat, double targetLon, double radiusMeters)
+int MainController::calculateTargetAreaVisitCount(const QString& plateNumber, double targetLat, double targetLon, double radiusMeters) const
 {
     if (!m_vehicleManager || m_vehicleManager->getSelectedVehicle() != plateNumber)
         return 0;
 
-    auto trajectory = m_vehicleManager->getCurrentTrajectory();
-    if (trajectory.isEmpty()) return 0;
+    const auto trajectory = m_vehicleManager->getCurrentTrajectory();
+    if (trajectory.isEmpty())
+        return 0;
 
-    QGeoCoordinate target(targetLat, targetLon);
-    QSet<QDate> visitDates;
+    const QGeoCoordinate target(targetLat, targetLon);
+    int visitCount = 0;
+    bool prevInside = false;
+    bool hasPrev = false;
 
     for (const auto& record : trajectory) {
-        QGeoCoordinate coord(record.latitude, record.longitude);
-        if (target.distanceTo(coord) <= radiusMeters)
-            visitDates.insert(record.timestamp.date());
+        const QGeoCoordinate coord(record.latitude, record.longitude);
+        const bool inside = target.distanceTo(coord) <= radiusMeters;
+        if (inside && (!hasPrev || !prevInside))
+            ++visitCount;
+        prevInside = inside;
+        hasPrev = true;
+    }
+    return visitCount;
+}
+
+QGeoCoordinate MainController::trajectoryPointToCoordinate(const QVariant& point) const
+{
+    if (!point.isValid())
+        return {};
+
+    if (point.canConvert<QGeoCoordinate>()) {
+        const QGeoCoordinate c = point.value<QGeoCoordinate>();
+        if (c.isValid())
+            return c;
     }
 
-    return visitDates.size();
+    const QVariantMap m = point.toMap();
+    if (m.isEmpty())
+        return {};
+
+    if (m.contains(QStringLiteral("coordinate"))) {
+        const QVariant cv = m.value(QStringLiteral("coordinate"));
+        if (cv.canConvert<QGeoCoordinate>()) {
+            const QGeoCoordinate c = cv.value<QGeoCoordinate>();
+            if (c.isValid())
+                return c;
+        }
+    }
+    if (m.contains(QStringLiteral("latitude")) && m.contains(QStringLiteral("longitude"))) {
+        return QGeoCoordinate(m.value(QStringLiteral("latitude")).toDouble(),
+                              m.value(QStringLiteral("longitude")).toDouble());
+    }
+    return {};
+}
+
+QString MainController::colorHexForPlate(const QString& plateNumber) const
+{
+    static const QStringList colors = {
+        QStringLiteral("#e74c3c"), QStringLiteral("#3498db"), QStringLiteral("#2ecc71"),
+        QStringLiteral("#f39c12"), QStringLiteral("#9b59b6"), QStringLiteral("#1abc9c"),
+        QStringLiteral("#e67e22"), QStringLiteral("#34495e")
+    };
+    int hash = 0;
+    const QString s = plateNumber;
+    for (const QChar ch : s)
+        hash = ch.unicode() + ((hash << 5) - hash);
+    const int n = colors.size();
+    int idx = hash % n;
+    if (idx < 0)
+        idx += n;
+    return colors.at(idx);
+}
+
+QVariantList MainController::trajectoryPolylinePath(const QVariantList& trajectoryPoints) const
+{
+    QVariantList out;
+    for (const QVariant& v : trajectoryPoints) {
+        const QGeoCoordinate c = trajectoryPointToCoordinate(v);
+        if (c.isValid())
+            out.append(QVariant::fromValue(c));
+    }
+    return out;
+}
+
+QVariant MainController::geoPathFromTrajectory(const QVariantList& trajectoryPoints) const
+{
+    QGeoPath path;
+    for (const QVariant& v : trajectoryPoints) {
+        const QGeoCoordinate c = trajectoryPointToCoordinate(v);
+        if (c.isValid())
+            path.addCoordinate(c);
+    }
+    return QVariant::fromValue(path);
+}
+
+QString MainController::formatRecordsTotalAmount(const QVariantList& records) const
+{
+    double total = 0;
+    for (const QVariant& rv : records) {
+        const QVariantMap m = rv.toMap();
+        total += m.value(QStringLiteral("amount")).toDouble();
+    }
+    return QString::number(total, 'f', 2);
+}
+
+QVariantMap MainController::batchTargetAreaVisitCounts(const QVariantList& plateNumbers, double lat, double lon, double radiusMeters) const
+{
+    QVariantMap out;
+    for (const QVariant& pv : plateNumbers) {
+        const QString plate = pv.toString();
+        if (!plate.isEmpty())
+            out.insert(plate, calculateTargetAreaVisitCount(plate, lat, lon, radiusMeters));
+    }
+    return out;
+}
+
+bool MainController::isVehicleMoveBelowDistanceThreshold(const QGeoCoordinate& prevCoord, const QGeoCoordinate& newCoord, double thresholdMeters) const
+{
+    if (!prevCoord.isValid() || !newCoord.isValid())
+        return false;
+    return prevCoord.distanceTo(newCoord) < thresholdMeters;
 }
 
 QString MainController::getDocumentsPath()

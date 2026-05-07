@@ -1,94 +1,67 @@
 # CarMove 车辆轨迹追踪系统
 
-基于Qt6的车辆轨迹可视化应用程序，能够从Excel文件中读取车辆位置数据，并在地图界面上实时显示车辆运动轨迹。
+基于 **Qt 6** 与 **QML** 的桌面应用：从 Excel 读取车辆轨迹，在地图上播放与统计；并集成卸油记录、地点搜索、路线导航（天地图等插件能力依赖本地配置）。
 
-## 功能特性
+可执行目标名称（CMake）：**CarMoveTracker**。
 
-- 从Excel文件读取车辆轨迹数据
-- 交互式地图显示车辆位置和轨迹
-- 时间序列播放控制
-- GPS坐标系转换（WGS84 ↔ GCJ02）
-- 车辆运动动画和方向显示
+## 功能概览
+
+| 模块 | 说明 |
+|------|------|
+| **轨迹** | 选择含 Excel 的文件夹，列表选车；地图轨迹线、车辆朝向/速度、时间轴播放与暂停 |
+| **坐标** | WGS84 ↔ GCJ02 转换开关；转换后轨迹可刷新到地图 |
+| **目标区域** | `MainController.targetAreaLatitude/Longitude` 存储中心点；地图「定位」与搜索「设为目标区域」写入该属性；经过次数统计在 C++ |
+| **搜索** | 地名 + 行政区检索，结果卡片可定位到地图 |
+| **导航** | 起终点/途经点选用、路线规划展示（依赖天地图路线与密钥配置） |
+| **卸油** | 本地 JSON 数据加载，地图上卸油点与详情 |
+| **其它** | 截图、地图类型与缩放/中心持久化（ConfigManager）、QXlsx 读表 |
+
+## 技术栈
+
+- **Qt 6**：Core、Quick、QuickControls2、Qml、Location、Positioning、Network  
+- **C++17**、**CMake ≥ 3.16**  
+- **QXlsx（Qt6）**：预编译包置于 `install/Qt-Debug` 与 `install/Qt-Release`（与 `CMAKE_BUILD_TYPE` 对应）
 
 ## 系统要求
 
-- Qt 6.2 或更高版本
-- CMake 3.16 或更高版本
-- C++17 编译器
-- Windows 10/11 (当前配置)
+- Windows 10/11（当前工程配置）
+- 已安装 **Qt 6.2+** 与对应 MSVC 工具链
+- CMake 3.16+
 
-## 依赖库
+## 构建
 
-- Qt6 Core, Widgets, Quick, Location, Positioning, Qml
-- QXlsx (预编译库位于 install/Qt-Release 目录)
-
-## 构建说明
-
-1. 确保已安装Qt6和CMake
-2. 克隆或下载项目代码
-3. 在项目根目录创建build目录：
-   ```bash
-   mkdir build
-   cd build
-   ```
-4. 运行CMake配置：
-   ```bash
-   cmake ..
-   ```
-5. 编译项目：
-   ```bash
-   cmake --build . --config Release
-   ```
-
-## 项目结构
-
-```
-CarMoveTracker/
-├── CMakeLists.txt          # CMake构建配置
-├── README.md              # 项目说明文档
-├── src/                   # C++源代码
-│   ├── main.cpp           # 应用程序入口
-│   ├── MainController.*   # 主控制器
-│   ├── FolderScanner.*    # 文件夹扫描器
-│   ├── ExcelDataReader.*  # Excel数据读取器
-│   ├── CoordinateConverter.* # 坐标转换器
-│   ├── VehicleManager.*   # 车辆管理器
-│   ├── VehicleDataModel.* # 车辆数据模型
-│   └── VehicleAnimationEngine.* # 动画引擎
-├── qml/                   # QML用户界面
-│   ├── MainWindow.qml     # 主窗口
-│   ├── MapDisplay.qml     # 地图显示组件
-│   ├── PlaybackControls.qml # 播放控制面板
-│   └── qml.qrc           # QML资源文件
-├── install/               # 预编译库
-│   └── Qt-Release/        # QXlsx库文件
-└── carData/              # 车辆数据文件夹
-    └── *.xlsx            # Excel数据文件
+```powershell
+cd CarMove
+mkdir build
+cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+cmake --build . --config Release
 ```
 
-## 开发状态
+Debug 构建请将 `CMAKE_BUILD_TYPE` 设为 `Debug`，以便 CMake 使用 `install/Qt-Debug` 下的 QXlsx。
 
-当前项目处于基础架构搭建阶段，已完成：
-- ✅ Qt6 CMake项目结构
-- ✅ QXlsx库依赖配置
-- ✅ 基础C++类框架
-- ✅ QML用户界面框架
+运行前请配置天地图等密钥（若使用相关插件）：见应用内配置或 `ConfigManager` 持久化项。
 
-待实现功能：
-- 🔄 坐标系转换算法
-- 🔄 Excel数据读取功能
-- 🔄 地图显示和车辆可视化
-- 🔄 播放控制和动画
-- 🔄 错误处理和用户反馈
+## 目录结构（摘要）
 
-## 使用说明
+```
+├── CMakeLists.txt
+├── README.md
+├── src/                      # C++：MainController、VehicleManager、Excel 解析、坐标转换、天地图 API 等
+├── qml/                      # QML 界面与地图组件（MainWindow、MapDisplay、MapVehicleLayer、GeoPickSearch 等）
+├── qml/qml.qrc               # QML 资源清单
+├── install/                  # 预编译 QXlsx（Qt-Debug / Qt-Release）
+├── carData/                  # 示例或实际 Excel 数据目录（可选）
+└── data/                     # 卸油等 JSON 数据（若使用）
+```
 
-1. 启动应用程序
-2. 点击"选择文件夹"按钮，选择包含Excel车辆数据的文件夹（如carData目录）
-3. 从车辆列表中选择要查看的车辆
-4. 使用播放控制面板控制轨迹播放
-5. 可以切换GPS坐标系和火星坐标系显示
+地图相关可复用 QML 组件示例：`MapLine.qml`（轨迹折线）、`MapPlateBadge.qml`、`MapGeoNameText.qml` 等。
+
+## 业务与界面分工
+
+- **运算与几何**（轨迹解析、路径折线、目标区域统计、播放速度档位、时间轴提示文案、车牌配色哈希、卸油吨位汇总等）集中在 **C++ `MainController`** 与 **VehicleAnimationEngine**（定时推演）中，通过 `controller` 暴露给 QML。  
+- **QML** 主要负责布局、地图侧栏按钮（含坐标切换）、地图项生命周期与动画调用；播放条仅调用 `seekToProgress` / `seekProgressDelta` 等接口。
 
 ## 许可证
 
-本项目仅供学习和研究使用。
+本项目仅供学习与研究使用。

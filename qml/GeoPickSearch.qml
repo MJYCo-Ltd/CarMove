@@ -19,6 +19,8 @@ Item {
 
     signal placePicked(double lat, double lon, string name)
     signal locateRequested(double lat, double lon, string name)
+    /// 地图搜索模式：将坐标设为「目标区域」中心（与定位按钮所用经纬度一致）
+    signal targetAreaRequested(double lat, double lon, string name)
 
     onAcceptGeocoderResultsChanged: {
         if (!acceptGeocoderResults) {
@@ -270,11 +272,16 @@ Item {
                         resultLatitude: model.latitude
                         resultLongitude: model.longitude
                         actionButtonText: root.mapLocateMode ? "在地图上定位" : (root.pickHintText.length > 0 ? ("选用 — " + root.pickHintText) : "选用此地点")
+                        secondaryButtonText: root.mapLocateMode ? "设为目标区域" : ""
                         onActionTriggered: {
                             if (root.mapLocateMode)
                                 root.locateRequested(model.latitude, model.longitude, model.name)
                             else
                                 root.placePicked(model.latitude, model.longitude, model.name)
+                        }
+                        onSecondaryActionTriggered: {
+                            if (root.mapLocateMode)
+                                root.targetAreaRequested(model.latitude, model.longitude, model.name)
                         }
                     }
                 }

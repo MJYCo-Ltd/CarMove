@@ -8,6 +8,7 @@ SidePanelContainer {
     columnSpacing: 10
 
     signal locateRequested(double lat, double lon, string name)
+    signal targetAreaRequested(double lat, double lon, string name)
 
     PanelHeader {
         title: "地点搜索"
@@ -25,6 +26,9 @@ SidePanelContainer {
 
         onLocateRequested: function (lat, lon, name) {
             geoSearchPanel.locateRequested(lat, lon, name)
+        }
+        onTargetAreaRequested: function (lat, lon, name) {
+            geoSearchPanel.targetAreaRequested(lat, lon, name)
         }
     }
 }

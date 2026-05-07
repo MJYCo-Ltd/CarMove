@@ -7,12 +7,102 @@ import CarMove 1.0
 Item {
     id: mapDisplay
 
+    /// 已选车辆且车牌非空：与右侧「坐标切换」等地图工具条显隐一致（供回放条进度条等绑定）
+    readonly property bool mapVehicleContextActive: controller && controller.selectedVehicle
+                                                     && controller.selectedVehicle.length > 0
+
     property alias map: mapView.map
+    /// 地图右键菜单：更新目标区域所用坐标（WGS/GCJ 与当前地图一致）
+    property real contextMenuLat: 0
+    property real contextMenuLon: 0
     property int buttonSize: 50
     property int currentMapTypeIndex: 0
     property var availableMapTypes: []
-    property double targetLat: 38.97887422901859
-    property double targetLon: 117.73397758792544
+
+    /// geocoder 调用意图：rightClick=右键通知 POI；fillTargetName=名称空时补全目标区域名
+    property string geocoderIntent: ""
+    property string lastReversePoi: ""
+    property string lastReverseFormatted: ""
+
+    function scheduleMaybeFillTargetAreaName() {
+        if (!controller)
+            return
+        var n = controller.targetAreaName
+        if (n && n.length > 0)
+            return
+        var cfg = controller.configManager
+        if (!cfg || !cfg.tiandituKey || cfg.tiandituKey.length === 0)
+            return
+        if (typeof geocoder !== "undefined" && geocoder && geocoder.busy)
+            return
+        targetNameFillDebounce.restart()
+    }
+
+    function tryFillTargetAreaNameFromReverseGeocode() {
+        if (!controller)
+            return
+        if (controller.targetAreaName && controller.targetAreaName.length > 0)
+            return
+        var cfg = controller.configManager
+        if (!cfg || !cfg.tiandituKey || cfg.tiandituKey.length === 0)
+            return
+        if (typeof geocoder === "undefined" || !geocoder || geocoder.busy)
+            return
+        mapDisplay.geocoderIntent = "fillTargetName"
+        geocoder.reverseGeocode(controller.targetAreaLongitude, controller.targetAreaLatitude)
+    }
+
+    Timer {
+        id: targetNameFillDebounce
+        interval: 80
+        repeat: false
+        onTriggered: mapDisplay.tryFillTargetAreaNameFromReverseGeocode()
+    }
+
+    /// 目标区域：两个 MapPlacemark（targetPin + geoName），由 MapDisplay 管理（不在 MapVehicleLayer）
+    property var targetAreaNameMapItem: null
+    property var targetAreaPinMapItem: null
+
+    function ensureTargetAreaMapMarkers() {
+        if (!mapView || !mapView.map)
+            return
+        var comp = Qt.createComponent("MapPlacemark.qml")
+        if (comp.status !== Component.Ready) {
+            if (comp.status === Component.Error)
+                console.warn("MapPlacemark:", comp.errorString())
+            return
+        }
+        if (!targetAreaPinMapItem) {
+            targetAreaPinMapItem = comp.createObject(mapView.map, { placemarkKind: "targetPin" })
+            if (targetAreaPinMapItem)
+                mapView.map.addMapItem(targetAreaPinMapItem)
+        }
+        if (!targetAreaNameMapItem) {
+            targetAreaNameMapItem = comp.createObject(mapView.map, {
+                placemarkKind: "geoName",
+                nameFontPixelSize: 13,
+                nameTextColor: "#fdebd0",
+                nameStrokeColor: "#1a1a1a"
+            })
+            if (targetAreaNameMapItem)
+                mapView.map.addMapItem(targetAreaNameMapItem)
+        }
+    }
+
+    function syncTargetAreaMapMarkers() {
+        ensureTargetAreaMapMarkers()
+        if (!controller)
+            return
+        var c = QtPositioning.coordinate(controller.targetAreaLatitude, controller.targetAreaLongitude)
+        if (targetAreaPinMapItem)
+            targetAreaPinMapItem.coordinate = c
+        if (targetAreaNameMapItem) {
+            targetAreaNameMapItem.coordinate = c
+            targetAreaNameMapItem.text = (controller.targetAreaName && controller.targetAreaName.length > 0)
+                                         ? controller.targetAreaName
+                                         : qsTr("目标区域")
+        }
+    }
 
     // 地图视图
     MapView {
@@ -43,10 +133,55 @@ Item {
                 availableMapTypes.push(map.supportedMapTypes[i])
             mapTypeSelector.updateMapTypes(map.supportedMapTypes)
             loadMapConfiguration()
+            mapDisplay.syncTargetAreaMapMarkers()
+        }
+
+        // 右键：上下文菜单「更新目标区域」+ 天地图逆地理（通知仅 POI）
+        MouseArea {
+            id: mapRightClickArea
+            anchors.fill: parent
+            acceptedButtons: Qt.RightButton
+            onClicked: function (mouse) {
+                if (!mapView.map)
+                    return
+                var coord = mapView.map.toCoordinate(Qt.point(mouse.x, mouse.y))
+                if (!coord || !coord.isValid)
+                    return
+                mapDisplay.contextMenuLat = coord.latitude
+                mapDisplay.contextMenuLon = coord.longitude
+                // 子对象 id 不能写成 mapDisplay.mapContextMenu（在 QML 里会为 undefined）
+                mapContextMenu.popup(mapRightClickArea, mouse.x, mouse.y)
+
+                var cfg = controller && controller.configManager ? controller.configManager : null
+                if (!cfg || !cfg.tiandituKey || cfg.tiandituKey.length === 0)
+                    return
+                if (typeof geocoder === "undefined" || !geocoder || geocoder.busy)
+                    return
+                mapDisplay.geocoderIntent = "rightClick"
+                geocoder.reverseGeocode(coord.longitude, coord.latitude)
+            }
         }
     }
 
-    // 定位按钮
+    Menu {
+        id: mapContextMenu
+        parent: mapView
+        MenuItem {
+            text: qsTr("更新目标区域")
+            onTriggered: {
+                if (!controller)
+                    return
+                var label = ""
+                if (mapDisplay.lastReversePoi && mapDisplay.lastReversePoi.length > 0)
+                    label = mapDisplay.lastReversePoi
+                else if (mapDisplay.lastReverseFormatted && mapDisplay.lastReverseFormatted.length > 0)
+                    label = mapDisplay.lastReverseFormatted
+                controller.setTargetAreaCenter(mapDisplay.contextMenuLat, mapDisplay.contextMenuLon, label)
+            }
+        }
+    }
+
+    // 定位按钮（目标区域中心由 controller.targetAreaLatitude/Longitude 提供）
     StatusButton {
         id: locationButton
         anchors.right: parent.right; anchors.top: parent.top
@@ -57,10 +192,29 @@ Item {
         onClicked: centerToLocation()
     }
 
+    // 坐标系切换（逻辑在 C++，完成后经 trajectoryConverted / coordinateConversionChanged 刷新界面）
+    StatusButton {
+        id: coordinateMapButton
+        anchors.right: parent.right; anchors.top: locationButton.bottom
+        anchors.rightMargin: 20; anchors.topMargin: 10
+        buttonSize: mapDisplay.buttonSize
+        iconText: "⇄"
+        buttonColor: (controller && controller.coordinateConversionEnabled) ? "#e67e22" : "#16a085"
+        hoverColor: (controller && controller.coordinateConversionEnabled) ? "#d35400" : "#138d75"
+        tooltipText: controller && controller.coordinateConversionEnabled
+                     ? "当前：火星坐标(GCJ02)\n点击切换为 GPS(WGS84)"
+                     : "当前：GPS(WGS84)\n点击切换为火星坐标(GCJ02)"
+        visible: mapDisplay.mapVehicleContextActive
+        onClicked: {
+            if (controller)
+                controller.toggleCoordinateConversion()
+        }
+    }
+
     // 截屏按钮
     StatusButton {
         id: screenshotButton
-        anchors.right: parent.right; anchors.top: locationButton.bottom
+        anchors.right: parent.right; anchors.top: coordinateMapButton.bottom
         anchors.rightMargin: 20; anchors.topMargin: 10
         buttonSize: mapDisplay.buttonSize
         iconText: "📷"; buttonColor: "#27ae60"; hoverColor: "#229954"
@@ -104,8 +258,8 @@ Item {
         id: vehicleLayer
         mapTarget:     mapView.map
         animationsRef: mapAnimations
-        targetLat:     mapDisplay.targetLat
-        targetLon:     mapDisplay.targetLon
+        targetLat:     controller ? controller.targetAreaLatitude : 0
+        targetLon:     controller ? controller.targetAreaLongitude : 0
         onVehicleClicked: function(pn, spd, dir) {
             vehicleInfoPopup.plateNumber = pn
             vehicleInfoPopup.visible = true
@@ -121,8 +275,13 @@ Item {
     function updateTrajectoryCoordinates(pts)            { vehicleLayer.updateTrajectoryCoordinates(pts) }
     function clearTrajectory()                           { vehicleLayer.clearTrajectory() }
     function updateVehiclePosition(pn, coord, dir, spd) { vehicleLayer.updateVehiclePosition(pn, coord, dir, spd) }
-    function showSearchResult(lat, lon, name)            { vehicleLayer.showSearchResult(lat, lon, name) }
+    function showSearchResult(lat, lon)                 { vehicleLayer.showSearchResult(lat, lon) }
     function clearSearchResult()                         { vehicleLayer.clearSearchResult() }
+    /// 搜索面板「设为目标区域」：写入 controller 属性；地图图钉/地名由 MapDisplay.syncTargetAreaMapMarkers 同步
+    function setTargetAreaFromSearch(lat, lon, name) {
+        if (controller)
+            controller.setTargetAreaCenter(lat, lon, name ? name : "")
+    }
     function showNavigationRoute(points)                 { vehicleLayer.setNavigationPath(points) }
     function clearNavigationRoute()                      { vehicleLayer.clearNavigationRoute() }
     function setNavigationStartMarker(lat, lon, name, plateNumber) {
@@ -141,7 +300,9 @@ Item {
 
     // 定位 & 截图
     function centerToLocation() {
-        var coord = QtPositioning.coordinate(targetLat, targetLon)
+        if (!controller)
+            return
+        var coord = QtPositioning.coordinate(controller.targetAreaLatitude, controller.targetAreaLongitude)
         mapAnimations.animateToCenter(coord)
         mapAnimations.animateToZoom(18)
     }
@@ -205,6 +366,44 @@ Item {
         function onCoordinateConversionChanged() {
             if (controller && controller.configManager)
                 controller.configManager.coordinateConversionEnabled = controller.coordinateConversionEnabled
+        }
+        function onTargetAreaChanged() {
+            mapDisplay.syncTargetAreaMapMarkers()
+            mapDisplay.scheduleMaybeFillTargetAreaName()
+        }
+    }
+
+    Connections {
+        target: (typeof geocoder !== "undefined") ? geocoder : null
+        function onReverseGeocodeSucceeded(poi, formattedAddress, latitude, longitude) {
+            var poiS = poi ? poi : ""
+            var fmt = formattedAddress ? formattedAddress : ""
+            mapDisplay.lastReversePoi = poiS
+            mapDisplay.lastReverseFormatted = fmt
+            var intent = mapDisplay.geocoderIntent
+            mapDisplay.geocoderIntent = ""
+            if (intent === "fillTargetName") {
+                var label = poiS.length > 0 ? poiS : fmt
+                if (controller) {
+                    if (label.length > 0)
+                        controller.setTargetAreaName(label)
+                    else
+                        controller.setTargetAreaName(qsTr("（地点名未获取）"))
+                }
+                return
+            }
+            if (intent === "rightClick")
+                mapNotifications.showReverseGeocodePoiNotification(poiS)
+        }
+        function onReverseGeocodeFailed(message) {
+            var intent = mapDisplay.geocoderIntent
+            mapDisplay.geocoderIntent = ""
+            if (intent === "fillTargetName") {
+                if (controller)
+                    controller.setTargetAreaName(qsTr("（地点名未获取）"))
+                return
+            }
+            mapNotifications.showErrorNotification(message)
         }
     }
 }

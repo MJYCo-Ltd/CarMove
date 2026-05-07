@@ -221,13 +221,43 @@ void ConfigManager::loadMapState()
     emit mapStateLoaded();
 }
 
+void ConfigManager::persistTargetArea(double latitude, double longitude, const QString& name)
+{
+    m_settings->beginGroup("MapSettings");
+    m_settings->setValue("targetAreaLatitude", latitude);
+    m_settings->setValue("targetAreaLongitude", longitude);
+    m_settings->setValue("targetAreaName", name);
+    m_settings->endGroup();
+    m_settings->sync();
+}
+
+QVariantMap ConfigManager::loadPersistedTargetArea()
+{
+    QVariantMap out;
+    m_settings->beginGroup("MapSettings");
+    if (m_settings->contains("targetAreaLatitude"))
+        out[QStringLiteral("latitude")] = m_settings->value("targetAreaLatitude");
+    if (m_settings->contains("targetAreaLongitude"))
+        out[QStringLiteral("longitude")] = m_settings->value("targetAreaLongitude");
+    if (m_settings->contains("targetAreaName"))
+        out[QStringLiteral("name")] = m_settings->value("targetAreaName");
+    m_settings->endGroup();
+    return out;
+}
+
 void ConfigManager::resetToDefaults()
 {
     m_mapTypeIndex = DEFAULT_MAP_TYPE_INDEX;
     m_zoomLevel = DEFAULT_ZOOM_LEVEL;
     m_mapCenter = QGeoCoordinate(DEFAULT_LATITUDE, DEFAULT_LONGITUDE);
     m_coordinateConversionEnabled = DEFAULT_COORDINATE_CONVERSION;
-    
+
+    m_settings->beginGroup("MapSettings");
+    m_settings->remove("targetAreaLatitude");
+    m_settings->remove("targetAreaLongitude");
+    m_settings->remove("targetAreaName");
+    m_settings->endGroup();
+
     saveSettings();
     
     emit mapTypeIndexChanged();

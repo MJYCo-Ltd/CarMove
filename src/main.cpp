@@ -1,17 +1,10 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
-#include <QDir>
-#include <QStandardPaths>
-#include <QtQml>
 #include <QQuickStyle>
 
 #include "MainController.h"
-#include "VehicleDataModel.h"
-#include "VehicleAnimationEngine.h"
-#include "FolderScanner.h"
-#include "VehicleManager.h"
-#include "CoordinateConverter.h"
+#include "PlaybackControl.h"
 #include "FuelUnloadingDataLoader.h"
 #include "ConfigManager.h"
 #include "TianDiTu/TiandituGeocoder.h"
@@ -31,18 +24,11 @@ int main(int argc, char *argv[])
     
     // Register QML types for all components
     qmlRegisterType<MainController>("CarMove", 1, 0, "MainController");
-    qmlRegisterType<VehicleDataModel>("CarMove", 1, 0, "VehicleDataModel");
-    qmlRegisterType<VehicleAnimationEngine>("CarMove", 1, 0, "VehicleAnimationEngine");
-    qmlRegisterType<FolderScanner>("CarMove", 1, 0, "FolderScanner");
-    qmlRegisterType<VehicleManager>("CarMove", 1, 0, "VehicleManager");
+    qmlRegisterType<PlaybackControl>("CarMove", 1, 0, "PlaybackControl");
     qmlRegisterType<FuelUnloadingDataLoader>("CarMove", 1, 0, "FuelUnloadingDataLoader");
     qmlRegisterType<ConfigManager>("CarMove", 1, 0, "ConfigManager");
     qmlRegisterType<TiandituGeocoder>("CarMove", 1, 0, "TiandituGeocoder");
 
-    // Register uncreatable types (utility classes)
-    qmlRegisterUncreatableType<CoordinateConverter>("CarMove", 1, 0, "CoordinateConverter", 
-                                                   "CoordinateConverter is a utility class");
-    
     // Create QML engine
     QQmlApplicationEngine engine;
     
@@ -54,20 +40,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("geocoder", &geocoder);
     TiandituRoutePlanner routePlanner;
     engine.rootContext()->setContextProperty("routePlanner", &routePlanner);
-    QObject::connect(&geocoder, &TiandituGeocoder::geocodeSucceeded,
-                     [](double latitude, double longitude, const QString &name,
-                                                                        const QString &address) {
-        qDebug() << latitude<<","<< longitude<<"-" << name<<":" << address;
-    });
-    QObject::connect(&geocoder, &TiandituGeocoder::geocodeFailed,
-                     [](const QString &errorMessage) {
-                         qDebug() << errorMessage;
-                     });
 
-    // Set default data path for easier access
-    QString defaultDataPath = QDir::currentPath() + "/carData";
-    engine.rootContext()->setContextProperty("defaultDataPath", defaultDataPath);
-    
     // Load main QML file
     const QUrl url(QStringLiteral("qrc:/MainWindow.qml"));
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreated,

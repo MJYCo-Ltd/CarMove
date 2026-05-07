@@ -3,17 +3,14 @@
 #include "VehicleManager.h"
 #include "VehicleAnimationEngine.h"
 #include "VehicleDataModel.h"
+#include "ConfigManager.h"
 #include "ErrorHandler.h"
 #include <QDir>
 #include <QVariantMap>
-#include <QStandardPaths>
 #include <QUrl>
-
 MainController::MainController(QObject *parent)
     : QObject(parent)
     , m_coordinateConversionEnabled(false)
-    , m_isPlaying(false)
-    , m_playbackProgress(0.0)
     , m_isLoading(false)
     , m_loadingMessage("")
     , m_searchText("")
@@ -38,19 +35,21 @@ MainController::MainController(QObject *parent)
     connect(m_vehicleManager, &VehicleManager::loadingProgress,
             this, &MainController::onVehicleLoadingProgress);
     
-    // Connect VehicleAnimationEngine signals
-    connect(m_animationEngine, &VehicleAnimationEngine::currentTimeChanged,
-            this, &MainController::onAnimationCurrentTimeChanged);
-    connect(m_animationEngine, &VehicleAnimationEngine::progressChanged,
-            this, &MainController::onAnimationProgressChanged);
-    connect(m_animationEngine, QOverload<VehicleAnimationEngine::PlaybackState>::of(&VehicleAnimationEngine::playbackStateChanged),
-            this, &MainController::onAnimationPlaybackStateChanged);
     connect(m_animationEngine, &VehicleAnimationEngine::vehiclePositionUpdated,
             this, &MainController::onVehiclePositionUpdate);
-    
-    // Set up animation engine with data model
+
     m_animationEngine->setVehicleModel(m_vehicleDataModel);
-    
+
+    m_playbackControl = new PlaybackControl(m_animationEngine, m_vehicleDataModel, this);
+
+    const QVariantMap persistedTarget = ConfigManager::GetInstance()->loadPersistedTargetArea();
+    if (persistedTarget.contains(QStringLiteral("latitude"))
+        && persistedTarget.contains(QStringLiteral("longitude"))) {
+        m_targetAreaLatitude = persistedTarget.value(QStringLiteral("latitude")).toDouble();
+        m_targetAreaLongitude = persistedTarget.value(QStringLiteral("longitude")).toDouble();
+        m_targetAreaName = persistedTarget.value(QStringLiteral("name")).toString();
+        emit targetAreaChanged();
+    }
 }
 
 MainController::~MainController()
@@ -167,7 +166,8 @@ void MainController::selectVehicle(const QString& plateNumber)
         
         // Stop any current playback
         try {
-            stopPlayback();
+            if (m_playbackControl)
+                m_playbackControl->stopPlayback();
         } catch (const std::exception& e) {
             qWarning() << "Error stopping playback:" << e.what();
             emit errorOccurred(QString("停止播放时发生错误: %1").arg(e.what()));
@@ -238,123 +238,51 @@ QVariantList MainController::getConvertedTrajectory()
     return result;
 }
 
-QVariantList MainController::getCurrentTrajectory()
+void MainController::persistTargetAreaConfig()
 {
-    QVariantList result;
-    
-    if (m_vehicleManager) {
-        auto trajectory = m_vehicleManager->getCurrentTrajectory();
-        
-        for (const auto& record : trajectory) {
-            result.append(vehicleRecordToVariant(record));
-        }
-    }
-    
-    return result;
+    ConfigManager::GetInstance()->persistTargetArea(m_targetAreaLatitude, m_targetAreaLongitude,
+                                                    m_targetAreaName);
 }
 
-void MainController::startPlayback()
+void MainController::setTargetAreaLatitude(double lat)
 {
-    if (m_animationEngine && !m_selectedVehicle.isEmpty()) {
-        m_animationEngine->play();
+    if (!qFuzzyCompare(1.0 + m_targetAreaLatitude, 1.0 + lat)) {
+        m_targetAreaLatitude = lat;
+        emit targetAreaChanged();
+        persistTargetAreaConfig();
     }
 }
 
-void MainController::pausePlayback()
+void MainController::setTargetAreaLongitude(double lon)
 {
-    if (m_animationEngine) {
-        m_animationEngine->pause();
+    if (!qFuzzyCompare(1.0 + m_targetAreaLongitude, 1.0 + lon)) {
+        m_targetAreaLongitude = lon;
+        emit targetAreaChanged();
+        persistTargetAreaConfig();
     }
 }
 
-void MainController::stopPlayback()
+void MainController::setTargetAreaName(const QString& name)
 {
-    if (m_animationEngine) {
-        m_animationEngine->stop();
+    if (m_targetAreaName != name) {
+        m_targetAreaName = name;
+        emit targetAreaChanged();
+        persistTargetAreaConfig();
     }
 }
 
-void MainController::setPlaybackSpeed(double speed)
+void MainController::setTargetAreaCenter(double latitude, double longitude, const QString& name)
 {
-    if (m_animationEngine) {
-        m_animationEngine->setPlaybackSpeed(speed);
-    }
-}
-
-void MainController::seekToTime(const QDateTime& time)
-{
-    if (m_animationEngine) {
-        m_animationEngine->seekToTime(time);
-    }
-}
-
-void MainController::seekToProgress(double progress)
-{
-    if (m_animationEngine) {
-        m_animationEngine->seekToProgress(progress);
-    }
-}
-
-QString MainController::getVehicleInfo(const QString& plateNumber)
-{
-    for (const auto& info : m_vehicleInfoList) {
-        if (info.plateNumber == plateNumber) {
-            if (info.firstTimestamp.isValid() && info.lastTimestamp.isValid()) {
-                // 如果有时间信息（已加载过数据）
-                return QString("Files: %1, Records: %2, Time: %3 - %4")
-                       .arg(info.filePaths.size())
-                       .arg(info.recordCount)
-                       .arg(info.firstTimestamp.toString("yyyy-MM-dd hh:mm"))
-                       .arg(info.lastTimestamp.toString("yyyy-MM-dd hh:mm"));
-            } else {
-                // 只有文件信息（未加载数据）
-                return QString("Files: %1 (click to load data)")
-                       .arg(info.filePaths.size());
-            }
-        }
-    }
-    return QString("No information available");
-}
-
-void MainController::refreshVehicleList()
-{
-    if (!m_currentFolder.isEmpty()) {
-        m_folderScanner->scanFolder(m_currentFolder);
-    }
-}
-
-QDateTime MainController::progressToTime(double progress)
-{
-    if (!m_startTime.isValid() || !m_endTime.isValid()) {
-        return QDateTime();
-    }
-    
-    progress = qBound(0.0, progress, 1.0);
-    qint64 totalMs = m_startTime.msecsTo(m_endTime);
-    qint64 targetMs = static_cast<qint64>(totalMs * progress);
-    return m_startTime.addMSecs(targetMs);
-}
-
-double MainController::timeToProgress(const QDateTime& time)
-{
-    if (!m_startTime.isValid() || !m_endTime.isValid() || !time.isValid()) {
-        return 0.0;
-    }
-    
-    qint64 totalMs = m_startTime.msecsTo(m_endTime);
-    if (totalMs <= 0) {
-        return 0.0;
-    }
-    
-    qint64 currentMs = m_startTime.msecsTo(time);
-    return qBound(0.0, static_cast<double>(currentMs) / totalMs, 1.0);
-}
-
-void MainController::setDraggingMode(bool isDragging)
-{
-    if (m_animationEngine) {
-        m_animationEngine->setDraggingMode(isDragging);
-    }
+    const bool latEq = qFuzzyCompare(1.0 + m_targetAreaLatitude, 1.0 + latitude);
+    const bool lonEq = qFuzzyCompare(1.0 + m_targetAreaLongitude, 1.0 + longitude);
+    const bool nameEq = (m_targetAreaName == name);
+    if (latEq && lonEq && nameEq)
+        return;
+    m_targetAreaLatitude = latitude;
+    m_targetAreaLongitude = longitude;
+    m_targetAreaName = name;
+    emit targetAreaChanged();
+    persistTargetAreaConfig();
 }
 
 // Private slots implementation → see MainControllerSlots.cpp

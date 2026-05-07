@@ -77,8 +77,6 @@ void MainController::onVehicleTrajectoryLoaded(const QString& plateNumber,
         m_animationEngine->setVehicleModel(m_vehicleDataModel);
         m_animationEngine->stop();
         m_animationEngine->seekToProgress(0.0);
-        m_currentTime = m_startTime;
-        emit currentTimeChanged();
     }
 }
 
@@ -100,30 +98,6 @@ void MainController::onVehicleLoadingProgress(int percentage)
     m_loadingMessage = QString("正在加载轨迹数据... %1%").arg(percentage);
     emit loadingMessageChanged();
     emit loadingProgress(percentage);
-}
-
-void MainController::onAnimationCurrentTimeChanged(const QDateTime& time)
-{
-    if (m_currentTime != time) {
-        m_currentTime = time;
-        emit currentTimeChanged();
-    }
-}
-
-void MainController::onAnimationProgressChanged(double progress)
-{
-    if (qAbs(m_playbackProgress - progress) > 0.001) {
-        m_playbackProgress = progress;
-        emit progressChanged();
-    }
-}
-
-void MainController::onAnimationPlaybackStateChanged(VehicleAnimationEngine::PlaybackState state)
-{
-    bool wasPlaying = m_isPlaying;
-    m_isPlaying = (state == VehicleAnimationEngine::Playing);
-    if (wasPlaying != m_isPlaying)
-        emit playbackStateChanged();
 }
 
 void MainController::onVehiclePositionUpdate(const QString& plateNumber,

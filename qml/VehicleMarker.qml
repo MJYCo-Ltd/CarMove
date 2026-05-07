@@ -11,8 +11,12 @@ MapQuickItem {
     property int direction: 0
     property double speed: 0
     property string vehicleColor: "yellow"
-    property int visitDays: 0  // 到达目标区域的天数
-    
+    property int visitDays: 0  // 角标：经过目标区域次数（与 MapDisplay 目标点半径 1km 一致）
+    property color plateBackgroundColor: "yellow"
+    property color plateBorderColor: "white"
+    property color plateTextColor: "black"
+    property color plateTextStyleColor: "white"
+
     // 信号
     signal vehicleClicked(string plateNumber, double speed, int direction)
     
@@ -85,27 +89,17 @@ MapQuickItem {
             }
         }
         
-        // 车牌号标签
-        Rectangle {
-            width: plateText.width + 8
-            height: plateText.height + 4
-            color: "yellow"  // 使用车辆颜色作为背景色
-            border.color: "white"       // 白色边框以确保可见性
-            border.width: 1
-            radius: 3
+        MapPlateBadge {
             anchors.top: vehicleIcon.bottom
             anchors.horizontalCenter: vehicleIcon.horizontalCenter
             anchors.topMargin: 2
-            
-            Text {
-                id: plateText
-                text: marker.plateNumber
-                font.pixelSize: 11
-                color: "black"  // 白色文字以确保在彩色背景上的可读性
-                style: Text.Outline
-                styleColor: "white"
-                anchors.centerIn: parent
-            }
+            plateText: marker.plateNumber
+            plateBackgroundColor: marker.plateBackgroundColor
+            plateBorderColor: marker.plateBorderColor
+            plateTextColor: marker.plateTextColor
+            plateTextStyleColor: marker.plateTextStyleColor
+            fontPixelSize: 11
+            fontBold: false
         }
     }
     

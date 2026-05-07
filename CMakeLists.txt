@@ -39,6 +39,7 @@ set(SOURCES
     src/MainController.cpp
     src/MainControllerSlots.cpp
     src/MainControllerHelpers.cpp
+    src/PlaybackControl.cpp
     src/FolderScanner.cpp
     src/ParseData/ExcelDataReader.cpp
     src/CoordinateConverter.cpp
@@ -55,6 +56,7 @@ set(SOURCES
 # Header files
 set(HEADERS
     src/MainController.h
+    src/PlaybackControl.h
     src/FolderScanner.h
     src/ParseData/ExcelDataReader.h
     src/CoordinateConverter.h
