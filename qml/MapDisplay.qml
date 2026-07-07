@@ -24,6 +24,9 @@ Item {
     property string lastReversePoi: ""
     property string lastReverseFormatted: ""
 
+    /// 轨迹模式下允许双击地图目标区域编辑名称
+    property bool trajectoryModeActive: false
+
     function scheduleMaybeFillTargetAreaName() {
         if (!controller)
             return
@@ -36,6 +39,28 @@ Item {
         if (typeof geocoder !== "undefined" && geocoder && geocoder.busy)
             return
         targetNameFillDebounce.restart()
+    }
+
+    function openTargetNameEditor() {
+        if (!trajectoryModeActive || !controller)
+            return
+        targetNameEditDialog.initialName = controller.targetAreaName ? controller.targetAreaName : ""
+        targetNameEditDialog.open()
+    }
+
+    function isNearTargetAreaScreenPoint(x, y) {
+        if (!controller || !mapView.map)
+            return false
+        var targetCoord = QtPositioning.coordinate(controller.targetAreaLatitude,
+                                                   controller.targetAreaLongitude)
+        if (!targetCoord.isValid)
+            return false
+        var targetPoint = mapView.map.fromCoordinate(targetCoord)
+        if (!targetPoint)
+            return false
+        var dx = x - targetPoint.x
+        var dy = y - targetPoint.y
+        return (dx * dx + dy * dy) <= (64 * 64)
     }
 
     function tryFillTargetAreaNameFromReverseGeocode() {
@@ -84,8 +109,16 @@ Item {
                 nameTextColor: "#fdebd0",
                 nameStrokeColor: "#1a1a1a"
             })
-            if (targetAreaNameMapItem)
+            if (targetAreaNameMapItem) {
                 mapView.map.addMapItem(targetAreaNameMapItem)
+                targetAreaNameMapItem.nameDoubleClicked.connect(mapDisplay.openTargetNameEditor)
+                targetAreaNameMapItem.text = Qt.binding(function() {
+                    if (!controller)
+                        return qsTr("目标区域")
+                    var name = controller.targetAreaName
+                    return (name && name.length > 0) ? name : qsTr("目标区域")
+                })
+            }
         }
     }
 
@@ -96,12 +129,8 @@ Item {
         var c = QtPositioning.coordinate(controller.targetAreaLatitude, controller.targetAreaLongitude)
         if (targetAreaPinMapItem)
             targetAreaPinMapItem.coordinate = c
-        if (targetAreaNameMapItem) {
+        if (targetAreaNameMapItem)
             targetAreaNameMapItem.coordinate = c
-            targetAreaNameMapItem.text = (controller.targetAreaName && controller.targetAreaName.length > 0)
-                                         ? controller.targetAreaName
-                                         : qsTr("目标区域")
-        }
     }
 
     // 地图视图
@@ -137,11 +166,14 @@ Item {
         }
 
         // 右键：上下文菜单「更新目标区域」+ 天地图逆地理（通知仅 POI）
+        // 左键双击：轨迹模式下在目标区域附近编辑目标名称
         MouseArea {
             id: mapRightClickArea
             anchors.fill: parent
-            acceptedButtons: Qt.RightButton
+            acceptedButtons: Qt.RightButton | Qt.LeftButton
             onClicked: function (mouse) {
+                if (mouse.button !== Qt.RightButton)
+                    return
                 if (!mapView.map)
                     return
                 var coord = mapView.map.toCoordinate(Qt.point(mouse.x, mouse.y))
@@ -159,6 +191,13 @@ Item {
                     return
                 mapDisplay.geocoderIntent = "rightClick"
                 geocoder.reverseGeocode(coord.longitude, coord.latitude)
+            }
+            onDoubleClicked: function (mouse) {
+                if (!mapDisplay.trajectoryModeActive)
+                    return
+                if (!mapDisplay.isNearTargetAreaScreenPoint(mouse.x, mouse.y))
+                    return
+                mapDisplay.openTargetNameEditor()
             }
         }
     }
@@ -245,8 +284,18 @@ Item {
         Timer { id: hideTimer; interval: 5000; onTriggered: vehicleInfoPopup.visible = false }
     }
 
-    // 辅助叠加组件
     MapNotifications  { id: mapNotifications; anchors.fill: parent }
+
+    TargetNameEditDialog {
+        id: targetNameEditDialog
+        parent: Overlay.overlay
+        onNameConfirmed: function(name) {
+            if (!controller)
+                return
+            controller.setTargetAreaName(name)
+            mapDisplay.syncTargetAreaMapMarkers()
+        }
+    }
     MapAnimations     { id: mapAnimations; mapTarget: mapView.map }
     FuelUnloadingDisplay {
         id: fuelUnloadingDisplay; anchors.fill: parent

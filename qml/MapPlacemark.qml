@@ -10,12 +10,14 @@ MapQuickItem {
     property string placemarkKind: "geoName"
 
     // ── geoName（原 MapGeoNameText）────────────────────────────
-    property alias text: geoLabel.text
+    property string text: ""
     property alias alignEnd: geoLabel.alignEnd
     property alias nameFontPixelSize: geoLabel.nameFontPixelSize
     property alias nameTextColor: geoLabel.nameTextColor
     property alias nameStrokeColor: geoLabel.nameStrokeColor
     property alias nameStrokeEnabled: geoLabel.nameStrokeEnabled
+
+    signal nameDoubleClicked()
 
     // ── navEndpoint（原 navEndpointPinComp）────────────────────
     property bool isStartPin: true
@@ -39,30 +41,42 @@ MapQuickItem {
     readonly property bool _isTarget: placemarkKind === "targetPin"
     readonly property bool _isNav: placemarkKind === "navEndpoint"
 
-    anchorPoint.x: _isGeo ? (geoLabel.width / 2)
+    anchorPoint.x: _isGeo ? (geoNameHitArea.width / 2)
         : _isSearch ? (searchCol.width / 2)
         : _isTarget ? (targetCol.width / 2)
         : navPinRoot.pinAnchorX
-    anchorPoint.y: _isGeo ? geoLabel.height
+    anchorPoint.y: _isGeo ? geoNameHitArea.height
         : _isSearch ? searchCol.height
         : _isTarget ? targetCol.height
         : navPinRoot.height
 
     sourceItem: Item {
         id: srcRoot
-        width: _isGeo ? geoLabel.width
+        width: _isGeo ? geoNameHitArea.width
              : _isSearch ? searchCol.width
              : _isTarget ? targetCol.width
              : navPinRoot.width
-        height: _isGeo ? geoLabel.height
+        height: _isGeo ? geoNameHitArea.height
               : _isSearch ? searchCol.height
               : _isTarget ? targetCol.height
               : navPinRoot.height
 
-        MapGeoNameLabel {
-            id: geoLabel
+        Item {
+            id: geoNameHitArea
             visible: root._isGeo
-            width: visible ? 200 : 0
+            width: visible ? geoLabel.width : 0
+            height: visible ? geoLabel.height : 0
+
+            MapGeoNameLabel {
+                id: geoLabel
+                width: 200
+                text: root.text
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                onDoubleClicked: root.nameDoubleClicked()
+            }
         }
 
         Column {

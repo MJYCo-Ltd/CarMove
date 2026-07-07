@@ -22,7 +22,10 @@ ApplicationWindow {
     }
     Shortcut { sequence: "Escape"; onActivated: { if (controller && controller.playback) controller.playback.stopPlayback() } }
 
+    property bool isBusinessMode: sidebarPanel.currentMode === "business"
+
     footer: ToolBar {
+        visible: !mainWindow.isBusinessMode
         RowLayout {
             anchors.fill: parent
             anchors.margins: 5
@@ -56,10 +59,16 @@ ApplicationWindow {
             Layout.fillHeight: true
             onModeChanged: function(mode) {
                 trajectoryPanel.visible = (mode === "trajectory")
+                businessPanel.visible = (mode === "business")
                 fuelRecordsPanel.visible = (mode === "fuel")
                 geoSearchPanel.visible   = (mode === "search")
                 navigationPanel.visible  = (mode === "nav")
                 if (mode === "trajectory") {
+                    mapDisplay.clearFuelMarkers()
+                    mapDisplay.clearSearchResult()
+                    mapDisplay.clearNavigationRoute()
+                    mapDisplay.clearNavigationEndpointMarkers()
+                } else if (mode === "business") {
                     mapDisplay.clearFuelMarkers()
                     mapDisplay.clearSearchResult()
                     mapDisplay.clearNavigationRoute()
@@ -74,6 +83,14 @@ ApplicationWindow {
                     mapDisplay.clearSearchResult()
                 }
             }
+            onBusinessFileOpenRequested: businessPanel.openExcelFile()
+        }
+
+        BusinessPanel {
+            id: businessPanel
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            visible: mainWindow.isBusinessMode
         }
 
         TrajectoryPanel {
@@ -105,11 +122,13 @@ ApplicationWindow {
         ColumnLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
+            visible: !mainWindow.isBusinessMode
 
             MapDisplay {
                 id: mapDisplay
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                trajectoryModeActive: sidebarPanel.currentMode === "trajectory"
             }
 
             PlaybackControls {

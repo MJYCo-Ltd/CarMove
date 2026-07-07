@@ -9,6 +9,7 @@
 #include "ConfigManager.h"
 #include "TianDiTu/TiandituGeocoder.h"
 #include "TianDiTu/TiandituRoutePlanner.h"
+#include "ParseData/ExcelPreviewModel.h"
 
 int main(int argc, char *argv[])
 {
@@ -28,6 +29,7 @@ int main(int argc, char *argv[])
     qmlRegisterType<FuelUnloadingDataLoader>("CarMove", 1, 0, "FuelUnloadingDataLoader");
     qmlRegisterType<ConfigManager>("CarMove", 1, 0, "ConfigManager");
     qmlRegisterType<TiandituGeocoder>("CarMove", 1, 0, "TiandituGeocoder");
+    qmlRegisterType<ExcelPreviewModel>("CarMove", 1, 0, "ExcelPreviewModel");
 
     // Create QML engine
     QQmlApplicationEngine engine;

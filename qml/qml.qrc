@@ -25,6 +25,9 @@
         <file>NavEndpointNameSideColumn.qml</file>
         <file>FuelRecordsPanel.qml</file>
         <file>TrajectoryPanel.qml</file>
+        <file>BusinessPanel.qml</file>
+        <file>BusinessExportDialog.qml</file>
+        <file>TargetNameEditDialog.qml</file>
         <file>GeoSearchPanel.qml</file>
         <file>GeoPickSearch.qml</file>
         <file>NavigationPanel.qml</file>
