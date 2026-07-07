@@ -105,6 +105,8 @@ Item {
         if (!targetAreaNameMapItem) {
             targetAreaNameMapItem = comp.createObject(mapView.map, {
                 placemarkKind: "geoName",
+                alignEnd: false,
+                geoNameOffsetX: 18,
                 nameFontPixelSize: 13,
                 nameTextColor: "#fdebd0",
                 nameStrokeColor: "#1a1a1a"
@@ -292,7 +294,7 @@ Item {
         onNameConfirmed: function(name) {
             if (!controller)
                 return
-            controller.setTargetAreaName(name)
+            controller.targetAreaName = name
             mapDisplay.syncTargetAreaMapMarkers()
         }
     }
@@ -435,9 +437,9 @@ Item {
                 var label = poiS.length > 0 ? poiS : fmt
                 if (controller) {
                     if (label.length > 0)
-                        controller.setTargetAreaName(label)
+                        controller.targetAreaName = label
                     else
-                        controller.setTargetAreaName(qsTr("（地点名未获取）"))
+                        controller.targetAreaName = qsTr("（地点名未获取）")
                 }
                 return
             }
@@ -449,7 +451,7 @@ Item {
             mapDisplay.geocoderIntent = ""
             if (intent === "fillTargetName") {
                 if (controller)
-                    controller.setTargetAreaName(qsTr("（地点名未获取）"))
+                    controller.targetAreaName = qsTr("（地点名未获取）")
                 return
             }
             mapNotifications.showErrorNotification(message)

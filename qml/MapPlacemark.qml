@@ -12,6 +12,7 @@ MapQuickItem {
     // ── geoName（原 MapGeoNameText）────────────────────────────
     property string text: ""
     property alias alignEnd: geoLabel.alignEnd
+    property real geoNameOffsetX: 0
     property alias nameFontPixelSize: geoLabel.nameFontPixelSize
     property alias nameTextColor: geoLabel.nameTextColor
     property alias nameStrokeColor: geoLabel.nameStrokeColor
@@ -41,7 +42,7 @@ MapQuickItem {
     readonly property bool _isTarget: placemarkKind === "targetPin"
     readonly property bool _isNav: placemarkKind === "navEndpoint"
 
-    anchorPoint.x: _isGeo ? (geoNameHitArea.width / 2)
+    anchorPoint.x: _isGeo ? (geoLabel.alignEnd ? geoNameHitArea.width : 0) - geoNameOffsetX
         : _isSearch ? (searchCol.width / 2)
         : _isTarget ? (targetCol.width / 2)
         : navPinRoot.pinAnchorX
@@ -69,7 +70,7 @@ MapQuickItem {
 
             MapGeoNameLabel {
                 id: geoLabel
-                width: 200
+                maxLabelWidth: 200
                 text: root.text
             }
 

@@ -5,12 +5,13 @@ Text {
     id: root
 
     property bool alignEnd: true
+    property int maxLabelWidth: 200
     property int nameFontPixelSize: 14
     property color nameTextColor: "#ffffff"
     property color nameStrokeColor: "#1a1a1a"
     property bool nameStrokeEnabled: true
 
-    width: visible ? 200 : 0
+    width: visible ? maxLabelWidth : 0
     wrapMode: Text.WordWrap
     maximumLineCount: 2
     elide: Text.ElideRight
