@@ -1,11 +1,22 @@
 #include "VehicleManager.h"
 #include "CoordinateConverter.h"
+#include "PostGisTrajectoryLoader.h"
 
 VehicleManager::VehicleManager(QObject *parent)
     : QObject(parent)
     , m_coordinateConversionEnabled(false)
     , m_excelReader(new ExcelDataReader(this))
 {
+}
+
+void VehicleManager::setDatabaseMode(bool enabled)
+{
+    m_databaseMode = enabled;
+}
+
+void VehicleManager::setPostGisLoader(PostGisTrajectoryLoader* loader)
+{
+    m_postGisLoader = loader;
 }
 
 void VehicleManager::setVehicleList(const QList<FolderScanner::VehicleInfo>& vehicles)
@@ -62,6 +73,11 @@ void VehicleManager::loadVehicleTrajectory(const QString& plateNumber)
 {
     if (plateNumber.isEmpty()) {
         qWarning() << "Cannot load trajectory: plate number is empty";
+        return;
+    }
+
+    if (m_databaseMode) {
+        loadVehicleTrajectoryFromDatabase(plateNumber);
         return;
     }
     
@@ -153,45 +169,64 @@ void VehicleManager::loadVehicleTrajectory(const QString& plateNumber)
         emit trajectoryLoaded(plateNumber, QList<ExcelDataReader::VehicleRecord>());
         return;
     }
-    
-    // Sort all records by timestamp to create a chronological trajectory
-    std::sort(allRecords.begin(), allRecords.end(), 
+
+    finalizeLoadedTrajectory(allRecords);
+}
+
+void VehicleManager::loadVehicleTrajectoryFromDatabase(const QString& plateNumber)
+{
+    m_currentTrajectory.clear();
+
+    if (!m_postGisLoader || !m_postGisLoader->isConnected()) {
+        qWarning() << "PostGIS loader is not connected";
+        emit trajectoryLoaded(plateNumber, QList<ExcelDataReader::VehicleRecord>());
+        return;
+    }
+
+    emit loadingProgress(10);
+    QString errorMessage;
+    QList<ExcelDataReader::VehicleRecord> allRecords = m_postGisLoader->loadTrajectory(plateNumber, errorMessage);
+    emit loadingProgress(80);
+
+    if (allRecords.isEmpty()) {
+        qWarning() << "Failed to load trajectory from database:" << errorMessage;
+        emit trajectoryLoaded(plateNumber, QList<ExcelDataReader::VehicleRecord>());
+        return;
+    }
+
+    finalizeLoadedTrajectory(allRecords);
+}
+
+void VehicleManager::finalizeLoadedTrajectory(const QList<ExcelDataReader::VehicleRecord>& allRecords)
+{
+    QList<ExcelDataReader::VehicleRecord> sortedRecords = allRecords;
+    std::sort(sortedRecords.begin(), sortedRecords.end(),
               [](const ExcelDataReader::VehicleRecord& a, const ExcelDataReader::VehicleRecord& b) {
                   return a.timestamp < b.timestamp;
               });
     
     // Filter out stationary vehicle data points (speed = 0 and same mileage as previous record)
     QList<ExcelDataReader::VehicleRecord> filteredRecords;
-    if (!allRecords.isEmpty()) {
-        filteredRecords.reserve(allRecords.size()); // Reserve space for better performance
+    if (!sortedRecords.isEmpty()) {
+        filteredRecords.reserve(sortedRecords.size());
+        filteredRecords.append(sortedRecords.first());
         
-        // Always include the first record
-        filteredRecords.append(allRecords.first());
-        
-        int originalCount = allRecords.size();
-        int filteredCount = 0;
-        
-        for (int i = 1; i < allRecords.size(); ++i) {
-            const auto& currentRecord = allRecords[i];
-            const auto& previousRecord = filteredRecords.last(); // Use last filtered record for comparison
+        for (int i = 1; i < sortedRecords.size(); ++i) {
+            const auto& currentRecord = sortedRecords[i];
+            const auto& previousRecord = filteredRecords.last();
             
-            // Check if vehicle is stationary (speed = 0 and same mileage)
-            bool isStationary = (currentRecord.speed == 0.0) && 
-                               (currentRecord.totalMileage == previousRecord.totalMileage) &&
-                               (!currentRecord.totalMileage.isEmpty()); // Only filter if mileage data exists
+            const bool isStationary = (currentRecord.speed == 0.0)
+                                      && (currentRecord.totalMileage == previousRecord.totalMileage)
+                                      && (!currentRecord.totalMileage.isEmpty());
             
             if (!isStationary) {
-                // Include this record if vehicle is moving or mileage changed
                 filteredRecords.append(currentRecord);
-            } else {
-                filteredCount++;
             }
         }
     }
     
     m_currentTrajectory = filteredRecords;
     
-    // Apply coordinate conversion if enabled
     if (m_coordinateConversionEnabled) {
         applyCoordinateConversionToCurrentTrajectory();
     } else {
@@ -199,7 +234,7 @@ void VehicleManager::loadVehicleTrajectory(const QString& plateNumber)
     }
     
     emit trajectoryLoaded(m_selectedVehicle, m_convertedTrajectory);
-    emit loadingProgress(100); // Complete
+    emit loadingProgress(100);
 }
 
 

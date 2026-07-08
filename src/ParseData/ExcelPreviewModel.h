@@ -87,6 +87,7 @@ public:
                                              int endColumnNumber,
                                              const QString& singleTimeRole,
                                              int dayOffset);
+    Q_INVOKABLE bool importTrajectoryFolderToDatabase(const QString& folderPath);
 
     int rowCount(const QModelIndex& parent = QModelIndex()) const override;
     int columnCount(const QModelIndex& parent = QModelIndex()) const override;

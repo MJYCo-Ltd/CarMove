@@ -14,6 +14,7 @@
 #include "VehicleAnimationEngine.h"
 #include "PlaybackControl.h"
 #include "ConfigManager.h"
+#include "PostGisTrajectoryLoader.h"
 
 class VehicleManager;
 class VehicleDataModel;
@@ -33,6 +34,10 @@ class MainController : public QObject
     Q_PROPERTY(QString loadingMessage READ loadingMessage NOTIFY loadingMessageChanged)
     Q_PROPERTY(ConfigManager* configManager READ configManager CONSTANT)
     Q_PROPERTY(PlaybackControl* playback READ playback CONSTANT)
+    Q_PROPERTY(QString trajectorySourceMode READ trajectorySourceMode NOTIFY trajectorySourceModeChanged)
+    Q_PROPERTY(bool useDatabaseTrajectorySource READ useDatabaseTrajectorySource NOTIFY trajectorySourceModeChanged)
+    Q_PROPERTY(bool databaseConnected READ databaseConnected NOTIFY databaseConnectionChanged)
+    Q_PROPERTY(QString databaseStatus READ databaseStatus NOTIFY databaseConnectionChanged)
     /// 目标区域中心（「定位到目标区域」、统计经过次数、搜索「设为目标区域」共用）
     Q_PROPERTY(double targetAreaLatitude READ targetAreaLatitude WRITE setTargetAreaLatitude NOTIFY targetAreaChanged)
     Q_PROPERTY(double targetAreaLongitude READ targetAreaLongitude WRITE setTargetAreaLongitude NOTIFY targetAreaChanged)
@@ -53,6 +58,10 @@ public:
     QString loadingMessage() const { return m_loadingMessage; }
     ConfigManager* configManager() const { return ConfigManager::GetInstance(); }
     PlaybackControl* playback() const { return m_playbackControl; }
+    QString trajectorySourceMode() const;
+    bool useDatabaseTrajectorySource() const;
+    bool databaseConnected() const { return m_databaseConnected; }
+    QString databaseStatus() const { return m_databaseStatus; }
     double targetAreaLatitude() const { return m_targetAreaLatitude; }
     double targetAreaLongitude() const { return m_targetAreaLongitude; }
     QString targetAreaName() const { return m_targetAreaName; }
@@ -64,6 +73,9 @@ public:
     Q_INVOKABLE void setSearchText(const QString& text);
 
     Q_INVOKABLE void selectFolder(const QString& folderPath);
+    Q_INVOKABLE void connectPostGisDatabase();
+    Q_INVOKABLE void setTrajectorySourceMode(const QString& mode);
+    Q_INVOKABLE void savePostGisSettings();
     Q_INVOKABLE void selectVehicle(const QString& plateNumber);
     Q_INVOKABLE void toggleCoordinateConversion();
     Q_INVOKABLE QVariantList getConvertedTrajectory();
@@ -96,6 +108,8 @@ signals:
     void filteredVehicleListChanged();
     void searchTextChanged();
     void selectedVehicleChanged();
+    void trajectorySourceModeChanged();
+    void databaseConnectionChanged();
     void trajectoryLoaded(bool success, const QString& message);
     void trajectoryConverted();
     void currentFolderChanged();
@@ -128,6 +142,8 @@ private:
     QVariantMap vehicleRecordToVariant(const ExcelDataReader::VehicleRecord& record);
     void updateFilteredVehicleList();
     void persistTargetAreaConfig();
+    void applyTrajectorySourceMode();
+    void clearVehicleDataState();
 
     QString m_currentFolder;
     QStringList m_vehicleList;
@@ -142,10 +158,13 @@ private:
     QString m_targetAreaName;
 
     FolderScanner* m_folderScanner;
+    PostGisTrajectoryLoader* m_postGisLoader;
     VehicleManager* m_vehicleManager;
     VehicleAnimationEngine* m_animationEngine;
     VehicleDataModel* m_vehicleDataModel;
     PlaybackControl* m_playbackControl = nullptr;
+    bool m_databaseConnected = false;
+    QString m_databaseStatus;
 
     QList<FolderScanner::VehicleInfo> m_vehicleInfoList;
 };

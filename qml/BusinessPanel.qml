@@ -8,6 +8,8 @@ Rectangle {
     id: businessPanel
     color: "#f5f6fa"
 
+    property var configManager: null
+
     ExcelPreviewModel {
         id: excelModel
         onLoadFinished: function(success) {
@@ -125,6 +127,22 @@ Rectangle {
         }
     }
 
+    BusinessImportDatabaseDialog {
+        id: importDatabaseDialog
+        excelModel: excelModel
+        configManager: businessPanel.configManager
+        parent: Overlay.overlay
+
+        onRequestImport: function(folderPath) {
+            const success = excelModel.importTrajectoryFolderToDatabase(folderPath)
+            if (success) {
+                errorDialog.showSuccess(excelModel.statusMessage)
+            } else if (excelModel.errorMessage.length > 0) {
+                errorDialog.showError(excelModel.errorMessage)
+            }
+        }
+    }
+
     function openExcelFile() {
         excelFileDialog.open()
     }
@@ -143,6 +161,10 @@ Rectangle {
             return
         }
         classifyDialog.open()
+    }
+
+    function openImportDatabaseDialog() {
+        importDatabaseDialog.open()
     }
 
     NotificationDialog { id: errorDialog }
@@ -172,6 +194,12 @@ Rectangle {
                 text: "归类"
                 enabled: excelModel.hasData && !excelModel.loading
                 onClicked: openClassifyDialog()
+            }
+
+            Button {
+                text: "导入数据库"
+                enabled: !excelModel.loading
+                onClicked: openImportDatabaseDialog()
             }
 
             Text {

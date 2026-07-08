@@ -10,6 +10,8 @@
 #include <QVariantMap>
 #include <QList>
 
+#include "PostGisDatabaseConfig.h"
+
 /**
  * @class ConfigManager
  * @brief 统一配置管理器，管理地图配置和Excel列映射配置
@@ -24,6 +26,16 @@ class ConfigManager : public QObject
     Q_PROPERTY(QGeoCoordinate mapCenter READ mapCenter WRITE setMapCenter NOTIFY mapCenterChanged)
     Q_PROPERTY(bool coordinateConversionEnabled READ coordinateConversionEnabled WRITE setCoordinateConversionEnabled NOTIFY coordinateConversionEnabledChanged)
     Q_PROPERTY(QString tiandituKey READ tiandituKey WRITE setTiandituKey NOTIFY tiandituKeyChanged)
+    Q_PROPERTY(QString trajectorySourceMode READ trajectorySourceMode WRITE setTrajectorySourceMode NOTIFY trajectorySourceModeChanged)
+    Q_PROPERTY(bool useDatabaseTrajectorySource READ useDatabaseTrajectorySource NOTIFY trajectorySourceModeChanged)
+    Q_PROPERTY(QString dbHost READ dbHost WRITE setDbHost NOTIFY postGisSettingsChanged)
+    Q_PROPERTY(int dbPort READ dbPort WRITE setDbPort NOTIFY postGisSettingsChanged)
+    Q_PROPERTY(QString dbName READ dbName WRITE setDbName NOTIFY postGisSettingsChanged)
+    Q_PROPERTY(QString dbUser READ dbUser WRITE setDbUser NOTIFY postGisSettingsChanged)
+    Q_PROPERTY(QString dbPassword READ dbPassword WRITE setDbPassword NOTIFY postGisSettingsChanged)
+    Q_PROPERTY(QString dbSchema READ dbSchema WRITE setDbSchema NOTIFY postGisSettingsChanged)
+    Q_PROPERTY(QString dbTrajectoryTable READ dbTrajectoryTable WRITE setDbTrajectoryTable NOTIFY postGisSettingsChanged)
+    Q_PROPERTY(QString dbVehiclesTable READ dbVehiclesTable WRITE setDbVehiclesTable NOTIFY postGisSettingsChanged)
 
 public:
     /**
@@ -77,6 +89,18 @@ public:
     QGeoCoordinate mapCenter() const { return m_mapCenter; }
     bool coordinateConversionEnabled() const { return m_coordinateConversionEnabled; }
     QString tiandituKey() const { return m_tiandituKey; }
+    QString trajectorySourceMode() const { return m_trajectorySourceMode; }
+    bool useDatabaseTrajectorySource() const { return m_trajectorySourceMode == QStringLiteral("database"); }
+    QString dbHost() const { return m_dbHost; }
+    int dbPort() const { return m_dbPort; }
+    QString dbName() const { return m_dbName; }
+    QString dbUser() const { return m_dbUser; }
+    QString dbPassword() const { return m_dbPassword; }
+    QString dbSchema() const { return m_dbSchema; }
+    QString dbTrajectoryTable() const { return m_dbTrajectoryTable; }
+    QString dbVehiclesTable() const { return m_dbVehiclesTable; }
+
+    PostGisDatabaseConfig postGisDatabaseConfig() const;
 
     // Map property setters
     void setMapTypeIndex(int index);
@@ -84,6 +108,15 @@ public:
     void setMapCenter(const QGeoCoordinate& center);
     void setCoordinateConversionEnabled(bool enabled);
     void setTiandituKey(const QString& key);
+    void setTrajectorySourceMode(const QString& mode);
+    void setDbHost(const QString& host);
+    void setDbPort(int port);
+    void setDbName(const QString& name);
+    void setDbUser(const QString& user);
+    void setDbPassword(const QString& password);
+    void setDbSchema(const QString& schema);
+    void setDbTrajectoryTable(const QString& table);
+    void setDbVehiclesTable(const QString& table);
 
     // Excel column mapping methods
     int getExcelDataStartRow() const { return m_excelDataStartRow; }
@@ -116,6 +149,8 @@ public:
     Q_INVOKABLE QVariantMap loadExcelColumnMapping();
     Q_INVOKABLE QVariantMap getExcelFieldMappingsVariant() const;
     Q_INVOKABLE void createDefaultExcelMapping();
+    Q_INVOKABLE void savePostGisSettings();
+    Q_INVOKABLE void loadPostGisSettings();
     
     // Static helper methods
     static QStringList getStandardFieldNames();
@@ -127,6 +162,8 @@ signals:
     void mapCenterChanged();
     void coordinateConversionEnabledChanged();
     void tiandituKeyChanged();
+    void trajectorySourceModeChanged();
+    void postGisSettingsChanged();
     void mapStateLoaded();
     void excelColumnMappingChanged();
     
@@ -137,6 +174,8 @@ private:
     void saveSettings();
     void loadExcelSettings();
     void saveExcelSettings();
+    void loadTrajectorySourceSettings();
+    void saveTrajectorySourceSettings();
     
     // Map configuration properties
     int m_mapTypeIndex;
@@ -144,6 +183,15 @@ private:
     QGeoCoordinate m_mapCenter;
     bool m_coordinateConversionEnabled;
     QString m_tiandituKey;
+    QString m_trajectorySourceMode;
+    QString m_dbHost;
+    int m_dbPort;
+    QString m_dbName;
+    QString m_dbUser;
+    QString m_dbPassword;
+    QString m_dbSchema;
+    QString m_dbTrajectoryTable;
+    QString m_dbVehiclesTable;
 
     // Excel configuration properties
     int m_excelDataStartRow;
@@ -159,6 +207,14 @@ private:
     static inline const double DEFAULT_LONGITUDE = 116.4;
     static const bool DEFAULT_COORDINATE_CONVERSION = false;
     static constexpr const char* DEFAULT_TIANDITU_KEY = "bf8fb9286c23e5b88af5b7a458b49e42";
+    static inline const char* DEFAULT_TRAJECTORY_SOURCE_MODE = "folder";
+    static inline const char* DEFAULT_DB_HOST = "localhost";
+    static const int DEFAULT_DB_PORT = 5432;
+    static inline const char* DEFAULT_DB_NAME = "carmove";
+    static inline const char* DEFAULT_DB_USER = "postgres";
+    static inline const char* DEFAULT_DB_SCHEMA = "public";
+    static inline const char* DEFAULT_DB_TRAJECTORY_TABLE = "trajectory_points";
+    static inline const char* DEFAULT_DB_VEHICLES_TABLE = "vehicles";
     static const int DEFAULT_EXCEL_DATA_START_ROW = 2;
     static ConfigManager* m_pManager;
 };

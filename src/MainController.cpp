@@ -5,6 +5,7 @@
 #include "VehicleDataModel.h"
 #include "ConfigManager.h"
 #include "ErrorHandler.h"
+#include "PostGisDatabaseConfig.h"
 #include <QDir>
 #include <QVariantMap>
 #include <QUrl>
@@ -15,6 +16,7 @@ MainController::MainController(QObject *parent)
     , m_loadingMessage("")
     , m_searchText("")
     , m_folderScanner(new FolderScanner(this))
+    , m_postGisLoader(new PostGisTrajectoryLoader(this))
     , m_vehicleManager(new VehicleManager(this))
     , m_animationEngine(new VehicleAnimationEngine(this))
     , m_vehicleDataModel(new VehicleDataModel(this))
@@ -41,6 +43,9 @@ MainController::MainController(QObject *parent)
     m_animationEngine->setVehicleModel(m_vehicleDataModel);
 
     m_playbackControl = new PlaybackControl(m_animationEngine, m_vehicleDataModel, this);
+
+    m_vehicleManager->setPostGisLoader(m_postGisLoader);
+    applyTrajectorySourceMode();
 
     const QVariantMap persistedTarget = ConfigManager::GetInstance()->loadPersistedTargetArea();
     if (persistedTarget.contains(QStringLiteral("latitude"))
@@ -85,8 +90,118 @@ void MainController::clearSearch()
     setSearchText("");
 }
 
+QString MainController::trajectorySourceMode() const
+{
+    return ConfigManager::GetInstance()->trajectorySourceMode();
+}
+
+bool MainController::useDatabaseTrajectorySource() const
+{
+    return ConfigManager::GetInstance()->useDatabaseTrajectorySource();
+}
+
+void MainController::setTrajectorySourceMode(const QString& mode)
+{
+    ConfigManager::GetInstance()->setTrajectorySourceMode(mode);
+    applyTrajectorySourceMode();
+    emit trajectorySourceModeChanged();
+}
+
+void MainController::savePostGisSettings()
+{
+    ConfigManager::GetInstance()->savePostGisSettings();
+}
+
+void MainController::applyTrajectorySourceMode()
+{
+    const bool databaseMode = useDatabaseTrajectorySource();
+    m_vehicleManager->setDatabaseMode(databaseMode);
+
+    if (databaseMode) {
+        m_currentFolder.clear();
+        emit currentFolderChanged();
+    } else {
+        if (m_postGisLoader) {
+            m_postGisLoader->disconnectDatabase();
+        }
+        m_databaseConnected = false;
+        m_databaseStatus.clear();
+        emit databaseConnectionChanged();
+    }
+
+    clearVehicleDataState();
+}
+
+void MainController::clearVehicleDataState()
+{
+    m_vehicleList.clear();
+    m_selectedVehicle.clear();
+    m_vehicleInfoList.clear();
+    m_vehicleManager->setVehicleList({});
+    emit vehicleListChanged();
+    emit selectedVehicleChanged();
+    updateFilteredVehicleList();
+}
+
+void MainController::connectPostGisDatabase()
+{
+    if (!useDatabaseTrajectorySource()) {
+        emit errorOccurred(QStringLiteral("当前轨迹数据源不是 PostGIS 数据库"));
+        return;
+    }
+
+    ConfigManager::GetInstance()->savePostGisSettings();
+
+    m_isLoading = true;
+    m_loadingMessage = QStringLiteral("正在连接 PostGIS 数据库...");
+    emit loadingChanged();
+    emit loadingMessageChanged();
+
+    clearVehicleDataState();
+
+    QString errorMessage;
+    const PostGisDatabaseConfig config = ConfigManager::GetInstance()->postGisDatabaseConfig();
+    if (!m_postGisLoader->connectDatabase(config, errorMessage)) {
+        m_databaseConnected = false;
+        m_databaseStatus = errorMessage;
+        m_isLoading = false;
+        emit databaseConnectionChanged();
+        emit loadingChanged();
+        emit loadingMessageChanged();
+        emit folderScanned(false, errorMessage);
+        emit errorOccurred(errorMessage);
+        return;
+    }
+
+    m_databaseConnected = true;
+    m_databaseStatus = config.connectionSummary();
+    emit databaseConnectionChanged();
+
+    const QList<FolderScanner::VehicleInfo> vehicles = m_postGisLoader->listVehicles(errorMessage);
+    if (vehicles.isEmpty()) {
+        m_postGisLoader->disconnectDatabase();
+        m_databaseConnected = false;
+        m_databaseStatus.clear();
+        m_isLoading = false;
+        emit databaseConnectionChanged();
+        emit loadingChanged();
+        emit loadingMessageChanged();
+        emit folderScanned(false, errorMessage);
+        emit errorOccurred(errorMessage);
+        return;
+    }
+
+    onFolderScanCompleted(vehicles);
+    m_currentFolder = config.connectionSummary();
+    emit currentFolderChanged();
+}
+
 void MainController::selectFolder(const QString& folderPath)
 {
+    if (useDatabaseTrajectorySource()) {
+        emit errorOccurred(QStringLiteral("当前为 PostGIS 数据库模式，请使用「连接数据库」加载车辆列表"));
+        return;
+    }
     // Validate folder path
     if (folderPath.isEmpty()) {
         emit errorOccurred("请选择一个有效的文件夹路径");

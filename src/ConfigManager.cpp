@@ -13,6 +13,14 @@ ConfigManager::ConfigManager(QObject *parent)
     , m_mapCenter(QGeoCoordinate(DEFAULT_LATITUDE, DEFAULT_LONGITUDE))
     , m_coordinateConversionEnabled(DEFAULT_COORDINATE_CONVERSION)
     , m_tiandituKey(DEFAULT_TIANDITU_KEY)
+    , m_trajectorySourceMode(QString::fromLatin1(DEFAULT_TRAJECTORY_SOURCE_MODE))
+    , m_dbHost(QString::fromLatin1(DEFAULT_DB_HOST))
+    , m_dbPort(DEFAULT_DB_PORT)
+    , m_dbName(QString::fromLatin1(DEFAULT_DB_NAME))
+    , m_dbUser(QString::fromLatin1(DEFAULT_DB_USER))
+    , m_dbSchema(QString::fromLatin1(DEFAULT_DB_SCHEMA))
+    , m_dbTrajectoryTable(QString::fromLatin1(DEFAULT_DB_TRAJECTORY_TABLE))
+    , m_dbVehiclesTable(QString::fromLatin1(DEFAULT_DB_VEHICLES_TABLE))
     , m_excelDataStartRow(DEFAULT_EXCEL_DATA_START_ROW)
     , m_settings(nullptr)
 {
@@ -26,6 +34,7 @@ ConfigManager::ConfigManager(QObject *parent)
     // 加载保存的设置
     loadSettings();
     loadExcelSettings();
+    loadTrajectorySourceSettings();
 }
 
 ConfigManager::~ConfigManager()
@@ -81,6 +90,109 @@ void ConfigManager::setTiandituKey(const QString& key)
         m_tiandituKey = key;
         emit tiandituKeyChanged();
     }
+}
+
+void ConfigManager::setTrajectorySourceMode(const QString& mode)
+{
+    const QString normalized = mode == QStringLiteral("database") ? QStringLiteral("database")
+                                                                  : QStringLiteral("folder");
+    if (m_trajectorySourceMode == normalized) {
+        return;
+    }
+    m_trajectorySourceMode = normalized;
+    saveTrajectorySourceSettings();
+    emit trajectorySourceModeChanged();
+}
+
+void ConfigManager::setDbHost(const QString& host)
+{
+    if (m_dbHost != host) {
+        m_dbHost = host;
+        emit postGisSettingsChanged();
+    }
+}
+
+void ConfigManager::setDbPort(int port)
+{
+    if (m_dbPort != port) {
+        m_dbPort = port;
+        emit postGisSettingsChanged();
+    }
+}
+
+void ConfigManager::setDbName(const QString& name)
+{
+    if (m_dbName != name) {
+        m_dbName = name;
+        emit postGisSettingsChanged();
+    }
+}
+
+void ConfigManager::setDbUser(const QString& user)
+{
+    if (m_dbUser != user) {
+        m_dbUser = user;
+        emit postGisSettingsChanged();
+    }
+}
+
+void ConfigManager::setDbPassword(const QString& password)
+{
+    if (m_dbPassword != password) {
+        m_dbPassword = password;
+        emit postGisSettingsChanged();
+    }
+}
+
+void ConfigManager::setDbSchema(const QString& schema)
+{
+    if (m_dbSchema != schema) {
+        m_dbSchema = schema;
+        emit postGisSettingsChanged();
+    }
+}
+
+void ConfigManager::setDbTrajectoryTable(const QString& table)
+{
+    if (m_dbTrajectoryTable != table) {
+        m_dbTrajectoryTable = table;
+        emit postGisSettingsChanged();
+    }
+}
+
+void ConfigManager::setDbVehiclesTable(const QString& table)
+{
+    if (m_dbVehiclesTable != table) {
+        m_dbVehiclesTable = table;
+        emit postGisSettingsChanged();
+    }
+}
+
+PostGisDatabaseConfig ConfigManager::postGisDatabaseConfig() const
+{
+    PostGisDatabaseConfig config;
+    config.host = m_dbHost;
+    config.port = m_dbPort;
+    config.database = m_dbName;
+    config.username = m_dbUser;
+    config.password = m_dbPassword;
+    config.schema = m_dbSchema;
+    config.trajectoryTable = m_dbTrajectoryTable;
+    config.vehiclesTable = m_dbVehiclesTable;
+    return config;
+}
+
+void ConfigManager::savePostGisSettings()
+{
+    saveTrajectorySourceSettings();
+    m_settings->sync();
+}
+
+void ConfigManager::loadPostGisSettings()
+{
+    loadTrajectorySourceSettings();
+    emit trajectorySourceModeChanged();
+    emit postGisSettingsChanged();
 }
 
 void ConfigManager::addFieldMapping(const QString& fieldName, int columnIndex, bool isRequired,
@@ -333,6 +445,7 @@ void ConfigManager::saveSettings()
     
     // 同时保存 Excel 设置
     saveExcelSettings();
+    saveTrajectorySourceSettings();
     
     m_settings->sync(); // 立即写入文件
 }
@@ -384,6 +497,48 @@ void ConfigManager::loadExcelSettings()
     }
     m_settings->endArray();
     
+    m_settings->endGroup();
+}
+
+void ConfigManager::saveTrajectorySourceSettings()
+{
+    m_settings->beginGroup("TrajectorySource");
+    m_settings->setValue("mode", m_trajectorySourceMode);
+    m_settings->endGroup();
+
+    m_settings->beginGroup("PostGISDatabase");
+    m_settings->setValue("host", m_dbHost);
+    m_settings->setValue("port", m_dbPort);
+    m_settings->setValue("database", m_dbName);
+    m_settings->setValue("username", m_dbUser);
+    m_settings->setValue("password", m_dbPassword);
+    m_settings->setValue("schema", m_dbSchema);
+    m_settings->setValue("trajectoryTable", m_dbTrajectoryTable);
+    m_settings->setValue("vehiclesTable", m_dbVehiclesTable);
+    m_settings->endGroup();
+}
+
+void ConfigManager::loadTrajectorySourceSettings()
+{
+    m_settings->beginGroup("TrajectorySource");
+    m_trajectorySourceMode =
+        m_settings->value("mode", QString::fromLatin1(DEFAULT_TRAJECTORY_SOURCE_MODE)).toString();
+    if (m_trajectorySourceMode != QStringLiteral("database")) {
+        m_trajectorySourceMode = QStringLiteral("folder");
+    }
+    m_settings->endGroup();
+
+    m_settings->beginGroup("PostGISDatabase");
+    m_dbHost = m_settings->value("host", QString::fromLatin1(DEFAULT_DB_HOST)).toString();
+    m_dbPort = m_settings->value("port", DEFAULT_DB_PORT).toInt();
+    m_dbName = m_settings->value("database", QString::fromLatin1(DEFAULT_DB_NAME)).toString();
+    m_dbUser = m_settings->value("username", QString::fromLatin1(DEFAULT_DB_USER)).toString();
+    m_dbPassword = m_settings->value("password").toString();
+    m_dbSchema = m_settings->value("schema", QString::fromLatin1(DEFAULT_DB_SCHEMA)).toString();
+    m_dbTrajectoryTable =
+        m_settings->value("trajectoryTable", QString::fromLatin1(DEFAULT_DB_TRAJECTORY_TABLE)).toString();
+    m_dbVehiclesTable =
+        m_settings->value("vehiclesTable", QString::fromLatin1(DEFAULT_DB_VEHICLES_TABLE)).toString();
     m_settings->endGroup();
 }
 

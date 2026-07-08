@@ -40,6 +40,7 @@ find_package(Qt6 REQUIRED COMPONENTS
     QuickControls2
     Network
     GuiPrivate
+    Sql
 )
 
 set(CMAKE_AUTOMOC ON)
@@ -78,6 +79,9 @@ set(SOURCES
     src/ErrorHandler.cpp
     src/ConfigManager.cpp
     src/FuelUnloadingDataLoader.cpp
+    src/PostGisDatabaseConfig.cpp
+    src/PostGisTrajectoryLoader.cpp
+    src/PostGisTrajectoryImporter.cpp
     src/TianDiTu/TiandituGeocoder.cpp
     src/TianDiTu/TiandituRoutePlanner.cpp
 )
@@ -108,6 +112,9 @@ set(HEADERS
     src/ErrorHandler.h
     src/ConfigManager.h
     src/FuelUnloadingDataLoader.h
+    src/PostGisDatabaseConfig.h
+    src/PostGisTrajectoryLoader.h
+    src/PostGisTrajectoryImporter.h
     src/TianDiTu/TiandituGeocoder.h
     src/TianDiTu/TiandituRoutePlanner.h
 )
@@ -130,6 +137,7 @@ target_link_libraries(${PROJECT_NAME}
     Qt6::QuickControls2
     Qt6::Network
     Qt6::GuiPrivate
+    Qt6::Sql
     QXlsx::QXlsx
     xlsxio::xlsxio_read_SHARED
 )

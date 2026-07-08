@@ -7,6 +7,8 @@
 #include "ParseData/DateColumnDetector.h"
 #include "ParseData/ExcelFilePath.h"
 #include "ParseData/LicensePlateDetector.h"
+#include "ConfigManager.h"
+#include "PostGisTrajectoryImporter.h"
 
 #include <QDir>
 #include <QFileInfo>
@@ -396,6 +398,57 @@ bool ExcelPreviewModel::classifyTrajectoryFiles(const QString& outputFolderPath,
     return true;
 }
 
+bool ExcelPreviewModel::importTrajectoryFolderToDatabase(const QString& folderPath)
+{
+    const QString localPath = ExcelFilePath::normalizeLocalFilePath(folderPath);
+    if (localPath.isEmpty()) {
+        setErrorMessage(QStringLiteral("未选择轨迹文件夹"));
+        return false;
+    }
+
+    setLoading(true);
+    setErrorMessage(QString());
+    setStatusMessage(QStringLiteral("正在连接数据库并扫描轨迹文件..."));
+
+    PostGisTrajectoryImporter importer;
+    connect(&importer, &PostGisTrajectoryImporter::importProgress, this, [this](int progress) {
+        setStatusMessage(QStringLiteral("正在导入轨迹到数据库... %1%").arg(progress));
+    });
+
+    QString errorMessage;
+    TrajectoryImportResult result;
+    const PostGisDatabaseConfig config = ConfigManager::GetInstance()->postGisDatabaseConfig();
+    const bool success = importer.importFolder(localPath, config, errorMessage, &result);
+
+    setLoading(false);
+
+    if (!success) {
+        setErrorMessage(errorMessage);
+        return false;
+    }
+
+    setErrorMessage(QString());
+    QString statusMessage =
+        QStringLiteral("导入完成：导入 %1/%2 个文件，跳过 %3 个，新增 %4 个轨迹点")
+            .arg(result.importedFiles)
+            .arg(result.totalFiles)
+            .arg(result.skippedFiles)
+            .arg(result.importedPoints);
+    if (result.failedFiles > 0) {
+        statusMessage += QStringLiteral("；失败 %1 个").arg(result.failedFiles);
+        if (!result.errorSamples.isEmpty()) {
+            statusMessage += QStringLiteral("（%1").arg(result.errorSamples.first());
+            if (result.errorSamples.size() > 1) {
+                statusMessage += QStringLiteral(" 等");
+            }
+            statusMessage += QStringLiteral("）");
+        }
+    }
+    setStatusMessage(statusMessage);
+    emit statusMessageChanged();
+    return true;
+}
+
 bool ExcelPreviewModel::loadSheetAtIndex(int index)
 {
     releaseCurrentSheet();
@@ -596,3 +649,5 @@ void ExcelPreviewModel::setStatusMessage(const QString& message)
     m_statusMessage = message;
     emit statusMessageChanged();
 }
+
+

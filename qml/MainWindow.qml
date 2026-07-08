@@ -11,7 +11,14 @@ ApplicationWindow {
     title: "CarMove 车辆轨迹追踪系统"
     visible: true
 
-    Shortcut { sequence: "Ctrl+O"; onActivated: folderDialog.open() }
+    Shortcut {
+        sequence: "Ctrl+O"
+        onActivated: {
+            if (controller && controller.useDatabaseTrajectorySource)
+                return
+            folderDialog.open()
+        }
+    }
     Shortcut {
         sequence: "Space"
         onActivated: {
@@ -35,6 +42,15 @@ ApplicationWindow {
                       ? ("已选择车辆: " + controller.selectedVehicle)
                       : "未选择车辆"
                 Layout.fillWidth: true
+            }
+            Label {
+                visible: controller && controller.useDatabaseTrajectorySource
+                text: controller
+                      ? (controller.databaseConnected
+                         ? ("数据库: " + controller.databaseStatus)
+                         : "数据库: 未连接")
+                      : ""
+                color: controller && controller.databaseConnected ? "#1e8449" : "#7f8c8d"
             }
             Label {
                 text: (controller && controller.vehicleList)
@@ -91,6 +107,7 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
             visible: mainWindow.isBusinessMode
+            configManager: controller ? controller.configManager : null
         }
 
         TrajectoryPanel {
