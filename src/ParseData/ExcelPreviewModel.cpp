@@ -299,6 +299,103 @@ bool ExcelPreviewModel::exportBusinessCsvToFolder(const QString& folderPath,
     return true;
 }
 
+bool ExcelPreviewModel::classifyTrajectoryFiles(const QString& outputFolderPath,
+                                                const QString& trajectoryFolderPath,
+                                                int startColumnNumber,
+                                                int endColumnNumber,
+                                                const QString& singleTimeRole,
+                                                int dayOffset)
+{
+    const QString outputPath = ExcelFilePath::normalizeLocalFilePath(outputFolderPath);
+    const QString trajectoryPath = ExcelFilePath::normalizeLocalFilePath(trajectoryFolderPath);
+    if (outputPath.isEmpty()) {
+        setErrorMessage(QStringLiteral("未选择输出目录"));
+        return false;
+    }
+    if (trajectoryPath.isEmpty()) {
+        setErrorMessage(QStringLiteral("未选择轨迹文件目录"));
+        return false;
+    }
+
+    if (!hasData()) {
+        setErrorMessage(QStringLiteral("当前没有可归类的数据"));
+        return false;
+    }
+
+    QString errorMessage;
+    BusinessClassifyResult result;
+
+    if (exportUsesFolder()) {
+        const BusinessExportOptions options = buildExportOptions(
+            m_currentSheet, startColumnNumber, endColumnNumber, singleTimeRole, dayOffset);
+        if (!BusinessExcelExporter::classifyWorkbookToDirectory(m_workbookInfo,
+                                                                options,
+                                                                trajectoryPath,
+                                                                outputPath,
+                                                                errorMessage,
+                                                                &result)) {
+            setErrorMessage(errorMessage);
+            return false;
+        }
+    } else {
+        ExcelWorkbookInfo exportInfo = m_workbookInfo;
+        exportInfo.limits = ExcelPreviewLimits::forExport();
+
+        ExcelSheetPreview exportSheet;
+        QString loadError;
+        if (!ExcelPreviewLoader::loadSheet(exportInfo, m_currentSheetIndex, exportSheet, loadError)) {
+            setErrorMessage(loadError.isEmpty() ? QStringLiteral("无法加载工作表数据") : loadError);
+            return false;
+        }
+
+        const BusinessExportOptions options = buildExportOptions(
+            exportSheet, startColumnNumber, endColumnNumber, singleTimeRole, dayOffset);
+
+        if (!BusinessExcelExporter::classifySheet(exportSheet,
+                                                  options,
+                                                  trajectoryPath,
+                                                  outputPath,
+                                                  m_fileName,
+                                                  false,
+                                                  errorMessage,
+                                                  &result)) {
+            setErrorMessage(errorMessage);
+            return false;
+        }
+    }
+
+    setErrorMessage(QString());
+
+    QString statusMessage =
+        QStringLiteral("归类完成：已移动 %1 个轨迹文件，导出 %2 个 CSV（共 %3 行）")
+            .arg(result.movedFiles)
+            .arg(result.exportedCsvFiles)
+            .arg(result.exportedRows);
+
+    if (result.missingFiles > 0) {
+        const int previewCount = qMin(result.missingEntries.size(), 5);
+        QStringList previewEntries = result.missingEntries.mid(0, previewCount);
+        statusMessage += QStringLiteral("；未找到 %1 个轨迹文件").arg(result.missingFiles);
+        if (!previewEntries.isEmpty()) {
+            statusMessage += QStringLiteral("（如 %1").arg(previewEntries.join(QStringLiteral("、")));
+            if (result.missingEntries.size() > previewCount) {
+                statusMessage += QStringLiteral(" 等");
+            }
+            statusMessage += QStringLiteral("）");
+        }
+    }
+
+    if (!result.skippedSheetNames.isEmpty()) {
+        statusMessage += QStringLiteral("；跳过 %1 张表：%2")
+                             .arg(result.skippedSheetNames.size())
+                             .arg(result.skippedSheetNames.join(QStringLiteral("、")));
+    }
+
+    setStatusMessage(statusMessage);
+    emit statusMessageChanged();
+    return true;
+}
+
 bool ExcelPreviewModel::loadSheetAtIndex(int index)
 {
     releaseCurrentSheet();

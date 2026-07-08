@@ -81,6 +81,12 @@ public:
                                                int endColumnNumber,
                                                const QString& singleTimeRole,
                                                int dayOffset);
+    Q_INVOKABLE bool classifyTrajectoryFiles(const QString& outputFolderPath,
+                                             const QString& trajectoryFolderPath,
+                                             int startColumnNumber,
+                                             int endColumnNumber,
+                                             const QString& singleTimeRole,
+                                             int dayOffset);
 
     int rowCount(const QModelIndex& parent = QModelIndex()) const override;
     int columnCount(const QModelIndex& parent = QModelIndex()) const override;

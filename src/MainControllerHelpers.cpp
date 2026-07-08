@@ -9,6 +9,7 @@
 #include <QStandardPaths>
 #include <QVariantMap>
 #include <QDir>
+#include <limits>
 
 void MainController::updateFilteredVehicleList()
 {
@@ -181,6 +182,54 @@ bool MainController::isVehicleMoveBelowDistanceThreshold(const QGeoCoordinate& p
     if (!prevCoord.isValid() || !newCoord.isValid())
         return false;
     return prevCoord.distanceTo(newCoord) < thresholdMeters;
+}
+
+bool MainController::seekVehicleToNearestTrajectoryPoint(double latitude, double longitude)
+{
+    if (!m_vehicleManager || m_selectedVehicle.isEmpty())
+        return false;
+
+    const QList<ExcelDataReader::VehicleRecord> trajectory =
+        m_coordinateConversionEnabled ? m_vehicleManager->getConvertedTrajectory()
+                                      : m_vehicleManager->getCurrentTrajectory();
+    if (trajectory.isEmpty())
+        return false;
+
+    const QGeoCoordinate target(latitude, longitude);
+    if (!target.isValid())
+        return false;
+
+    int nearestIndex = -1;
+    double nearestDistance = std::numeric_limits<double>::max();
+    for (int i = 0; i < trajectory.size(); ++i) {
+        const ExcelDataReader::VehicleRecord& record = trajectory.at(i);
+        const QGeoCoordinate point(record.latitude, record.longitude);
+        if (!point.isValid())
+            continue;
+
+        const double distance = target.distanceTo(point);
+        if (distance < nearestDistance) {
+            nearestDistance = distance;
+            nearestIndex = i;
+        }
+    }
+
+    if (nearestIndex < 0)
+        return false;
+
+    const ExcelDataReader::VehicleRecord& nearest = trajectory.at(nearestIndex);
+    if (!nearest.timestamp.isValid())
+        return false;
+
+    if (m_playbackControl) {
+        if (m_playbackControl->isPlaying())
+            m_playbackControl->pausePlayback();
+        m_playbackControl->seekToTime(nearest.timestamp);
+    } else if (m_animationEngine) {
+        m_animationEngine->seekToTime(nearest.timestamp);
+    }
+
+    return true;
 }
 
 QString MainController::getDocumentsPath()

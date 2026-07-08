@@ -328,6 +328,15 @@ Item {
     function updateVehiclePosition(pn, coord, dir, spd) { vehicleLayer.updateVehiclePosition(pn, coord, dir, spd) }
     function showSearchResult(lat, lon)                 { vehicleLayer.showSearchResult(lat, lon) }
     function clearSearchResult()                         { vehicleLayer.clearSearchResult() }
+    function snapVehicleToNearestTrajectoryPoint(lat, lon) {
+        if (!mapVehicleContextActive || !controller)
+            return false
+        return controller.seekVehicleToNearestTrajectoryPoint(lat, lon)
+    }
+    function locateToPlace(lat, lon) {
+        showSearchResult(lat, lon)
+        snapVehicleToNearestTrajectoryPoint(lat, lon)
+    }
     /// 搜索面板「设为目标区域」：写入 controller 属性；地图图钉/地名由 MapDisplay.syncTargetAreaMapMarkers 同步
     function setTargetAreaFromSearch(lat, lon, name) {
         if (controller)
@@ -356,6 +365,7 @@ Item {
         var coord = QtPositioning.coordinate(controller.targetAreaLatitude, controller.targetAreaLongitude)
         mapAnimations.animateToCenter(coord)
         mapAnimations.animateToZoom(18)
+        snapVehicleToNearestTrajectoryPoint(controller.targetAreaLatitude, controller.targetAreaLongitude)
     }
 
     function takeScreenshot() {

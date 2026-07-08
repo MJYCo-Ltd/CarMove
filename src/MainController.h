@@ -85,6 +85,8 @@ public:
     Q_INVOKABLE QVariantMap batchTargetAreaVisitCounts(const QVariantList& plateNumbers, double lat, double lon, double radiusMeters) const;
     /// 车辆位置是否变化小于阈值（米），用于跳过无意义刷新
     Q_INVOKABLE bool isVehicleMoveBelowDistanceThreshold(const QGeoCoordinate& prevCoord, const QGeoCoordinate& newCoord, double thresholdMeters) const;
+    /// 定位到指定地点时，将当前车辆回放位置跳到距该点最近的轨迹点
+    Q_INVOKABLE bool seekVehicleToNearestTrajectoryPoint(double latitude, double longitude);
     Q_INVOKABLE QString getDocumentsPath();
     Q_INVOKABLE void clearSearch();
 

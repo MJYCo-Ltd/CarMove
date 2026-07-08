@@ -98,6 +98,33 @@ Rectangle {
         }
     }
 
+    BusinessClassifyDialog {
+        id: classifyDialog
+        excelModel: excelModel
+        parent: Overlay.overlay
+
+        onRequestClassify: function(config) {
+            const success = excelModel.classifyTrajectoryFiles(
+                config.outputFolderPath,
+                config.trajectoryFolderPath,
+                config.startColumnNumber,
+                config.endColumnNumber,
+                config.singleTimeRole,
+                config.dayOffset
+            )
+
+            if (success) {
+                errorDialog.showSuccess(excelModel.statusMessage)
+            } else if (excelModel.errorMessage.length > 0) {
+                errorDialog.showError(excelModel.errorMessage)
+            }
+        }
+
+        onClassifyFailed: function(message) {
+            errorDialog.showError(message)
+        }
+    }
+
     function openExcelFile() {
         excelFileDialog.open()
     }
@@ -108,6 +135,14 @@ Rectangle {
             return
         }
         exportDialog.open()
+    }
+
+    function openClassifyDialog() {
+        if (!excelModel.hasData) {
+            errorDialog.showError("请先打开 Excel 文件")
+            return
+        }
+        classifyDialog.open()
     }
 
     NotificationDialog { id: errorDialog }
@@ -131,6 +166,12 @@ Rectangle {
                 text: "导出"
                 enabled: excelModel.hasData && !excelModel.loading
                 onClicked: openExportDialog()
+            }
+
+            Button {
+                text: "归类"
+                enabled: excelModel.hasData && !excelModel.loading
+                onClicked: openClassifyDialog()
             }
 
             Text {

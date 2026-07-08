@@ -8,6 +8,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
 #include <QRegularExpression>
 #include <QStringConverter>
 #include <QTextStream>
@@ -202,6 +203,156 @@ ResolvedSheetExportColumns resolveColumnsAuto(const ExcelSheetPreview& sheet)
     return columns;
 }
 
+QString trajectoryLookupKey(const QString& plate, const QDate& startDate, const QDate& endDate)
+{
+    return plate.trimmed().toUpper() + QLatin1Char('|') + formatExportDate(startDate)
+           + QLatin1Char('|') + formatExportDate(endDate);
+}
+
+QString trajectoryFileBaseName(const QString& plate, const QDate& startDate, const QDate& endDate)
+{
+    return plate.trimmed() + QLatin1Char('-') + formatExportDate(startDate) + QLatin1Char('-')
+           + formatExportDate(endDate);
+}
+
+QHash<QString, QString> indexTrajectoryFiles(const QString& trajectoryDirectory,
+                                               QString& errorMessage)
+{
+    QHash<QString, QString> index;
+    errorMessage.clear();
+
+    const QFileInfo dirInfo(trajectoryDirectory);
+    if (!dirInfo.exists() || !dirInfo.isDir()) {
+        errorMessage = QStringLiteral("轨迹目录无效: %1").arg(trajectoryDirectory);
+        return index;
+    }
+
+    const QDir dir(trajectoryDirectory);
+    const QStringList filters{QStringLiteral("*.xlsx"),
+                              QStringLiteral("*.xls"),
+                              QStringLiteral("*.XLSX"),
+                              QStringLiteral("*.XLS")};
+    const QFileInfoList files = dir.entryInfoList(filters, QDir::Files | QDir::Readable);
+
+    const QRegularExpression fileNameRegex(
+        u8"^([京津沪渝冀豫云辽黑湘皖鲁新苏浙赣鄂桂甘晋蒙陕吉闽贵粤青藏川宁琼][A-Z][A-Z0-9]{5,6})-(\\d{4}-\\d{2}-\\d{2})-(\\d{4}-\\d{2}-\\d{2})\\.(xlsx|xls)$",
+        QRegularExpression::CaseInsensitiveOption);
+
+    for (const QFileInfo& fileInfo : files) {
+        const QRegularExpressionMatch match = fileNameRegex.match(fileInfo.fileName());
+        if (!match.hasMatch()) {
+            continue;
+        }
+
+        const QString plate = match.captured(1);
+        const QDate startDate = QDate::fromString(match.captured(2), QStringLiteral("yyyy-MM-dd"));
+        const QDate endDate = QDate::fromString(match.captured(3), QStringLiteral("yyyy-MM-dd"));
+        if (!startDate.isValid() || !endDate.isValid()) {
+            continue;
+        }
+
+        const QString key = trajectoryLookupKey(plate, startDate, endDate);
+        if (!index.contains(key)) {
+            index.insert(key, fileInfo.absoluteFilePath());
+        }
+    }
+
+    return index;
+}
+
+bool moveTrajectoryFile(const QString& sourcePath, const QString& destinationPath, QString& errorMessage)
+{
+    const QFileInfo destinationInfo(destinationPath);
+    if (!QDir().mkpath(destinationInfo.absolutePath())) {
+        errorMessage = QStringLiteral("无法创建目录: %1").arg(destinationInfo.absolutePath());
+        return false;
+    }
+
+    if (QFile::exists(destinationPath)) {
+        errorMessage = QStringLiteral("目标文件已存在: %1").arg(destinationPath);
+        return false;
+    }
+
+    if (QFile::rename(sourcePath, destinationPath)) {
+        return true;
+    }
+
+    if (!QFile::copy(sourcePath, destinationPath)) {
+        errorMessage = QStringLiteral("移动失败: %1").arg(sourcePath);
+        return false;
+    }
+
+    if (!QFile::remove(sourcePath)) {
+        QFile::remove(destinationPath);
+        errorMessage = QStringLiteral("移动失败：无法删除源文件 %1").arg(sourcePath);
+        return false;
+    }
+
+    return true;
+}
+
+bool classifyRowsIntoFolder(const QList<BusinessExportRow>& rows,
+                            const QHash<QString, QString>& trajectoryIndex,
+                            const QString& targetFolderPath,
+                            QString& errorMessage,
+                            int* movedFiles,
+                            int* missingFiles,
+                            QStringList* missingEntries)
+{
+    if (movedFiles != nullptr) {
+        *movedFiles = 0;
+    }
+    if (missingFiles != nullptr) {
+        *missingFiles = 0;
+    }
+    if (missingEntries != nullptr) {
+        missingEntries->clear();
+    }
+
+    if (!QDir().mkpath(targetFolderPath)) {
+        errorMessage = QStringLiteral("无法创建归类目录: %1").arg(targetFolderPath);
+        return false;
+    }
+
+    const QDir targetDir(targetFolderPath);
+    int moved = 0;
+    int missing = 0;
+
+    for (const BusinessExportRow& row : rows) {
+        const QString key = trajectoryLookupKey(row.plate, row.startDate, row.endDate);
+        const auto indexIt = trajectoryIndex.constFind(key);
+        if (indexIt == trajectoryIndex.constEnd()) {
+            ++missing;
+            if (missingEntries != nullptr) {
+                missingEntries->append(trajectoryFileBaseName(row.plate, row.startDate, row.endDate)
+                                       + QStringLiteral(".xlsx"));
+            }
+            continue;
+        }
+
+        const QFileInfo sourceInfo(indexIt.value());
+        const QString destinationPath =
+            targetDir.filePath(sourceInfo.fileName());
+
+        QString moveError;
+        if (!moveTrajectoryFile(indexIt.value(), destinationPath, moveError)) {
+            errorMessage = moveError;
+            return false;
+        }
+
+        ++moved;
+    }
+
+    if (movedFiles != nullptr) {
+        *movedFiles = moved;
+    }
+    if (missingFiles != nullptr) {
+        *missingFiles = missing;
+    }
+
+    return true;
+}
+
 } // namespace
 
 QString BusinessExcelExporter::fileNameForSheet(const QString& excelFileName,
@@ -224,6 +375,14 @@ QString BusinessExcelExporter::fileNameForSheet(const QString& excelFileName,
     }
 
     return baseName + QLatin1Char('-') + sanitizedSheetName + QStringLiteral(".csv");
+}
+
+QString BusinessExcelExporter::folderNameForSheet(const QString& excelFileName,
+                                                  const QString& sheetName,
+                                                  bool appendSheetName)
+{
+    const QString csvFileName = fileNameForSheet(excelFileName, sheetName, appendSheetName);
+    return QFileInfo(csvFileName).completeBaseName();
 }
 
 ResolvedSheetExportColumns BusinessExcelExporter::resolveColumns(
@@ -445,6 +604,216 @@ bool BusinessExcelExporter::exportWorkbookToDirectory(const ExcelWorkbookInfo& w
     }
     if (exportedFiles != nullptr) {
         *exportedFiles = fileCount;
+    }
+
+    return true;
+}
+
+bool BusinessExcelExporter::classifySheet(const ExcelSheetPreview& sheet,
+                                            const BusinessExportOptions& options,
+                                            const QString& trajectoryDirectory,
+                                            const QString& outputDirectory,
+                                            const QString& excelFileName,
+                                            bool appendSheetName,
+                                            QString& errorMessage,
+                                            BusinessClassifyResult* result)
+{
+    errorMessage.clear();
+    if (result != nullptr) {
+        *result = BusinessClassifyResult{};
+    }
+
+    const QFileInfo outputDirInfo(outputDirectory);
+    if (!outputDirInfo.exists() || !outputDirInfo.isDir()) {
+        errorMessage = QStringLiteral("输出目录无效: %1").arg(outputDirectory);
+        return false;
+    }
+
+    QString trajectoryIndexError;
+    const QHash<QString, QString> trajectoryIndex =
+        indexTrajectoryFiles(trajectoryDirectory, trajectoryIndexError);
+    if (!trajectoryIndexError.isEmpty()) {
+        errorMessage = trajectoryIndexError;
+        return false;
+    }
+
+    if (trajectoryIndex.isEmpty()) {
+        errorMessage = QStringLiteral("轨迹目录中没有找到符合命名规则的文件（车牌-开始日期-结束日期.xlsx）");
+        return false;
+    }
+
+    const ResolvedSheetExportColumns columns = resolveColumns(sheet, options);
+    if (!validateResolvedColumns(columns, &options, sheet.name, errorMessage)) {
+        return false;
+    }
+
+    QList<BusinessExportRow> rows = collectRows(sheet, columns, options);
+    if (rows.isEmpty()) {
+        errorMessage = withSheetContext(
+            sheet.name,
+            QStringLiteral("没有可归类的有效数据行（需包含车牌和有效日期）"));
+        return false;
+    }
+
+    sortRowsByPlate(rows);
+    deduplicateRows(rows);
+
+    const QDir outputDir(outputDirectory);
+    const QString csvFileName = fileNameForSheet(excelFileName, sheet.name, appendSheetName);
+    const QString csvFilePath = outputDir.filePath(csvFileName);
+
+    QString writeError;
+    if (!writeRowsToCsv(rows, csvFilePath, writeError)) {
+        errorMessage = withSheetContext(sheet.name, writeError);
+        return false;
+    }
+
+    const QString folderName = folderNameForSheet(excelFileName, sheet.name, appendSheetName);
+    const QString targetFolderPath = outputDir.filePath(folderName);
+
+    int movedFiles = 0;
+    int missingFiles = 0;
+    QStringList missingEntries;
+    QString classifyError;
+    if (!classifyRowsIntoFolder(rows,
+                                trajectoryIndex,
+                                targetFolderPath,
+                                classifyError,
+                                &movedFiles,
+                                &missingFiles,
+                                &missingEntries)) {
+        errorMessage = withSheetContext(sheet.name, classifyError);
+        return false;
+    }
+
+    if (result != nullptr) {
+        result->movedFiles = movedFiles;
+        result->missingFiles = missingFiles;
+        result->exportedCsvFiles = 1;
+        result->exportedRows = rows.size();
+        result->missingEntries = missingEntries;
+    }
+
+    return true;
+}
+
+bool BusinessExcelExporter::classifyWorkbookToDirectory(
+    const ExcelWorkbookInfo& workbookInfo,
+    const BusinessExportOptions& options,
+    const QString& trajectoryDirectory,
+    const QString& outputDirectory,
+    QString& errorMessage,
+    BusinessClassifyResult* result)
+{
+    errorMessage.clear();
+    if (result != nullptr) {
+        *result = BusinessClassifyResult{};
+    }
+
+    if (workbookInfo.sheetNames.isEmpty()) {
+        errorMessage = QStringLiteral("工作簿中没有可归类的工作表");
+        return false;
+    }
+
+    const QFileInfo outputDirInfo(outputDirectory);
+    if (!outputDirInfo.exists() || !outputDirInfo.isDir()) {
+        errorMessage = QStringLiteral("输出目录无效: %1").arg(outputDirectory);
+        return false;
+    }
+
+    QString trajectoryIndexError;
+    const QHash<QString, QString> trajectoryIndex =
+        indexTrajectoryFiles(trajectoryDirectory, trajectoryIndexError);
+    if (!trajectoryIndexError.isEmpty()) {
+        errorMessage = trajectoryIndexError;
+        return false;
+    }
+
+    if (trajectoryIndex.isEmpty()) {
+        errorMessage = QStringLiteral("轨迹目录中没有找到符合命名规则的文件（车牌-开始日期-结束日期.xlsx）");
+        return false;
+    }
+
+    const QString excelFileName = QFileInfo(workbookInfo.filePath).fileName();
+    const bool appendSheetName = workbookInfo.sheetNames.size() > 1;
+    const QDir outputDir(outputDirectory);
+
+    BusinessClassifyResult aggregate;
+    int processedSheets = 0;
+
+    for (int sheetIndex = 0; sheetIndex < workbookInfo.sheetNames.size(); ++sheetIndex) {
+        const QString sheetName = workbookInfo.sheetNames.at(sheetIndex);
+
+        ExcelWorkbookInfo exportInfo = workbookInfo;
+        exportInfo.limits = ExcelPreviewLimits::forExport();
+
+        ExcelSheetPreview sheet;
+        QString sheetError;
+        if (!ExcelPreviewLoader::loadSheet(exportInfo, sheetIndex, sheet, sheetError)) {
+            errorMessage = withSheetContext(
+                sheetName,
+                sheetError.isEmpty() ? QStringLiteral("无法加载工作表") : sheetError);
+            return false;
+        }
+
+        const ResolvedSheetExportColumns columns = resolveColumnsAuto(sheet);
+        QString validationError;
+        if (!validateResolvedColumns(columns, nullptr, sheetName, validationError)) {
+            aggregate.skippedSheetNames.append(sheetName);
+            continue;
+        }
+
+        QList<BusinessExportRow> rows = collectRows(sheet, columns, options);
+        if (rows.isEmpty()) {
+            aggregate.skippedSheetNames.append(sheetName);
+            continue;
+        }
+
+        sortRowsByPlate(rows);
+        deduplicateRows(rows);
+
+        const QString csvFileName = fileNameForSheet(excelFileName, sheet.name, appendSheetName);
+        const QString csvFilePath = outputDir.filePath(csvFileName);
+
+        QString writeError;
+        if (!writeRowsToCsv(rows, csvFilePath, writeError)) {
+            errorMessage = withSheetContext(sheetName, writeError);
+            return false;
+        }
+
+        const QString folderName = folderNameForSheet(excelFileName, sheet.name, appendSheetName);
+        const QString targetFolderPath = outputDir.filePath(folderName);
+
+        int movedFiles = 0;
+        int missingFiles = 0;
+        QStringList missingEntries;
+        QString classifyError;
+        if (!classifyRowsIntoFolder(rows,
+                                    trajectoryIndex,
+                                    targetFolderPath,
+                                    classifyError,
+                                    &movedFiles,
+                                    &missingFiles,
+                                    &missingEntries)) {
+            errorMessage = withSheetContext(sheetName, classifyError);
+            return false;
+        }
+
+        aggregate.movedFiles += movedFiles;
+        aggregate.missingFiles += missingFiles;
+        aggregate.exportedRows += rows.size();
+        aggregate.missingEntries.append(missingEntries);
+        ++aggregate.exportedCsvFiles;
+        ++processedSheets;
+    }
+
+    if (processedSheets == 0) {
+        errorMessage = QStringLiteral("没有可归类的有效数据行（需包含车牌和有效日期）");
+        return false;
+    }
+
+    if (result != nullptr) {
+        *result = aggregate;
     }
 
     return true;

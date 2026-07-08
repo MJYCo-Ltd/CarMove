@@ -27,6 +27,7 @@
         <file>TrajectoryPanel.qml</file>
         <file>BusinessPanel.qml</file>
         <file>BusinessExportDialog.qml</file>
+        <file>BusinessClassifyDialog.qml</file>
         <file>TargetNameEditDialog.qml</file>
         <file>GeoSearchPanel.qml</file>
         <file>GeoPickSearch.qml</file>

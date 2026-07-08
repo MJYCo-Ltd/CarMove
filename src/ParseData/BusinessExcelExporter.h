@@ -27,12 +27,25 @@ struct ResolvedSheetExportColumns {
     int endDataColumn = -1;
 };
 
+struct BusinessClassifyResult {
+    int movedFiles = 0;
+    int missingFiles = 0;
+    int exportedCsvFiles = 0;
+    int exportedRows = 0;
+    QStringList missingEntries;
+    QStringList skippedSheetNames;
+};
+
 class BusinessExcelExporter
 {
 public:
     static QString fileNameForSheet(const QString& excelFileName,
                                     const QString& sheetName,
                                     bool appendSheetName);
+
+    static QString folderNameForSheet(const QString& excelFileName,
+                                      const QString& sheetName,
+                                      bool appendSheetName);
 
     static ResolvedSheetExportColumns resolveColumns(const ExcelSheetPreview& sheet,
                                                      const BusinessExportOptions& options);
@@ -61,4 +74,20 @@ public:
                                           int* exportedFiles = nullptr,
                                           QStringList* exportedFilePaths = nullptr,
                                           QStringList* skippedSheetNames = nullptr);
+
+    static bool classifySheet(const ExcelSheetPreview& sheet,
+                              const BusinessExportOptions& options,
+                              const QString& trajectoryDirectory,
+                              const QString& outputDirectory,
+                              const QString& excelFileName,
+                              bool appendSheetName,
+                              QString& errorMessage,
+                              BusinessClassifyResult* result = nullptr);
+
+    static bool classifyWorkbookToDirectory(const ExcelWorkbookInfo& workbookInfo,
+                                            const BusinessExportOptions& options,
+                                            const QString& trajectoryDirectory,
+                                            const QString& outputDirectory,
+                                            QString& errorMessage,
+                                            BusinessClassifyResult* result = nullptr);
 };

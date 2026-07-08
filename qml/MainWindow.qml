@@ -115,7 +115,7 @@ ApplicationWindow {
             Layout.preferredWidth: 300
             Layout.fillHeight: true
             visible: false
-            onLocateRequested: function(lat, lon, name) { mapDisplay.showSearchResult(lat, lon, name) }
+            onLocateRequested: function(lat, lon, name) { mapDisplay.locateToPlace(lat, lon) }
             onTargetAreaRequested: function(lat, lon, name) { mapDisplay.setTargetAreaFromSearch(lat, lon, name) }
         }
 
