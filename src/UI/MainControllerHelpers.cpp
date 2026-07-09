@@ -2,10 +2,8 @@
 // Separated from MainController.cpp for maintainability
 #include "UI/MainController.h"
 #include "Core/AppLogger.h"
+#include "DataManagement/TrajectorySegmentBreak.h"
 #include "DataManagement/VehicleManager.h"
-#include "DataManagement/VehicleDataModel.h"
-#include "Map/VehicleAnimationEngine.h"
-#include "UI/PlaybackControl.h"
 #include "Map/CoordinateConverter.h"
 #include <QGeoCoordinate>
 #include <QGeoPath>
@@ -19,190 +17,6 @@
 #include <limits>
 
 namespace {
-
-constexpr double kTrajectorySegmentMaxDistanceMeters = 5000.0;
-constexpr qint64 kTrajectorySegmentMaxGapSeconds = 2 * 3600;
-constexpr double kTrajectorySegmentMaxSpeedMetersPerSecond = 42.0; // ~150 km/h
-
-enum class TrajectorySegmentBreakReason {
-    None,
-    Distance,
-    TimeGap,
-    Speed,
-};
-
-struct TrajectorySegmentBreakEvaluation {
-    bool shouldBreak = false;
-    TrajectorySegmentBreakReason reason = TrajectorySegmentBreakReason::None;
-    bool distanceExceeded = false;
-    bool timeGapExceeded = false;
-    bool dayChanged = false;
-    bool speedExceeded = false;
-    double distanceMeters = 0.0;
-    qint64 elapsedSeconds = 0;
-    double speedMetersPerSecond = 0.0;
-};
-
-QDateTime trajectoryPointTimestamp(const QVariant& point)
-{
-    const QVariantMap map = point.toMap();
-    if (map.isEmpty()) {
-        return {};
-    }
-    return map.value(QStringLiteral("timestamp")).toDateTime();
-}
-
-QString trajectoryPointPlateNumber(const QVariant& point)
-{
-    const QVariantMap map = point.toMap();
-    if (map.isEmpty()) {
-        return {};
-    }
-    return map.value(QStringLiteral("plateNumber")).toString().trimmed();
-}
-
-TrajectorySegmentBreakEvaluation evaluateTrajectorySegmentBreak(const QGeoCoordinate& previousCoordinate,
-                                                                const QDateTime& previousTimestamp,
-                                                                const QGeoCoordinate& coordinate,
-                                                                const QDateTime& timestamp)
-{
-    TrajectorySegmentBreakEvaluation evaluation;
-    if (!previousCoordinate.isValid() || !coordinate.isValid()) {
-        return evaluation;
-    }
-
-    evaluation.distanceMeters = previousCoordinate.distanceTo(coordinate);
-    evaluation.distanceExceeded = evaluation.distanceMeters > kTrajectorySegmentMaxDistanceMeters;
-
-    if (!previousTimestamp.isValid() || !timestamp.isValid()) {
-        return evaluation;
-    }
-
-    evaluation.elapsedSeconds = previousTimestamp.secsTo(timestamp);
-    if (evaluation.elapsedSeconds > 0) {
-        evaluation.speedMetersPerSecond =
-            evaluation.distanceMeters / static_cast<double>(evaluation.elapsedSeconds);
-    }
-
-    evaluation.timeGapExceeded = evaluation.elapsedSeconds > kTrajectorySegmentMaxGapSeconds;
-    evaluation.dayChanged = previousTimestamp.date() != timestamp.date();
-    if (evaluation.timeGapExceeded || evaluation.dayChanged) {
-        evaluation.shouldBreak = true;
-        evaluation.reason = TrajectorySegmentBreakReason::TimeGap;
-    }
-
-    evaluation.speedExceeded = evaluation.elapsedSeconds > 0
-        && evaluation.speedMetersPerSecond > kTrajectorySegmentMaxSpeedMetersPerSecond;
-    if (evaluation.speedExceeded) {
-        evaluation.shouldBreak = true;
-        if (!evaluation.distanceExceeded && !evaluation.timeGapExceeded) {
-            evaluation.reason = TrajectorySegmentBreakReason::Speed;
-        }
-    }
-
-    return evaluation;
-}
-
-QString formatTrajectoryBreakElapsed(qint64 elapsedSeconds)
-{
-    if (elapsedSeconds >= 86400) {
-        return QStringLiteral("%1天").arg(elapsedSeconds / 86400.0, 0, 'f', 1);
-    }
-    if (elapsedSeconds >= 3600) {
-        return QStringLiteral("%1小时").arg(elapsedSeconds / 3600.0, 0, 'f', 1);
-    }
-    return QStringLiteral("%1秒").arg(elapsedSeconds);
-}
-
-QString trajectoryBreakReasonText(const TrajectorySegmentBreakEvaluation& evaluation)
-{
-    QStringList reasons;
-    if (evaluation.distanceExceeded) {
-        reasons.append(QStringLiteral("距离超限"));
-    }
-    if (evaluation.timeGapExceeded) {
-        reasons.append(QStringLiteral("时间间隔超限"));
-    }
-    if (evaluation.dayChanged) {
-        reasons.append(QStringLiteral("跨天"));
-    }
-    if (evaluation.speedExceeded) {
-        reasons.append(QStringLiteral("速度超限"));
-    }
-    return reasons.isEmpty() ? QStringLiteral("未知") : reasons.join(QStringLiteral("+"));
-}
-
-QString trajectoryBreakKindText(const TrajectorySegmentBreakEvaluation& evaluation)
-{
-    if (evaluation.timeGapExceeded || evaluation.dayChanged) {
-        return QStringLiteral("行程断档");
-    }
-    if (evaluation.distanceExceeded || evaluation.speedExceeded) {
-        return QStringLiteral("GPS瞬跳");
-    }
-    return QStringLiteral("未知");
-}
-
-void logTrajectoryGpsJumpAnomaly(const QString& plateNumber,
-                                 const TrajectorySegmentBreakEvaluation& evaluation,
-                                 const QGeoCoordinate& previousCoordinate,
-                                 const QGeoCoordinate& coordinate,
-                                 const QDateTime& previousTimestamp,
-                                 const QDateTime& timestamp)
-{
-    if (!evaluation.shouldBreak) {
-        return;
-    }
-    if (!evaluation.distanceExceeded && !evaluation.timeGapExceeded && !evaluation.speedExceeded) {
-        return;
-    }
-
-    const QString reasonText = trajectoryBreakReasonText(evaluation);
-    const QString kindText = trajectoryBreakKindText(evaluation);
-    const QString resolvedPlate = plateNumber.trimmed().isEmpty() ? QStringLiteral("未知") : plateNumber.trimmed();
-    const QString previousTimeText = previousTimestamp.isValid()
-                                       ? previousTimestamp.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"))
-                                       : QStringLiteral("-");
-    const QString currentTimeText = timestamp.isValid()
-                                        ? timestamp.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"))
-                                        : QStringLiteral("-");
-    const QString elapsedText = evaluation.elapsedSeconds > 0
-                                    ? formatTrajectoryBreakElapsed(evaluation.elapsedSeconds)
-                                    : QStringLiteral("-");
-
-    AppLogger::warn(QStringLiteral(
-                        "GPS跳点异常 | 车牌=%1 | 类型=%2 | 原因=%3 | 距离=%4km | 间隔=%5(%6s) | 估算速度=%7km/h | "
-                        "前点=(%8,%9)@%10 | 后点=(%11,%12)@%13")
-                        .arg(resolvedPlate,
-                             kindText,
-                             reasonText,
-                             QString::number(evaluation.distanceMeters / 1000.0, 'f', 2),
-                             elapsedText,
-                             QString::number(evaluation.elapsedSeconds),
-                             QString::number(evaluation.speedMetersPerSecond * 3.6, 'f', 1),
-                             QString::number(previousCoordinate.latitude(), 'f', 6),
-                             QString::number(previousCoordinate.longitude(), 'f', 6),
-                             previousTimeText,
-                             QString::number(coordinate.latitude(), 'f', 6),
-                             QString::number(coordinate.longitude(), 'f', 6),
-                             currentTimeText));
-}
-
-bool isDrawableTrajectoryCoordinate(const ExcelDataReader::VehicleRecord& record)
-{
-    if (record.longitude < -180.0 || record.longitude > 180.0 || record.latitude < -90.0
-        || record.latitude > 90.0) {
-        return false;
-    }
-    return QGeoCoordinate(record.latitude, record.longitude).isValid();
-}
-QVariantMap coordinateToVariantMap(const QGeoCoordinate& coordinate)
-{
-    QVariantMap point;
-    point.insert(QStringLiteral("latitude"), coordinate.latitude());
-    point.insert(QStringLiteral("longitude"), coordinate.longitude());
-    return point;
-}
 
 void appendNestedSegment(QVariantList& target, const QVariantList& segment)
 {
@@ -239,27 +53,27 @@ void MainController::updateFilteredVehicleList()
     emit filteredVehicleListChanged();
 }
 
-void MainController::updateTimeRange()
+void MainController::resetTrajectoryTimeline()
 {
-    if (m_playbackControl)
-        m_playbackControl->notifyModelTimeRangeUpdated();
+    if (m_timelineManager) {
+        m_timelineManager->resetTimeline();
+    }
 }
 
-void MainController::setupVehicleDataModel()
+void MainController::syncTimelineFromVehicleManager()
 {
-    if (!m_vehicleManager || !m_vehicleDataModel) return;
+    if (!m_vehicleManager || !m_timelineManager) {
+        return;
+    }
 
-    auto trajectory = m_coordinateConversionEnabled
-                      ? m_vehicleManager->getConvertedTrajectory()
-                      : m_vehicleManager->getCurrentTrajectory();
+    const auto trajectory = m_coordinateConversionEnabled ? m_vehicleManager->getConvertedTrajectory()
+                                                          : m_vehicleManager->getCurrentTrajectory();
 
-    m_vehicleDataModel->setVehicleData(trajectory);
-
-    if (m_animationEngine)
-        m_animationEngine->setVehicleModel(m_vehicleDataModel);
+    m_timelineManager->setSelectedVehicle(m_selectedVehicle);
+    m_timelineManager->applyTrajectory(trajectory);
 }
 
-QVariantMap MainController::vehicleRecordToVariant(const ExcelDataReader::VehicleRecord& record) const
+QVariantMap MainController::vehicleRecordToVariant(const TrajectoryPoint& record) const
 {
     QVariantMap result;
     result["plateNumber"]  = record.plateNumber;
@@ -365,7 +179,7 @@ QVariantList MainController::trajectoryPolylinePath(const QVariant& trajectoryPo
     for (const QVariant& v : points) {
         const QGeoCoordinate c = trajectoryPointToCoordinate(v);
         if (c.isValid())
-            out.append(coordinateToVariantMap(c));
+            out.append(TrajectorySegmentBreak::coordinateToVariantMap(c));
     }
     return out;
 }
@@ -393,20 +207,20 @@ QVariantList MainController::trajectoryPointSegments(const QVariant& trajectoryP
             continue;
         }
 
-        const QDateTime timestamp = trajectoryPointTimestamp(point);
-        const TrajectorySegmentBreakEvaluation breakEvaluation = hasPrevious
-            ? evaluateTrajectorySegmentBreak(previousCoordinate, previousTimestamp, coordinate, timestamp)
-            : TrajectorySegmentBreakEvaluation{};
+        const QDateTime timestamp = TrajectorySegmentBreak::pointTimestamp(point);
+        const TrajectorySegmentBreak::Evaluation breakEvaluation =
+            hasPrevious ? TrajectorySegmentBreak::evaluate(previousCoordinate, previousTimestamp, coordinate, timestamp)
+                        : TrajectorySegmentBreak::Evaluation{};
         const bool shouldBreak = breakEvaluation.shouldBreak;
 
         if (shouldBreak) {
-            const QString plateNumber = trajectoryPointPlateNumber(point);
-            logTrajectoryGpsJumpAnomaly(plateNumber.isEmpty() ? m_selectedVehicle : plateNumber,
-                                        breakEvaluation,
-                                        previousCoordinate,
-                                        coordinate,
-                                        previousTimestamp,
-                                        timestamp);
+            const QString plateNumber = TrajectorySegmentBreak::pointPlateNumber(point);
+            TrajectorySegmentBreak::logGpsJumpAnomaly(plateNumber.isEmpty() ? m_selectedVehicle : plateNumber,
+                                                      breakEvaluation,
+                                                      previousCoordinate,
+                                                      coordinate,
+                                                      previousTimestamp,
+                                                      timestamp);
             flushSegment();
         }
 
@@ -434,234 +248,46 @@ QVariantList MainController::trajectorySegmentPolylinePaths(const QVariant& traj
     return paths;
 }
 
-void MainController::rebuildTrajectorySegments()
-{
-    if (m_isRebuildingTrajectorySegments) {
-        return;
-    }
-    m_isRebuildingTrajectorySegments = true;
-    m_trajectoryDisplaySegments.clear();
-    m_playbackSegmentMeta.clear();
-
-    if (!m_vehicleManager) {
-        m_segmentsNeedRebuild = false;
-        m_isRebuildingTrajectorySegments = false;
-        emit playbackSegmentsChanged();
-        return;
-    }
-
-    const QList<ExcelDataReader::VehicleRecord> trajectory =
-        m_coordinateConversionEnabled ? m_vehicleManager->getConvertedTrajectory()
-                                      : m_vehicleManager->getCurrentTrajectory();
-
-    if (trajectory.size() < 2) {
-        m_segmentsNeedRebuild = false;
-        m_isRebuildingTrajectorySegments = false;
-        emit playbackSegmentsChanged();
-        return;
-    }
-
-    QVariantList currentSegment;
-    int validPointCount = 0;
-    int invalidPointCount = 0;
-    int breakCount = 0;
-
-    QGeoCoordinate previousCoordinate;
-    QDateTime previousTimestamp;
-    QDateTime segmentStartTime;
-    QDateTime segmentEndTime;
-    bool hasPrevious = false;
-
-    auto flushSegment = [&]() {
-        if (currentSegment.size() >= 2 && segmentStartTime.isValid() && segmentEndTime.isValid()) {
-            appendNestedSegment(m_trajectoryDisplaySegments, currentSegment);
-            PlaybackSegmentMeta meta;
-            meta.startTime = segmentStartTime;
-            meta.endTime = segmentEndTime;
-            m_playbackSegmentMeta.append(meta);
-        }
-        currentSegment = QVariantList();
-        segmentStartTime = QDateTime();
-        segmentEndTime = QDateTime();
-    };
-
-    for (const ExcelDataReader::VehicleRecord& record : trajectory) {
-        if (!isDrawableTrajectoryCoordinate(record)) {
-            ++invalidPointCount;
-            continue;
-        }
-        ++validPointCount;
-
-        const QGeoCoordinate coordinate(record.latitude, record.longitude);
-
-        const TrajectorySegmentBreakEvaluation breakEvaluation = hasPrevious
-            ? evaluateTrajectorySegmentBreak(previousCoordinate, previousTimestamp, coordinate, record.timestamp)
-            : TrajectorySegmentBreakEvaluation{};
-        const bool shouldBreak = breakEvaluation.shouldBreak;
-
-        if (shouldBreak) {
-            ++breakCount;
-            logTrajectoryGpsJumpAnomaly(record.plateNumber.isEmpty() ? m_selectedVehicle : record.plateNumber,
-                                        breakEvaluation,
-                                        previousCoordinate,
-                                        coordinate,
-                                        previousTimestamp,
-                                        record.timestamp);
-            flushSegment();
-        }
-
-        if (currentSegment.isEmpty() && record.timestamp.isValid()) {
-            segmentStartTime = record.timestamp;
-        }
-        if (record.timestamp.isValid()) {
-            segmentEndTime = record.timestamp;
-        }
-
-        currentSegment.append(coordinateToVariantMap(coordinate));
-        previousCoordinate = coordinate;
-        previousTimestamp = record.timestamp;
-        hasPrevious = true;
-    }
-
-    flushSegment();
-
-    if (m_trajectoryDisplaySegments.isEmpty() && validPointCount > 0) {
-        AppLogger::warn(QStringLiteral(
-                            "轨迹绘制分段为空 | 车牌=%1 | 总点数=%2 | 有效坐标=%3 | 无效坐标=%4 | 断点=%5 | "
-                            "提示=相邻点均无法形成>=2点的连续段，请检查是否存在大量孤立跳点")
-                            .arg(m_selectedVehicle)
-                            .arg(trajectory.size())
-                            .arg(validPointCount)
-                            .arg(invalidPointCount)
-                            .arg(breakCount));
-    }
-
-    m_segmentsNeedRebuild = false;
-    m_isRebuildingTrajectorySegments = false;
-    emit playbackSegmentsChanged();
-}
-
 int MainController::trajectoryDisplaySegmentCount()
 {
-    if (m_segmentsNeedRebuild) {
-        rebuildTrajectorySegments();
-    }
-    return m_trajectoryDisplaySegments.size();
+    return m_timelineManager ? m_timelineManager->displaySegmentCount() : 0;
 }
 
 QVariantList MainController::trajectoryDisplaySegmentPath(int segmentIndex) const
 {
-    if (segmentIndex < 0 || segmentIndex >= m_trajectoryDisplaySegments.size()) {
-        return {};
-    }
-    return nestedSegmentToList(m_trajectoryDisplaySegments.at(segmentIndex));
+    return m_timelineManager ? m_timelineManager->displaySegmentPath(segmentIndex) : QVariantList{};
 }
 
-void MainController::refreshPlaybackSegments()
+int MainController::trajectorySegmentCount() const
 {
-    m_segmentsNeedRebuild = true;
-    rebuildTrajectorySegments();
+    return m_timelineManager ? m_timelineManager->segmentCount() : 0;
 }
 
-int MainController::playbackSegmentCount() const
+QDateTime MainController::trajectorySegmentStartTime(int segmentIndex) const
 {
-    return m_playbackSegmentMeta.size();
+    return m_timelineManager ? m_timelineManager->segmentStartTime(segmentIndex) : QDateTime{};
 }
 
-QDateTime MainController::playbackSegmentStartTime(int segmentIndex) const
+QDateTime MainController::trajectorySegmentEndTime(int segmentIndex) const
 {
-    if (segmentIndex < 0 || segmentIndex >= m_playbackSegmentMeta.size()) {
-        return {};
-    }
-    return m_playbackSegmentMeta.at(segmentIndex).startTime;
+    return m_timelineManager ? m_timelineManager->segmentEndTime(segmentIndex) : QDateTime{};
 }
 
-QDateTime MainController::playbackSegmentEndTime(int segmentIndex) const
+int MainController::trajectoryActiveSegmentIndex() const
 {
-    if (segmentIndex < 0 || segmentIndex >= m_playbackSegmentMeta.size()) {
-        return {};
-    }
-    return m_playbackSegmentMeta.at(segmentIndex).endTime;
+    return m_timelineManager ? m_timelineManager->activeSegmentIndex() : -1;
 }
 
-qint64 MainController::playbackSegmentDurationMs(int segmentIndex) const
+double MainController::trajectorySegmentLocalProgress(int segmentIndex) const
 {
-    if (segmentIndex < 0 || segmentIndex >= m_playbackSegmentMeta.size()) {
-        return 0;
-    }
-    const PlaybackSegmentMeta& meta = m_playbackSegmentMeta.at(segmentIndex);
-    if (!meta.startTime.isValid() || !meta.endTime.isValid()) {
-        return 0;
-    }
-    return meta.startTime.msecsTo(meta.endTime);
+    return m_timelineManager ? m_timelineManager->segmentLocalProgress(segmentIndex) : 0.0;
 }
 
-int MainController::playbackActiveSegmentIndex() const
+void MainController::seekTrajectorySegment(int segmentIndex, double localProgress)
 {
-    if (m_playbackSegmentMeta.isEmpty() || !m_playbackControl) {
-        return -1;
+    if (m_timelineManager) {
+        m_timelineManager->seekSegment(segmentIndex, localProgress);
     }
-
-    const QDateTime current = m_playbackControl->currentTime();
-    for (int i = 0; i < m_playbackSegmentMeta.size(); ++i) {
-        const PlaybackSegmentMeta& meta = m_playbackSegmentMeta.at(i);
-        if (current >= meta.startTime && current <= meta.endTime) {
-            return i;
-        }
-    }
-
-    for (int i = m_playbackSegmentMeta.size() - 1; i >= 0; --i) {
-        if (current >= m_playbackSegmentMeta.at(i).startTime) {
-            return i;
-        }
-    }
-
-    return 0;
-}
-
-double MainController::playbackSegmentLocalProgress(int segmentIndex) const
-{
-    if (segmentIndex < 0 || segmentIndex >= m_playbackSegmentMeta.size() || !m_playbackControl) {
-        return 0.0;
-    }
-
-    const PlaybackSegmentMeta& meta = m_playbackSegmentMeta.at(segmentIndex);
-    const qint64 totalMs = meta.startTime.msecsTo(meta.endTime);
-    if (totalMs <= 0) {
-        return 0.0;
-    }
-
-    const QDateTime current = m_playbackControl->currentTime();
-    const qint64 elapsedMs = meta.startTime.msecsTo(current);
-    return qBound(0.0, static_cast<double>(elapsedMs) / static_cast<double>(totalMs), 1.0);
-}
-
-void MainController::seekPlaybackSegment(int segmentIndex, double localProgress)
-{
-    if (segmentIndex < 0 || segmentIndex >= m_playbackSegmentMeta.size() || !m_animationEngine) {
-        return;
-    }
-
-    const PlaybackSegmentMeta& meta = m_playbackSegmentMeta.at(segmentIndex);
-    if (!meta.startTime.isValid() || !meta.endTime.isValid()) {
-        return;
-    }
-
-    localProgress = qBound(0.0, localProgress, 1.0);
-    const qint64 totalMs = meta.startTime.msecsTo(meta.endTime);
-    const QDateTime target = meta.startTime.addMSecs(static_cast<qint64>(totalMs * localProgress));
-    m_animationEngine->seekToTime(target);
-}
-
-QVariant MainController::geoPathFromTrajectory(const QVariant& trajectoryPoints) const
-{
-    QGeoPath path;
-    for (const QVariant& v : trajectoryPoints.toList()) {
-        const QGeoCoordinate c = trajectoryPointToCoordinate(v);
-        if (c.isValid())
-            path.addCoordinate(c);
-    }
-    return QVariant::fromValue(path);
 }
 
 QVariant MainController::geoPathForViewport(const QVariant& trajectoryPoints) const
@@ -713,7 +339,7 @@ bool MainController::seekVehicleToNearestTrajectoryPoint(double latitude, double
     if (!m_vehicleManager || m_selectedVehicle.isEmpty())
         return false;
 
-    const QList<ExcelDataReader::VehicleRecord> trajectory =
+    const QList<TrajectoryPoint> trajectory =
         m_coordinateConversionEnabled ? m_vehicleManager->getConvertedTrajectory()
                                       : m_vehicleManager->getCurrentTrajectory();
     if (trajectory.isEmpty())
@@ -726,7 +352,7 @@ bool MainController::seekVehicleToNearestTrajectoryPoint(double latitude, double
     int nearestIndex = -1;
     double nearestDistance = std::numeric_limits<double>::max();
     for (int i = 0; i < trajectory.size(); ++i) {
-        const ExcelDataReader::VehicleRecord& record = trajectory.at(i);
+        const TrajectoryPoint& record = trajectory.at(i);
         const QGeoCoordinate point(record.latitude, record.longitude);
         if (!point.isValid())
             continue;
@@ -741,18 +367,13 @@ bool MainController::seekVehicleToNearestTrajectoryPoint(double latitude, double
     if (nearestIndex < 0)
         return false;
 
-    const ExcelDataReader::VehicleRecord& nearest = trajectory.at(nearestIndex);
+    const TrajectoryPoint& nearest = trajectory.at(nearestIndex);
     if (!nearest.timestamp.isValid())
         return false;
 
-    if (m_playbackControl) {
-        if (m_playbackControl->isPlaying())
-            m_playbackControl->pausePlayback();
-        m_playbackControl->seekToTime(nearest.timestamp);
-    } else if (m_animationEngine) {
-        m_animationEngine->seekToTime(nearest.timestamp);
+    if (m_timelineManager) {
+        m_timelineManager->seekToTime(nearest.timestamp);
     }
-
     return true;
 }
 

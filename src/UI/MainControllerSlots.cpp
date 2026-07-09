@@ -2,34 +2,50 @@
 // Separated from MainController.cpp for maintainability
 #include "UI/MainController.h"
 #include "DataManagement/VehicleManager.h"
-#include "DataManagement/VehicleDataModel.h"
-#include "Map/VehicleAnimationEngine.h"
 
-void MainController::onFolderScanCompleted(const QList<FolderScanner::VehicleInfo>& vehicles)
+void MainController::onDataSourceScanCompleted(const QList<TrajectoryDataManager::VehicleInfo>& vehicles)
 {
     finishVehicleListLoad(vehicles);
-    emit folderScanned(true, QString("成功找到 %1 辆车的数据").arg(vehicles.size()));
+    updateDatabaseConnectionState();
+    emit currentFolderChanged();
+
+    const QString message = m_trajectoryDataManager && m_trajectoryDataManager->useDatabaseSource()
+                                ? QStringLiteral("数据库连接成功，共 %1 辆车").arg(vehicles.size())
+                                : QString(QStringLiteral("成功找到 %1 辆车的数据")).arg(vehicles.size());
+    emit folderScanned(true, message);
 }
 
-void MainController::onFolderScanError(const QString& error)
+void MainController::onDataSourceScanError(const QString& error)
 {
     m_isLoading = false;
-    m_loadingMessage = "";
+    m_loadingMessage.clear();
+    m_databaseStatus = error;
+    updateDatabaseConnectionState();
     emit loadingChanged();
     emit loadingMessageChanged();
     emit folderScanned(false, error);
-    emit errorOccurred(QString("文件夹扫描错误: %1").arg(error));
+    emit errorOccurred(m_trajectoryDataManager && m_trajectoryDataManager->useDatabaseSource()
+                           ? error
+                           : QString(QStringLiteral("文件夹扫描错误: %1")).arg(error));
 }
 
-void MainController::onFolderScanProgress(int percentage)
+void MainController::onDataSourceScanProgress(int percentage)
 {
-    m_loadingMessage = QString("正在扫描文件夹... %1%").arg(percentage);
+    m_loadingMessage = m_trajectoryDataManager && m_trajectoryDataManager->useDatabaseSource()
+                           ? QStringLiteral("正在连接数据库... %1%").arg(percentage)
+                           : QStringLiteral("正在扫描文件夹... %1%").arg(percentage);
     emit loadingMessageChanged();
     emit loadingProgress(percentage);
 }
 
+void MainController::onDataSourceReadyChanged()
+{
+    updateDatabaseConnectionState();
+    emit currentFolderChanged();
+}
+
 void MainController::onVehicleTrajectoryLoaded(const QString& plateNumber,
-                                               const QList<ExcelDataReader::VehicleRecord>& trajectory)
+                                               const QList<TrajectoryPoint>& trajectory)
 {
     const bool captureMode = m_captureTrajectoryPending;
     if (captureMode) {
@@ -45,9 +61,7 @@ void MainController::onVehicleTrajectoryLoaded(const QString& plateNumber,
         return;
     }
 
-    setupVehicleDataModel();
-    rebuildTrajectorySegments();
-    updateTimeRange();
+    syncTimelineFromVehicleManager();
 
     if (!trajectory.isEmpty()) {
         QDateTime firstTime = trajectory.first().timestamp;
@@ -83,32 +97,33 @@ void MainController::onVehicleTrajectoryLoaded(const QString& plateNumber,
         emit loadingMessageChanged();
     }
 
-    if (m_animationEngine && !trajectory.isEmpty()) {
-        m_animationEngine->setVehicleModel(m_vehicleDataModel);
-        m_animationEngine->stop();
-        if (!m_playbackSegmentMeta.isEmpty()) {
-            m_animationEngine->seekToTime(m_playbackSegmentMeta.first().startTime);
-        } else {
-            m_animationEngine->seekToProgress(0.0);
+    if (!trajectory.isEmpty()) {
+        if (m_timelineManager && m_timelineManager->segmentCount() > 0) {
+            m_timelineManager->seekToTime(m_timelineManager->segmentStartTime(0));
+        } else if (m_timelineManager) {
+            m_timelineManager->seekToProgress(0.0);
         }
     }
 }
 
 void MainController::onTrajectoryConverted(const QString& plateNumber,
-                                           const QList<ExcelDataReader::VehicleRecord>& /*convertedTrajectory*/)
+                                           const QList<TrajectoryPoint>& /*convertedTrajectory*/)
 {
-    if (plateNumber != m_selectedVehicle) return;
+    if (plateNumber != m_selectedVehicle) {
+        return;
+    }
 
-    setupVehicleDataModel();
-    rebuildTrajectorySegments();
-    updateTimeRange();
+    syncTimelineFromVehicleManager();
     emit trajectoryConverted();
 
-    if (m_animationEngine) {
-        if (!m_playbackSegmentMeta.isEmpty()) {
-            m_animationEngine->seekToTime(m_playbackSegmentMeta.first().startTime);
+    if (m_timelineManager && m_timelineManager->segmentCount() > 0) {
+        m_timelineManager->seekToTime(m_timelineManager->segmentStartTime(0));
+    } else if (m_timelineManager) {
+        if (m_timelineManager->currentTime().isValid()) {
+            m_timelineManager->seekToTime(m_timelineManager->currentTime());
+        } else {
+            m_timelineManager->seekToProgress(0.0);
         }
-        m_animationEngine->updateVehiclePositions();
     }
 }
 
@@ -117,11 +132,4 @@ void MainController::onVehicleLoadingProgress(int percentage)
     m_loadingMessage = QString("正在加载轨迹数据... %1%").arg(percentage);
     emit loadingMessageChanged();
     emit loadingProgress(percentage);
-}
-
-void MainController::onVehiclePositionUpdate(const QString& plateNumber,
-                                             const QGeoCoordinate& position,
-                                             int direction, double speed)
-{
-    emit vehiclePositionUpdated(plateNumber, position, direction, speed);
 }

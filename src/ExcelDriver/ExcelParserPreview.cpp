@@ -1,9 +1,13 @@
-#include "ExcelDriver/ExcelPreviewLoader.h"
+#include "ExcelDriver/ExcelParserPreviewInternal.h"
+
+#include "ExcelDriver/ExcelBackend.h"
 #include "ExcelDriver/ExcelCellFormatter.h"
 #include "ExcelDriver/ExcelFilePath.h"
+#include "ExcelDriver/ExcelPreviewTypes.h"
 #include "ExcelDriver/ExcelSheetGridUtils.h"
 #include "ExcelDriver/OoxmlSaxExcelLoader.h"
 #include "Core/ErrorHandler.h"
+#include "Core/LocalFilePath.h"
 #include "Core/AppLogger.h"
 
 #include <QFileInfo>
@@ -20,26 +24,7 @@ extern "C" {
 #include "xlsxio_read.h"
 }
 
-ExcelPreviewLimits ExcelPreviewLimits::forFileSize(qint64 fileSizeBytes)
-{
-    ExcelPreviewLimits limits;
-    if (fileSizeBytes >= ExcelBackend::LargeFileThresholdBytes) {
-        limits.maxRows = 300;
-        limits.maxColumns = 40;
-    } else if (fileSizeBytes >= 50LL * 1024 * 1024) {
-        limits.maxRows = 1000;
-        limits.maxColumns = 60;
-    }
-    return limits;
-}
-
-ExcelPreviewLimits ExcelPreviewLimits::forExport()
-{
-    ExcelPreviewLimits limits;
-    limits.maxRows = 2'000'000;
-    limits.maxColumns = 512;
-    return limits;
-}
+namespace ExcelParserPreviewInternal {
 
 namespace {
 
@@ -80,7 +65,7 @@ int xlsxioPreviewCellCallback(size_t row, size_t col, const XLSXIOCHAR* value, v
 bool inspectWithQXlsx(const QString& filePath, ExcelWorkbookInfo& info, QString& errorMessage)
 {
     QFile file;
-    if (!ExcelFilePath::openReadableFile(file, filePath)) {
+    if (!LocalFilePath::openReadableFile(file, filePath)) {
         errorMessage = HANDLE_FILE_ERROR(filePath, QStringLiteral("打开Excel文件"));
         return false;
     }
@@ -145,7 +130,7 @@ bool loadSheetWithQXlsx(const ExcelWorkbookInfo& info,
     }
 
     QFile file;
-    if (!ExcelFilePath::openReadableFile(file, info.filePath)) {
+    if (!LocalFilePath::openReadableFile(file, info.filePath)) {
         errorMessage = HANDLE_FILE_ERROR(info.filePath, QStringLiteral("打开Excel文件"));
         return false;
     }
@@ -209,9 +194,9 @@ bool loadSheetWithQXlsx(const ExcelWorkbookInfo& info,
     }
 
     sheet.statusMessage = ExcelSheetGridUtils::formatSheetStatus(sheet.grid.size(),
-                                            sheet.columnCount,
-                                            truncated,
-                                            info.limits);
+                                                                 sheet.columnCount,
+                                                                 truncated,
+                                                                 info.limits);
     return true;
 }
 
@@ -275,14 +260,12 @@ bool loadSheetWithXlsxio(const ExcelWorkbookInfo& info,
 
 } // namespace
 
-bool ExcelPreviewLoader::inspectWorkbook(const QString& filePath,
-                                         ExcelWorkbookInfo& info,
-                                         QString& errorMessage)
+bool inspectWorkbook(const QString& filePath, ExcelWorkbookInfo& info, QString& errorMessage)
 {
     info = ExcelWorkbookInfo{};
     errorMessage.clear();
 
-    const QString localPath = ExcelFilePath::normalizeLocalFilePath(filePath);
+    const QString localPath = LocalFilePath::normalizeLocalFilePath(filePath);
     QFileInfo fileInfo;
     if (!ExcelFilePath::validateExcelFile(localPath, fileInfo, errorMessage)) {
         return false;
@@ -291,9 +274,12 @@ bool ExcelPreviewLoader::inspectWorkbook(const QString& filePath,
     info.filePath = localPath;
     info.fileSizeBytes = fileInfo.size();
     info.limits = ExcelPreviewLimits::forFileSize(info.fileSizeBytes);
-    info.readerType = ExcelBackend::selectReader(info.fileSizeBytes, fileInfo.suffix().toLower());
+    info.previewMode = info.fileSizeBytes >= ExcelBackend::LargeFileThresholdBytes
+                           && fileInfo.suffix().compare(QLatin1String("xls"), Qt::CaseInsensitive) != 0
+                       ? ExcelPreviewMode::Streaming
+                       : ExcelPreviewMode::Standard;
 
-    if (info.readerType == ExcelBackend::ReaderType::Xlsxio) {
+    if (info.previewMode == ExcelPreviewMode::Streaming) {
         return inspectWithXlsxio(localPath, info, errorMessage);
     }
 
@@ -304,17 +290,17 @@ bool ExcelPreviewLoader::inspectWorkbook(const QString& filePath,
     if (fileInfo.suffix().compare(QLatin1String("xlsx"), Qt::CaseInsensitive) == 0) {
         QString xlsxioError;
         if (inspectWithXlsxio(localPath, info, xlsxioError)) {
-            AppLogger::info(QStringLiteral("QXlsx 无法解析，已回退到 xlsxio：%1")
+            AppLogger::info(QStringLiteral("主解析器无法解析，已自动切换备用解析器：%1")
                                 .arg(QFileInfo(localPath).fileName()));
             errorMessage.clear();
-            info.readerType = ExcelBackend::ReaderType::Xlsxio;
+            info.previewMode = ExcelPreviewMode::Streaming;
             return true;
         }
 
         if (OoxmlSaxExcelLoader::inspectWorkbook(localPath, info.sheetNames, errorMessage)) {
-            AppLogger::info(QStringLiteral("已使用 Strict OOXML 解析：%1")
+            AppLogger::info(QStringLiteral("已使用兼容格式解析：%1")
                                 .arg(QFileInfo(localPath).fileName()));
-            info.readerType = ExcelBackend::ReaderType::OoxmlSax;
+            info.previewMode = ExcelPreviewMode::AlternateXml;
             return true;
         }
 
@@ -328,10 +314,10 @@ bool ExcelPreviewLoader::inspectWorkbook(const QString& filePath,
     return false;
 }
 
-bool ExcelPreviewLoader::loadSheet(const ExcelWorkbookInfo& info,
-                                     int sheetIndex,
-                                     ExcelSheetPreview& sheet,
-                                     QString& errorMessage)
+bool loadSheet(const ExcelWorkbookInfo& info,
+               int sheetIndex,
+               ExcelSheetPreview& sheet,
+               QString& errorMessage)
 {
     sheet = ExcelSheetPreview{};
     errorMessage.clear();
@@ -341,11 +327,11 @@ bool ExcelPreviewLoader::loadSheet(const ExcelWorkbookInfo& info,
         return false;
     }
 
-    if (info.readerType == ExcelBackend::ReaderType::Xlsxio) {
+    if (info.previewMode == ExcelPreviewMode::Streaming) {
         if (!loadSheetWithXlsxio(info, sheetIndex, sheet, errorMessage)) {
             return false;
         }
-    } else if (info.readerType == ExcelBackend::ReaderType::OoxmlSax) {
+    } else if (info.previewMode == ExcelPreviewMode::AlternateXml) {
         if (!OoxmlSaxExcelLoader::loadSheetPreview(info.filePath,
                                                    sheetIndex,
                                                    info.limits,
@@ -359,3 +345,5 @@ bool ExcelPreviewLoader::loadSheet(const ExcelWorkbookInfo& info,
 
     return true;
 }
+
+} // namespace ExcelParserPreviewInternal

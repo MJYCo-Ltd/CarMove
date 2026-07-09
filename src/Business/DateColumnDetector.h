@@ -1,7 +1,7 @@
 #ifndef DATECOLUMNDETECTOR_H
 #define DATECOLUMNDETECTOR_H
 
-#include "ExcelDriver/ExcelPreviewLoader.h"
+#include "ExcelDriver/ExcelPreviewTypes.h"
 
 #include <QDate>
 #include <QList>

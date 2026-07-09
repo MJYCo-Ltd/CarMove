@@ -1,7 +1,7 @@
 #ifndef EXCELSHEETGRIDUTILS_H
 #define EXCELSHEETGRIDUTILS_H
 
-#include "ExcelDriver/ExcelPreviewLoader.h"
+#include "ExcelDriver/ExcelPreviewTypes.h"
 
 #include <QMap>
 #include <QString>

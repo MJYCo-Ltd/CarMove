@@ -128,50 +128,6 @@ Rectangle {
             ToolTip.text: "车辆轨迹追踪"
         }
 
-        // 卸油记录功能按钮
-        Button {
-            id: fuelButton
-            width: parent.width - 10
-            height: 50
-            anchors.horizontalCenter: parent.horizontalCenter
-
-            background: Rectangle {
-                color: sidebarPanel.currentMode === "fuel" ? "#e74c3c" : "#34495e"
-                border.color: sidebarPanel.currentMode === "fuel" ? "#c0392b" : "#2c3e50"
-                border.width: 1
-                radius: 4
-            }
-
-            contentItem: Column {
-                anchors.centerIn: parent
-                spacing: 2
-
-                Text {
-                    text: "⛽"
-                    font.pixelSize: 16
-                    color: "#ecf0f1"
-                    anchors.horizontalCenter: parent.horizontalCenter
-                }
-
-                Text {
-                    text: "卸油"
-                    font.pixelSize: 10
-                    color: "#ecf0f1"
-                    anchors.horizontalCenter: parent.horizontalCenter
-                }
-            }
-
-            onClicked: {
-                if (sidebarPanel.currentMode !== "fuel") {
-                    sidebarPanel.currentMode = "fuel"
-                    sidebarPanel.modeChanged("fuel")
-                }
-            }
-
-            ToolTip.visible: hovered
-            ToolTip.text: "卸油记录查看"
-        }
-
         // 地点搜索功能按钮
         Button {
             id: searchButton

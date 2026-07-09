@@ -1,7 +1,7 @@
 #ifndef QXLSXEXCELLOADER_H
 #define QXLSXEXCELLOADER_H
 
-#include "DataParsing/ExcelDataReader.h"
+#include "Domain/TrajectoryTypes.h"
 #include <functional>
 
 class QXlsxExcelLoader
@@ -10,7 +10,7 @@ public:
     using ProgressCallback = std::function<void(int percentage)>;
 
     static bool load(const QString& filePath,
-                     QList<ExcelDataReader::VehicleRecord>& records,
+                     QList<TrajectoryPoint>& records,
                      const ProgressCallback& onProgress,
                      QString& errorMessage);
 };

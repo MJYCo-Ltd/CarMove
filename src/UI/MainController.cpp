@@ -1,13 +1,8 @@
 #include "UI/MainController.h"
 #include "Core/AppLogger.h"
-#include "DataManagement/FolderScanner.h"
 #include "DataManagement/VehicleManager.h"
-#include "Map/VehicleAnimationEngine.h"
-#include "DataManagement/VehicleDataModel.h"
 #include "Core/ConfigManager.h"
 #include "Core/ErrorHandler.h"
-#include "DataManagement/PostGisDatabaseConfig.h"
-#include "ExcelDriver/ExcelFilePath.h"
 #include <QDate>
 #include <QDir>
 #include <QFile>
@@ -19,37 +14,51 @@ MainController::MainController(QObject *parent)
     , m_isLoading(false)
     , m_loadingMessage("")
     , m_searchText("")
-    , m_folderScanner(new FolderScanner(this))
-    , m_postGisLoader(new PostGisTrajectoryLoader(this))
+    , m_trajectoryDataManager(new TrajectoryDataManager(this))
+    , m_mapServiceManager(new MapServiceManager(this))
+    , m_filePathManager(new FilePathManager(this))
     , m_vehicleManager(new VehicleManager(this))
-    , m_animationEngine(new VehicleAnimationEngine(this))
-    , m_vehicleDataModel(new VehicleDataModel(this))
+    , m_timelineManager(new TrajectoryTimelineManager(this))
 {
-    // Connect FolderScanner signals
-    connect(m_folderScanner, &FolderScanner::scanCompleted,
-            this, &MainController::onFolderScanCompleted);
-    connect(m_folderScanner, &FolderScanner::scanError,
-            this, &MainController::onFolderScanError);
-    connect(m_folderScanner, &FolderScanner::scanProgress,
-            this, &MainController::onFolderScanProgress);
-    
-    // Connect VehicleManager signals
+    connect(m_timelineManager, &TrajectoryTimelineManager::timeRangeChanged,
+            this, &MainController::trajectoryTimeRangeChanged);
+    connect(m_timelineManager, &TrajectoryTimelineManager::currentTimeChanged,
+            this, &MainController::trajectoryCurrentTimeChanged);
+    connect(m_timelineManager, &TrajectoryTimelineManager::segmentsChanged,
+            this, &MainController::trajectorySegmentsChanged);
+    connect(m_timelineManager, &TrajectoryTimelineManager::vehiclePositionUpdated,
+            this, &MainController::vehiclePositionUpdated);
+
+    connect(m_trajectoryDataManager, &TrajectoryDataManager::scanCompleted,
+            this, &MainController::onDataSourceScanCompleted);
+    connect(m_trajectoryDataManager, &TrajectoryDataManager::scanError,
+            this, &MainController::onDataSourceScanError);
+    connect(m_trajectoryDataManager, &TrajectoryDataManager::scanProgress,
+            this, &MainController::onDataSourceScanProgress);
+    connect(m_trajectoryDataManager, &TrajectoryDataManager::readyChanged,
+            this, &MainController::onDataSourceReadyChanged);
+    connect(m_trajectoryDataManager, &TrajectoryDataManager::sourceModeChanged,
+            this, &MainController::trajectorySourceModeChanged);
+    connect(m_trajectoryDataManager, &TrajectoryDataManager::sourceDescriptionChanged,
+            this, &MainController::currentFolderChanged);
+
     connect(m_vehicleManager, &VehicleManager::trajectoryLoaded,
             this, &MainController::onVehicleTrajectoryLoaded);
     connect(m_vehicleManager, &VehicleManager::trajectoryConverted,
             this, &MainController::onTrajectoryConverted);
     connect(m_vehicleManager, &VehicleManager::loadingProgress,
             this, &MainController::onVehicleLoadingProgress);
-    
-    connect(m_animationEngine, &VehicleAnimationEngine::vehiclePositionUpdated,
-            this, &MainController::onVehiclePositionUpdate);
 
-    m_animationEngine->setVehicleModel(m_vehicleDataModel);
+    m_vehicleManager->setDataManager(m_trajectoryDataManager);
+    updateDatabaseConnectionState();
 
-    m_playbackControl = new PlaybackControl(m_animationEngine, m_vehicleDataModel, this);
-
-    m_vehicleManager->setPostGisLoader(m_postGisLoader);
-    applyTrajectorySourceMode();
+    if (m_trajectoryDataManager->useDatabaseSource()) {
+        m_isLoading = true;
+        m_loadingMessage = QStringLiteral("正在连接 PostGIS 数据库...");
+        emit loadingChanged();
+        emit loadingMessageChanged();
+        m_trajectoryDataManager->refreshDatabaseSource();
+    }
 
     const QVariantMap persistedTarget = ConfigManager::GetInstance()->loadPersistedTargetArea();
     if (persistedTarget.contains(QStringLiteral("latitude"))
@@ -63,7 +72,33 @@ MainController::MainController(QObject *parent)
 
 MainController::~MainController()
 {
-    // Components will be deleted automatically by Qt parent-child system
+}
+
+bool MainController::trajectorySpansMultipleDays() const
+{
+    return m_timelineManager && m_timelineManager->spansMultipleDays();
+}
+
+QDateTime MainController::trajectoryStartTime() const
+{
+    return m_timelineManager ? m_timelineManager->startTime() : QDateTime();
+}
+
+QDateTime MainController::trajectoryEndTime() const
+{
+    return m_timelineManager ? m_timelineManager->endTime() : QDateTime();
+}
+
+QDateTime MainController::trajectoryCurrentTime() const
+{
+    return m_timelineManager ? m_timelineManager->currentTime() : QDateTime();
+}
+
+void MainController::seekTrajectoryToProgress(double progress)
+{
+    if (m_timelineManager) {
+        m_timelineManager->seekToProgress(progress);
+    }
 }
 
 void MainController::setCoordinateConversionEnabled(bool enabled)
@@ -94,21 +129,62 @@ void MainController::clearSearch()
     setSearchText("");
 }
 
+QString MainController::currentFolder() const
+{
+    return m_trajectoryDataManager ? m_trajectoryDataManager->sourceDescription() : QString();
+}
+
 QString MainController::trajectorySourceMode() const
 {
-    return ConfigManager::GetInstance()->trajectorySourceMode();
+    return m_trajectoryDataManager ? m_trajectoryDataManager->sourceMode()
+                                   : ConfigManager::GetInstance()->trajectorySourceMode();
 }
 
 bool MainController::useDatabaseTrajectorySource() const
 {
-    return ConfigManager::GetInstance()->useDatabaseTrajectorySource();
+    return m_trajectoryDataManager ? m_trajectoryDataManager->useDatabaseSource()
+                                   : ConfigManager::GetInstance()->useDatabaseTrajectorySource();
+}
+
+bool MainController::databaseConnected() const
+{
+    return m_trajectoryDataManager && m_trajectoryDataManager->useDatabaseSource()
+           && m_trajectoryDataManager->isReady();
+}
+
+QString MainController::databaseStatus() const
+{
+    return m_databaseStatus;
 }
 
 void MainController::setTrajectorySourceMode(const QString& mode)
 {
-    ConfigManager::GetInstance()->setTrajectorySourceMode(mode);
-    applyTrajectorySourceMode();
+    if (!m_trajectoryDataManager) {
+        return;
+    }
+
+    m_isLoading = true;
+    m_loadingMessage = QStringLiteral("正在切换数据源...");
+    emit loadingChanged();
+    emit loadingMessageChanged();
+
+    clearVehicleDataState();
+    m_trajectoryDataManager->setSourceMode(mode);
+    updateDatabaseConnectionState();
     emit trajectorySourceModeChanged();
+    emit currentFolderChanged();
+
+    if (m_trajectoryDataManager->useDatabaseSource()) {
+        m_loadingMessage = QStringLiteral("正在连接 PostGIS 数据库...");
+        emit loadingMessageChanged();
+        m_trajectoryDataManager->refreshDatabaseSource();
+        return;
+    }
+
+    m_isLoading = false;
+    m_loadingMessage.clear();
+    emit loadingChanged();
+    emit loadingMessageChanged();
 }
 
 void MainController::savePostGisSettings()
@@ -116,27 +192,23 @@ void MainController::savePostGisSettings()
     ConfigManager::GetInstance()->savePostGisSettings();
 }
 
-void MainController::applyTrajectorySourceMode()
+void MainController::updateDatabaseConnectionState()
 {
-    const bool databaseMode = useDatabaseTrajectorySource();
-    m_vehicleManager->setDatabaseMode(databaseMode);
-
-    if (databaseMode) {
-        m_currentFolder.clear();
-        emit currentFolderChanged();
-        connectPostGisDatabase();
-    } else {
-        if (m_postGisLoader) {
-            m_postGisLoader->disconnectDatabase();
-        }
-        m_databaseConnected = false;
-        m_databaseStatus.clear();
-        emit databaseConnectionChanged();
-        clearVehicleDataState();
+    if (!m_trajectoryDataManager) {
+        return;
     }
+
+    if (m_trajectoryDataManager->useDatabaseSource()) {
+        m_databaseStatus = m_trajectoryDataManager->isReady()
+                               ? m_trajectoryDataManager->sourceDescription()
+                               : m_databaseStatus;
+    } else {
+        m_databaseStatus.clear();
+    }
+    emit databaseConnectionChanged();
 }
 
-void MainController::finishVehicleListLoad(const QList<FolderScanner::VehicleInfo>& vehicles)
+void MainController::finishVehicleListLoad(const QList<TrajectoryDataManager::VehicleInfo>& vehicles)
 {
     m_vehicleInfoList = vehicles;
     m_vehicleList.clear();
@@ -168,7 +240,7 @@ void MainController::clearVehicleDataState()
 
 void MainController::connectPostGisDatabase()
 {
-    if (!useDatabaseTrajectorySource()) {
+    if (!m_trajectoryDataManager || !useDatabaseTrajectorySource()) {
         return;
     }
 
@@ -178,104 +250,22 @@ void MainController::connectPostGisDatabase()
     emit loadingMessageChanged();
 
     clearVehicleDataState();
-
-    QString errorMessage;
-    const PostGisDatabaseConfig config = ConfigManager::GetInstance()->postGisDatabaseConfig();
-    if (!m_postGisLoader->connectDatabase(config, errorMessage)) {
-        m_databaseConnected = false;
-        m_databaseStatus = errorMessage;
-        m_isLoading = false;
-        emit databaseConnectionChanged();
-        emit loadingChanged();
-        emit loadingMessageChanged();
-        emit errorOccurred(errorMessage);
-        return;
-    }
-
-    m_databaseConnected = true;
-    m_databaseStatus = config.connectionSummary();
-    emit databaseConnectionChanged();
-
-    const QList<FolderScanner::VehicleInfo> vehicles = m_postGisLoader->listVehicles(errorMessage);
-    if (vehicles.isEmpty()) {
-        m_postGisLoader->disconnectDatabase();
-        m_databaseConnected = false;
-        m_databaseStatus.clear();
-        m_isLoading = false;
-        emit databaseConnectionChanged();
-        emit loadingChanged();
-        emit loadingMessageChanged();
-        emit errorOccurred(errorMessage);
-        return;
-    }
-
-    finishVehicleListLoad(vehicles);
-    m_currentFolder = config.connectionSummary();
-    emit currentFolderChanged();
+    m_trajectoryDataManager->refreshDatabaseSource();
 }
 
 void MainController::selectFolder(const QString& folderPath)
 {
-    if (useDatabaseTrajectorySource()) {
+    if (!m_trajectoryDataManager || useDatabaseTrajectorySource()) {
         return;
     }
-    // Validate folder path
-    if (folderPath.isEmpty()) {
-        emit errorOccurred("请选择一个有效的文件夹路径");
-        return;
-    }
-    
-    // Normalize path
-    QString normalizedPath = QUrl(folderPath).toLocalFile();
-    
-    if (m_currentFolder != normalizedPath) {
-        m_currentFolder = normalizedPath;
-        emit currentFolderChanged();
-        
-        // Clear current state
-        m_vehicleList.clear();
-        m_selectedVehicle.clear();
-        m_vehicleInfoList.clear();
-        emit vehicleListChanged();
-        emit selectedVehicleChanged();
-        
-        // Set loading state
-        m_isLoading = true;
-        m_loadingMessage = "正在扫描文件夹...";
-        emit loadingChanged();
-        emit loadingMessageChanged();
-        
-        // Additional validation before scanning
-        QDir dir(normalizedPath);
-        if (!dir.exists()) {
-            m_isLoading = false;
-            emit loadingChanged();
-            emit errorOccurred(HANDLE_FILE_ERROR(normalizedPath, "访问文件夹"));
-            return;
-        }
-        
-        // Check if folder is readable
-        QFileInfo dirInfo(normalizedPath);
-        if (!dirInfo.isReadable()) {
-            m_isLoading = false;
-            emit loadingChanged();
-            emit errorOccurred(HANDLE_FILE_ERROR(normalizedPath, "读取文件夹"));
-            return;
-        }
-        
-        // Start folder scanning
-        try {
-            m_folderScanner->scanFolder(normalizedPath);
-        } catch (const std::exception& e) {
-            m_isLoading = false;
-            emit loadingChanged();
-            emit errorOccurred(HANDLE_SYSTEM_ERROR("扫描文件夹", e.what()));
-        } catch (...) {
-            m_isLoading = false;
-            emit loadingChanged();
-            emit errorOccurred(HANDLE_SYSTEM_ERROR("扫描文件夹", "未知异常"));
-        }
-    }
+
+    m_isLoading = true;
+    m_loadingMessage = QStringLiteral("正在扫描文件夹...");
+    emit loadingChanged();
+    emit loadingMessageChanged();
+
+    clearVehicleDataState();
+    m_trajectoryDataManager->scanFolder(folderPath);
 }
 
 void MainController::selectVehicle(const QString& plateNumber)
@@ -293,23 +283,21 @@ void MainController::selectVehicle(const QString& plateNumber)
     const bool selectionChanged = (m_selectedVehicle != plateNumber);
     if (selectionChanged) {
         m_selectedVehicle = plateNumber;
-        m_trajectoryDisplaySegments.clear();
-        m_playbackSegmentMeta.clear();
-        m_segmentsNeedRebuild = true;
-        emit playbackSegmentsChanged();
+        if (m_timelineManager) {
+            m_timelineManager->setSelectedVehicle(plateNumber);
+            m_timelineManager->invalidateSegments();
+        }
         emit selectedVehicleChanged();
     }
 
     try {
-        if (m_playbackControl) {
-            m_playbackControl->stopPlayback();
-        }
+        resetTrajectoryTimeline();
     } catch (const std::exception& e) {
-        AppLogger::warn(QStringLiteral("停止播放时发生错误: %1").arg(e.what()));
-        emit errorOccurred(QString(QStringLiteral("停止播放时发生错误: %1")).arg(e.what()));
+        AppLogger::warn(QStringLiteral("重置时间轴时发生错误: %1").arg(e.what()));
+        emit errorOccurred(QString(QStringLiteral("重置时间轴时发生错误: %1")).arg(e.what()));
     } catch (...) {
-        AppLogger::warn(QStringLiteral("停止播放时发生未知错误"));
-        emit errorOccurred(QStringLiteral("停止播放时发生未知错误"));
+        AppLogger::warn(QStringLiteral("重置时间轴时发生未知错误"));
+        emit errorOccurred(QStringLiteral("重置时间轴时发生未知错误"));
     }
 
     m_isLoading = true;
@@ -339,8 +327,8 @@ void MainController::loadTrajectoryForCapture(const QString& plateNumber,
         return;
     }
 
-    if (!useDatabaseTrajectorySource() || !m_databaseConnected) {
-        emit errorOccurred(QStringLiteral("PostGIS 数据库未连接，请检查 CarMoveTracker.ini 配置"));
+    if (!m_trajectoryDataManager || !m_trajectoryDataManager->isReady()) {
+        emit errorOccurred(QStringLiteral("轨迹数据源尚未就绪，请先选择文件夹或连接数据库"));
         emit captureTrajectoryReady(false, 0);
         return;
     }
@@ -356,9 +344,7 @@ void MainController::loadTrajectoryForCapture(const QString& plateNumber,
     m_selectedVehicle = plateNumber.trimmed();
     emit selectedVehicleChanged();
 
-    if (m_playbackControl) {
-        m_playbackControl->stopPlayback();
-    }
+    resetTrajectoryTimeline();
 
     m_isLoading = true;
     m_loadingMessage = QString(QStringLiteral("正在加载 %1 的轨迹 (%2 ~ %3)..."))
@@ -366,21 +352,17 @@ void MainController::loadTrajectoryForCapture(const QString& plateNumber,
     emit loadingChanged();
     emit loadingMessageChanged();
 
-    m_vehicleManager->loadTrajectoryFromDatabase(plateNumber.trimmed(), startDate, endDate, true);
+    m_vehicleManager->loadTrajectory(plateNumber.trimmed(), startDate, endDate, true);
 }
 
 QString MainController::normalizeLocalPath(const QString& path) const
 {
-    return ExcelFilePath::normalizeLocalFilePath(path);
+    return m_filePathManager ? m_filePathManager->normalizeLocalPath(path) : path;
 }
 
 bool MainController::ensureScreenshotOutputDirectory(const QString& folderPath) const
 {
-    const QString localPath = ExcelFilePath::normalizeLocalFilePath(folderPath);
-    if (localPath.trimmed().isEmpty()) {
-        return false;
-    }
-    return QDir().mkpath(localPath);
+    return m_filePathManager && m_filePathManager->ensureScreenshotOutputDirectory(folderPath);
 }
 
 QString MainController::screenshotFilePath(const QString& folderPath,
@@ -388,12 +370,9 @@ QString MainController::screenshotFilePath(const QString& folderPath,
                                            const QString& startDateIso,
                                            const QString& endDateIso) const
 {
-    const QString localFolder = ExcelFilePath::normalizeLocalFilePath(folderPath);
-    const QString safePlate = ExcelFilePath::sanitizePlateForFilename(plateNumber);
-
-    const QString fileName =
-        safePlate + QLatin1Char('_') + startDateIso + QLatin1Char('_') + endDateIso + QStringLiteral(".png");
-    return QDir(localFolder).filePath(fileName);
+    return m_filePathManager
+               ? m_filePathManager->screenshotFilePath(folderPath, plateNumber, startDateIso, endDateIso)
+               : QString();
 }
 
 bool MainController::screenshotFileExists(const QString& folderPath,
@@ -401,7 +380,8 @@ bool MainController::screenshotFileExists(const QString& folderPath,
                                           const QString& startDateIso,
                                           const QString& endDateIso) const
 {
-    return QFile::exists(screenshotFilePath(folderPath, plateNumber, startDateIso, endDateIso));
+    return m_filePathManager
+           && m_filePathManager->screenshotFileExists(folderPath, plateNumber, startDateIso, endDateIso);
 }
 
 void MainController::toggleCoordinateConversion()

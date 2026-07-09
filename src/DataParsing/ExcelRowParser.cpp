@@ -2,7 +2,7 @@
 #include "Core/ConfigManager.h"
 
 bool ExcelRowParser::parseRow(const QHash<int, QVariant>& cells,
-                              ExcelDataReader::VehicleRecord& record,
+                              TrajectoryPoint& record,
                               QString& errorMessage)
 {
     errorMessage.clear();

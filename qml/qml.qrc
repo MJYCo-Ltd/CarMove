@@ -8,13 +8,12 @@
         <file alias="FormErrorStrip.qml">UI/FormErrorStrip.qml</file>
         <file alias="NotificationDialog.qml">UI/NotificationDialog.qml</file>
         <file alias="StatusButton.qml">UI/StatusButton.qml</file>
-        <file alias="PlaybackControls.qml">UI/PlaybackControls.qml</file>
+        <file alias="TrajectoryTimelineBar.qml">UI/TrajectoryTimelineBar.qml</file>
         <file alias="SegmentTimeline.qml">UI/SegmentTimeline.qml</file>
         <file alias="TimeDisplay.qml">UI/TimeDisplay.qml</file>
         <file alias="VehicleInfoCard.qml">UI/VehicleInfoCard.qml</file>
         <file alias="TargetNameEditDialog.qml">UI/TargetNameEditDialog.qml</file>
         <file alias="TrajectoryPanel.qml">UI/TrajectoryPanel.qml</file>
-        <file alias="FuelRecordsPanel.qml">UI/FuelRecordsPanel.qml</file>
         <file alias="GeoSearchPanel.qml">UI/GeoSearchPanel.qml</file>
         <file alias="GeoPickSearch.qml">UI/GeoPickSearch.qml</file>
         <file alias="GeocodeResultCard.qml">UI/GeocodeResultCard.qml</file>
@@ -31,7 +30,6 @@
         <file alias="MapAnimations.qml">Map/MapAnimations.qml</file>
         <file alias="MapNotifications.qml">Map/MapNotifications.qml</file>
         <file alias="VehicleMarker.qml">Map/VehicleMarker.qml</file>
-        <file alias="FuelUnloadingDisplay.qml">Map/FuelUnloadingDisplay.qml</file>
         <file alias="BusinessPanel.qml">Business/BusinessPanel.qml</file>
         <file alias="BusinessExportDialog.qml">Business/BusinessExportDialog.qml</file>
         <file alias="BusinessClassifyDialog.qml">Business/BusinessClassifyDialog.qml</file>

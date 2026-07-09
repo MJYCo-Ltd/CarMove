@@ -1,35 +1,40 @@
 #include "DataManagement/VehicleManager.h"
 #include "Map/CoordinateConverter.h"
-#include "DataManagement/PostGisTrajectoryLoader.h"
 #include "Core/AppLogger.h"
 
-#include <QDate>
+#include <algorithm>
 
 VehicleManager::VehicleManager(QObject *parent)
     : QObject(parent)
-    , m_coordinateConversionEnabled(false)
-    , m_excelReader(new ExcelDataReader(this))
 {
 }
 
-void VehicleManager::setDatabaseMode(bool enabled)
+void VehicleManager::setDataManager(TrajectoryDataManager* manager)
 {
-    m_databaseMode = enabled;
+    if (m_dataManager == manager) {
+        return;
+    }
+
+    if (m_dataManager) {
+        disconnect(m_dataManager, nullptr, this, nullptr);
+    }
+
+    m_dataManager = manager;
+    if (!m_dataManager) {
+        return;
+    }
+
+    connect(m_dataManager, &TrajectoryDataManager::loadProgress,
+            this, &VehicleManager::loadingProgress);
 }
 
-void VehicleManager::setPostGisLoader(PostGisTrajectoryLoader* loader)
-{
-    m_postGisLoader = loader;
-}
-
-void VehicleManager::setVehicleList(const QList<FolderScanner::VehicleInfo>& vehicles)
+void VehicleManager::setVehicleList(const QList<TrajectoryDataManager::VehicleInfo>& vehicles)
 {
     m_vehicleList = vehicles;
     
-    // Clear current selection if the vehicle is no longer in the list
     if (!m_selectedVehicle.isEmpty()) {
         bool found = false;
-        for (const auto& vehicleInfo : vehicles) {
+        for (const TrajectoryDataManager::VehicleInfo& vehicleInfo : vehicles) {
             if (vehicleInfo.plateNumber == m_selectedVehicle) {
                 found = true;
                 break;
@@ -46,165 +51,62 @@ void VehicleManager::setVehicleList(const QList<FolderScanner::VehicleInfo>& veh
 void VehicleManager::selectVehicle(const QString& plateNumber)
 {
     m_selectedVehicle = plateNumber;
-
-    // Clear previous trajectory data
     m_currentTrajectory.clear();
     m_convertedTrajectory.clear();
 
     emit vehicleSelected(plateNumber);
-
-    // Load trajectory data for the selected vehicle
-    loadVehicleTrajectory(plateNumber);
+    loadTrajectory(plateNumber);
 }
 
-void VehicleManager::loadVehicleTrajectory(const QString& plateNumber)
+void VehicleManager::loadTrajectory(const QString& plateNumber,
+                                    const QDate& startDate,
+                                    const QDate& endDate,
+                                    bool preserveAllPoints)
 {
     if (plateNumber.isEmpty()) {
         AppLogger::warn(QStringLiteral("无法加载轨迹: 车牌号为空"));
         return;
     }
 
-    if (m_databaseMode) {
-        loadVehicleTrajectoryFromDatabase(plateNumber);
+    if (!m_dataManager) {
+        AppLogger::warn(QStringLiteral("无法加载轨迹: 数据源管理器未初始化"));
+        emit trajectoryLoaded(plateNumber, {});
         return;
     }
-    
-    // Find all file paths for this vehicle
-    QStringList filePaths;
-    for (const auto& vehicleInfo : m_vehicleList) {
-        if (vehicleInfo.plateNumber == plateNumber) {
-            filePaths = vehicleInfo.filePaths;
-            break;
-        }
-    }
-    
-    if (filePaths.isEmpty()) {
-        AppLogger::warn(QStringLiteral("无法找到车辆文件: %1").arg(plateNumber));
-        emit trajectoryLoaded(plateNumber, QList<ExcelDataReader::VehicleRecord>());
-        return;
-    }
-    
-    // Clear previous trajectory data
+
     m_currentTrajectory.clear();
-    
-    // Load data from all files and merge
-    QList<ExcelDataReader::VehicleRecord> allRecords;
-    int totalFiles = filePaths.size();
-    int processedFiles = 0;
-    
-    // Reuse the existing ExcelDataReader instance to avoid creating temporary objects
-    if (!m_excelReader) {
-        m_excelReader = new ExcelDataReader(this);
-    }
-    
-    for (const QString& filePath : filePaths) {
-        // Disconnect any previous connections to avoid signal conflicts
-        m_excelReader->disconnect();
-        
-        QString errorMessage;
-        bool loadSuccess = false;
-        
-        // Connect to signals for error handling and progress tracking for this file
-        // Use value capture for errorMessage to avoid lifetime issues
-        connect(m_excelReader, &ExcelDataReader::errorOccurred, 
-                [&errorMessage](const QString& error) {
-            errorMessage = error;
-        });
-        
-        // Connect progress signal with current file index
-        int currentFileIndex = processedFiles;
-        connect(m_excelReader, &ExcelDataReader::loadingProgress, 
-                [this, currentFileIndex, totalFiles](int fileProgress) {
-            // Calculate overall progress across all files
-            int overallProgress = ((currentFileIndex * 100) + fileProgress) / totalFiles;
-            emit loadingProgress(overallProgress);
-        });
-        
-        try {
-            // Load the file using the column mapping configuration
-            loadSuccess = m_excelReader->loadExcelFile(filePath);
-        } catch (const std::exception& e) {
-            errorMessage = QString("文件读取异常: %1").arg(e.what());
-            loadSuccess = false;
-            AppLogger::warn(QStringLiteral("读取文件异常: %1 | %2").arg(filePath, e.what()));
-        } catch (...) {
-            errorMessage = "文件读取时发生未知异常";
-            loadSuccess = false;
-            AppLogger::warn(QStringLiteral("读取文件发生未知异常: %1").arg(filePath));
-        }
-        
-        if (loadSuccess && errorMessage.isEmpty()) {
-            QList<ExcelDataReader::VehicleRecord> fileRecords = m_excelReader->getVehicleData();
-            
-            // Filter records for the selected vehicle and add to collection
-            for (const auto& record : fileRecords) {
-                if (record.plateNumber == plateNumber) {
-                    allRecords.append(record);
-                }
-            }
-            
-        } else {
-            AppLogger::warn(QStringLiteral("读取文件失败: %1 | %2").arg(filePath, errorMessage));
-            // Continue with other files even if one fails
-        }
-        
-        processedFiles++;
-        emit loadingProgress((processedFiles * 100) / totalFiles);
-    }
-    
-    if (allRecords.isEmpty()) {
-        AppLogger::warn(QStringLiteral("未找到车辆轨迹记录: %1").arg(plateNumber));
-        emit trajectoryLoaded(plateNumber, QList<ExcelDataReader::VehicleRecord>());
-        return;
-    }
-
-    finalizeLoadedTrajectory(allRecords);
-}
-
-void VehicleManager::loadVehicleTrajectoryFromDatabase(const QString& plateNumber)
-{
-    loadTrajectoryFromDatabase(plateNumber, {}, {});
-}
-
-void VehicleManager::loadTrajectoryFromDatabase(const QString& plateNumber,
-                                                const QDate& startDate,
-                                                const QDate& endDate,
-                                                bool preserveAllPoints)
-{
-    m_currentTrajectory.clear();
-
-    if (!m_postGisLoader || !m_postGisLoader->isConnected()) {
-        AppLogger::warn(QStringLiteral("加载轨迹失败: PostGIS 未连接 | 车牌=%1").arg(plateNumber));
-        emit trajectoryLoaded(plateNumber, QList<ExcelDataReader::VehicleRecord>());
-        return;
-    }
-
-    emit loadingProgress(10);
-    QString errorMessage;
-    QList<ExcelDataReader::VehicleRecord> allRecords =
-        m_postGisLoader->loadTrajectory(plateNumber, errorMessage, startDate, endDate);
-    emit loadingProgress(80);
-
-    if (allRecords.isEmpty()) {
-        AppLogger::warn(QStringLiteral("加载轨迹失败: 车牌=%1 | %2").arg(plateNumber, errorMessage));
-        emit trajectoryLoaded(plateNumber, QList<ExcelDataReader::VehicleRecord>());
-        return;
-    }
-
     m_selectedVehicle = plateNumber;
-    finalizeLoadedTrajectory(allRecords, preserveAllPoints);
+
+    TrajectoryDataManager::TrajectoryLoadRequest request;
+    request.plateNumber = plateNumber;
+    request.startDate = startDate;
+    request.endDate = endDate;
+    request.preserveAllPoints = preserveAllPoints;
+    request.hasDateRange = startDate.isValid() && endDate.isValid();
+
+    const TrajectoryDataManager::TrajectoryLoadResult result = m_dataManager->loadTrajectory(request);
+    if (!result.success) {
+        if (!result.errorMessage.isEmpty()) {
+            AppLogger::warn(QStringLiteral("加载轨迹失败: 车牌=%1 | %2")
+                                .arg(plateNumber, result.errorMessage));
+        }
+        emit trajectoryLoaded(plateNumber, {});
+        return;
+    }
+
+    finalizeLoadedTrajectory(result.records, preserveAllPoints);
 }
 
-void VehicleManager::finalizeLoadedTrajectory(const QList<ExcelDataReader::VehicleRecord>& allRecords,
+void VehicleManager::finalizeLoadedTrajectory(const QList<TrajectoryPoint>& allRecords,
                                               bool preserveAllPoints)
 {
-    QList<ExcelDataReader::VehicleRecord> sortedRecords = allRecords;
+    QList<TrajectoryPoint> sortedRecords = allRecords;
     std::sort(sortedRecords.begin(), sortedRecords.end(),
-              [](const ExcelDataReader::VehicleRecord& a, const ExcelDataReader::VehicleRecord& b) {
+              [](const TrajectoryPoint& a, const TrajectoryPoint& b) {
                   return a.timestamp < b.timestamp;
               });
     
-    QList<ExcelDataReader::VehicleRecord> filteredRecords;
+    QList<TrajectoryPoint> filteredRecords;
     if (preserveAllPoints) {
         filteredRecords = sortedRecords;
     } else if (!sortedRecords.isEmpty()) {
@@ -212,8 +114,8 @@ void VehicleManager::finalizeLoadedTrajectory(const QList<ExcelDataReader::Vehic
         filteredRecords.append(sortedRecords.first());
         
         for (int i = 1; i < sortedRecords.size(); ++i) {
-            const auto& currentRecord = sortedRecords[i];
-            const auto& previousRecord = filteredRecords.last();
+            const TrajectoryPoint& currentRecord = sortedRecords.at(i);
+            const TrajectoryPoint& previousRecord = filteredRecords.last();
             
             const bool isStationary = (currentRecord.speed == 0.0)
                                       && (currentRecord.totalMileage == previousRecord.totalMileage)
@@ -237,7 +139,6 @@ void VehicleManager::finalizeLoadedTrajectory(const QList<ExcelDataReader::Vehic
     emit loadingProgress(100);
 }
 
-
 void VehicleManager::applyCoordinateConversion(bool enabled)
 {
     m_coordinateConversionEnabled = enabled;
@@ -256,38 +157,27 @@ void VehicleManager::applyCoordinateConversionToCurrentTrajectory()
         return;
     }
     
-    // Determine conversion direction based on coordinate system detection
-    // Assume input data is in WGS84 (standard GPS coordinates)
-    CoordinateConverter::CoordinateSystem sourceSystem = CoordinateConverter::WGS84;
-    CoordinateConverter::CoordinateSystem targetSystem = m_coordinateConversionEnabled 
-        ? CoordinateConverter::GCJ02 
-        : CoordinateConverter::WGS84;
-    
-    // Convert each record
-    for (const auto& record : m_currentTrajectory) {
-        ExcelDataReader::VehicleRecord convertedRecord = record;
+    for (const TrajectoryPoint& record : m_currentTrajectory) {
+        TrajectoryPoint convertedRecord = record;
         
         if (m_coordinateConversionEnabled) {
-            // Convert WGS84 to GCJ02
-            QGeoCoordinate originalCoord(record.latitude, record.longitude);
-            QGeoCoordinate convertedCoord = CoordinateConverter::wgs84ToGcj02(originalCoord);
+            const QGeoCoordinate originalCoord(record.latitude, record.longitude);
+            const QGeoCoordinate convertedCoord = CoordinateConverter::wgs84ToGcj02(originalCoord);
             
             convertedRecord.latitude = convertedCoord.latitude();
             convertedRecord.longitude = convertedCoord.longitude();
         }
-        // If conversion is disabled, keep original coordinates
         
         m_convertedTrajectory.append(convertedRecord);
     }
-    
 }
 
-QList<ExcelDataReader::VehicleRecord> VehicleManager::getCurrentTrajectory() const
+QList<TrajectoryPoint> VehicleManager::getCurrentTrajectory() const
 {
     return m_currentTrajectory;
 }
 
-QList<ExcelDataReader::VehicleRecord> VehicleManager::getConvertedTrajectory() const
+QList<TrajectoryPoint> VehicleManager::getConvertedTrajectory() const
 {
     return m_convertedTrajectory;
 }

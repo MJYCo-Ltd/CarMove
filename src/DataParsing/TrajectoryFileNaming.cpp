@@ -1,7 +1,5 @@
 #include "DataParsing/TrajectoryFileNaming.h"
 
-#include "ExcelDriver/ExcelFilePath.h"
-
 #include <QDir>
 #include <QFileInfo>
 #include <QRegularExpression>

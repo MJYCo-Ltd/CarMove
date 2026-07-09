@@ -350,6 +350,12 @@ void ConfigManager::persistTargetArea(double latitude, double longitude, const Q
     m_settings->setValue("targetAreaName", name);
     m_settings->endGroup();
     m_settings->sync();
+
+    const QGeoCoordinate center(latitude, longitude);
+    if (center.isValid() && m_mapCenter != center) {
+        m_mapCenter = center;
+        emit mapCenterChanged();
+    }
 }
 
 QVariantMap ConfigManager::loadPersistedTargetArea()
@@ -377,6 +383,8 @@ void ConfigManager::resetToDefaults()
     m_settings->remove("targetAreaLatitude");
     m_settings->remove("targetAreaLongitude");
     m_settings->remove("targetAreaName");
+    m_settings->remove("centerLatitude");
+    m_settings->remove("centerLongitude");
     m_settings->endGroup();
 
     saveSettings();
@@ -427,12 +435,17 @@ void ConfigManager::loadSettings()
     
     m_mapTypeIndex = m_settings->value("mapTypeIndex", DEFAULT_MAP_TYPE_INDEX).toInt();
     m_zoomLevel = m_settings->value("zoomLevel", DEFAULT_ZOOM_LEVEL).toDouble();
-    
-    // 加载地图中心坐标
-    double latitude = m_settings->value("centerLatitude", DEFAULT_LATITUDE).toDouble();
-    double longitude = m_settings->value("centerLongitude", DEFAULT_LONGITUDE).toDouble();
-    m_mapCenter = QGeoCoordinate(latitude, longitude);
-    
+
+    if (m_settings->contains("targetAreaLatitude") && m_settings->contains("targetAreaLongitude")) {
+        m_mapCenter = QGeoCoordinate(m_settings->value("targetAreaLatitude").toDouble(),
+                                     m_settings->value("targetAreaLongitude").toDouble());
+    } else {
+        m_mapCenter = QGeoCoordinate(DEFAULT_LATITUDE, DEFAULT_LONGITUDE);
+    }
+
+    m_settings->remove("centerLatitude");
+    m_settings->remove("centerLongitude");
+
     m_coordinateConversionEnabled = m_settings->value("coordinateConversionEnabled", DEFAULT_COORDINATE_CONVERSION).toBool();
     m_tiandituKey = m_settings->value("tiandituKey", DEFAULT_TIANDITU_KEY).toString();
 
@@ -445,8 +458,6 @@ void ConfigManager::saveSettings()
     
     m_settings->setValue("mapTypeIndex", m_mapTypeIndex);
     m_settings->setValue("zoomLevel", m_zoomLevel);
-    m_settings->setValue("centerLatitude", m_mapCenter.latitude());
-    m_settings->setValue("centerLongitude", m_mapCenter.longitude());
     m_settings->setValue("coordinateConversionEnabled", m_coordinateConversionEnabled);
     m_settings->setValue("tiandituKey", m_tiandituKey);
 

@@ -1,7 +1,7 @@
 #ifndef EXCELLOADUTILS_H
 #define EXCELLOADUTILS_H
 
-#include "DataParsing/ExcelDataReader.h"
+#include "Domain/TrajectoryTypes.h"
 
 #include <QList>
 #include <QString>
@@ -10,8 +10,8 @@
 namespace ExcelLoadUtils {
 
 bool appendParsedVehicleRecord(int row,
-                               ExcelDataReader::VehicleRecord& record,
-                               QList<ExcelDataReader::VehicleRecord>& records,
+                               TrajectoryPoint& record,
+                               QList<TrajectoryPoint>& records,
                                int& validRecords,
                                int& skippedRows,
                                QStringList& errorSummary);

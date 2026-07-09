@@ -6,8 +6,8 @@
 namespace ExcelLoadUtils {
 
 bool appendParsedVehicleRecord(int row,
-                               ExcelDataReader::VehicleRecord& record,
-                               QList<ExcelDataReader::VehicleRecord>& records,
+                               TrajectoryPoint& record,
+                               QList<TrajectoryPoint>& records,
                                int& validRecords,
                                int& skippedRows,
                                QStringList& errorSummary)

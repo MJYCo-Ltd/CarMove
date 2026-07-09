@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ExcelDriver/ExcelPreviewLoader.h"
+#include "ExcelDriver/ExcelPreviewTypes.h"
 
 #include <QStringList>
 

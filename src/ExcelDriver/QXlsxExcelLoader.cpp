@@ -1,5 +1,6 @@
 #include "ExcelDriver/QXlsxExcelLoader.h"
 #include "ExcelDriver/ExcelFilePath.h"
+#include "Core/LocalFilePath.h"
 #include "DataParsing/ExcelLoadUtils.h"
 #include "DataParsing/ExcelRowParser.h"
 #include "Core/ConfigManager.h"
@@ -15,7 +16,7 @@
 QXLSX_USE_NAMESPACE
 
 bool QXlsxExcelLoader::load(const QString& filePath,
-                            QList<ExcelDataReader::VehicleRecord>& records,
+                            QList<TrajectoryPoint>& records,
                             const ProgressCallback& onProgress,
                             QString& errorMessage)
 {
@@ -23,7 +24,7 @@ bool QXlsxExcelLoader::load(const QString& filePath,
     const QFileInfo fileInfo(filePath);
 
     QFile file;
-    if (!ExcelFilePath::openReadableFile(file, filePath)) {
+    if (!LocalFilePath::openReadableFile(file, filePath)) {
         errorMessage = HANDLE_FILE_ERROR(filePath, QStringLiteral("打开Excel文件"));
         return false;
     }
@@ -76,7 +77,7 @@ bool QXlsxExcelLoader::load(const QString& filePath,
             }
         }
 
-        ExcelDataReader::VehicleRecord record;
+        TrajectoryPoint record;
         QString rowError;
         if (ExcelRowParser::parseRow(cells, record, rowError)) {
             ExcelLoadUtils::appendParsedVehicleRecord(row,

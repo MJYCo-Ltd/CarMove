@@ -1,7 +1,7 @@
 #ifndef LICENSEPLATEDETECTOR_H
 #define LICENSEPLATEDETECTOR_H
 
-#include "ExcelDriver/ExcelPreviewLoader.h"
+#include "ExcelDriver/ExcelPreviewTypes.h"
 
 #include <QList>
 

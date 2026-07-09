@@ -2,7 +2,7 @@
 
 #include "Business/BusinessCsvWriter.h"
 #include "Business/BusinessWorkbookResolver.h"
-#include "ExcelDriver/ExcelFilePath.h"
+#include "Core/LocalFilePath.h"
 #include "DataParsing/TrajectoryFileNaming.h"
 
 #include <QDir>
@@ -68,7 +68,7 @@ QString BusinessExcelExporter::fileNameForSheet(const QString& excelFileName,
         return baseName + QStringLiteral(".csv");
     }
 
-    const QString sanitizedSheetName = ExcelFilePath::sanitizeFileComponent(sheetName);
+    const QString sanitizedSheetName = LocalFilePath::sanitizeFileComponent(sheetName);
     if (sanitizedSheetName.isEmpty()) {
         return baseName + QStringLiteral(".csv");
     }
@@ -121,6 +121,7 @@ bool BusinessExcelExporter::exportWorkbookToDirectory(const ExcelWorkbookInfo& w
                                                       const ExcelSheetPreview& referenceSheet,
                                                       int currentSheetIndex,
                                                       const BusinessColumnSelection& selection,
+                                                      ExcelParserManager& parser,
                                                       const QString& outputDirectory,
                                                       QString& errorMessage,
                                                       int* exportedRows,
@@ -153,6 +154,7 @@ bool BusinessExcelExporter::exportWorkbookToDirectory(const ExcelWorkbookInfo& w
                                                        referenceSheet,
                                                        currentSheetIndex,
                                                        selection,
+                                                       parser,
                                                        collected,
                                                        errorMessage)) {
         return false;
@@ -299,6 +301,7 @@ bool BusinessExcelExporter::classifyWorkbookToDirectory(
     const ExcelSheetPreview& referenceSheet,
     int currentSheetIndex,
     const BusinessColumnSelection& selection,
+    ExcelParserManager& parser,
     const QString& trajectoryDirectory,
     const QString& outputDirectory,
     QString& errorMessage,
@@ -320,6 +323,7 @@ bool BusinessExcelExporter::classifyWorkbookToDirectory(
                                                        referenceSheet,
                                                        currentSheetIndex,
                                                        selection,
+                                                       parser,
                                                        collected,
                                                        errorMessage)) {
         return false;

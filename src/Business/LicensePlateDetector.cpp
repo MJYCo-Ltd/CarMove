@@ -1,5 +1,5 @@
 #include "Business/LicensePlateDetector.h"
-#include "ExcelDriver/ExcelPreviewColumnUtils.h"
+#include "Business/BusinessColumnUtils.h"
 
 #include <QRegularExpression>
 
@@ -45,7 +45,7 @@ bool isChineseVehiclePlate(const QString& text)
 
 QList<int> markedColumnIndices(const ExcelSheetPreview& sheet)
 {
-    return ExcelPreviewColumnUtils::markedColumnIndices(sheet.isPlateColumn);
+    return BusinessColumnUtils::markedColumnIndices(sheet.isPlateColumn);
 }
 
 int firstColumnIndex(const ExcelSheetPreview& sheet)

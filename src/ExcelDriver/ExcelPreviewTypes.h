@@ -1,7 +1,5 @@
-#ifndef EXCELPREVIEWLOADER_H
-#define EXCELPREVIEWLOADER_H
-
-#include "ExcelDriver/ExcelBackend.h"
+#ifndef EXCELPREVIEWTYPES_H
+#define EXCELPREVIEWTYPES_H
 
 #include <QString>
 #include <QStringList>
@@ -25,25 +23,18 @@ struct ExcelPreviewLimits {
     static ExcelPreviewLimits forExport();
 };
 
+enum class ExcelPreviewMode {
+    Standard,
+    Streaming,
+    AlternateXml
+};
+
 struct ExcelWorkbookInfo {
     QString filePath;
     QStringList sheetNames;
-    ExcelBackend::ReaderType readerType = ExcelBackend::ReaderType::QXlsx;
+    ExcelPreviewMode previewMode = ExcelPreviewMode::Standard;
     ExcelPreviewLimits limits;
     qint64 fileSizeBytes = 0;
 };
 
-class ExcelPreviewLoader
-{
-public:
-    static bool inspectWorkbook(const QString& filePath,
-                                ExcelWorkbookInfo& info,
-                                QString& errorMessage);
-
-    static bool loadSheet(const ExcelWorkbookInfo& info,
-                          int sheetIndex,
-                          ExcelSheetPreview& sheet,
-                          QString& errorMessage);
-};
-
-#endif // EXCELPREVIEWLOADER_H
+#endif // EXCELPREVIEWTYPES_H

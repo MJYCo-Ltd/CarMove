@@ -4,6 +4,7 @@
 #include "ExcelDriver/ExcelFilePath.h"
 #include "ExcelDriver/ExcelSheetGridUtils.h"
 #include "Core/ErrorHandler.h"
+#include "Core/LocalFilePath.h"
 
 #include <QFile>
 #include <QFileInfo>
@@ -102,7 +103,7 @@ QList<SheetInfo> parseWorkbookSheets(const QByteArray& workbookXml,
 
 bool openZipReader(const QString& filePath, QFile& file, ZipReader*& zipReader)
 {
-    if (!ExcelFilePath::openReadableFile(file, filePath)) {
+    if (!LocalFilePath::openReadableFile(file, filePath)) {
         return false;
     }
 

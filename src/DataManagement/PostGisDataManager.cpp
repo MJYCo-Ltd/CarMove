@@ -1,30 +1,27 @@
-#include "DataManagement/PostGisTrajectoryImporter.h"
+#include "DataManagement/PostGisDataManager.h"
 #include "DataManagement/PostGisConnection.h"
 #include "DataManagement/PostGisSqlHelpers.h"
 #include "Core/AppLogger.h"
 
-#include "DataParsing/ExcelDataReader.h"
-#include "ExcelDriver/ExcelFilePath.h"
+#include "ExcelDriver/ExcelParserManager.h"
+#include "Core/LocalFilePath.h"
 #include "DataParsing/TrajectoryFileNaming.h"
-
 #include <QCoreApplication>
-#include <QDate>
 #include <QDir>
 #include <QDirIterator>
-#include <QFileInfo>
 #include <QMap>
-#include <QRegularExpression>
 #include <QSet>
-#include <QSqlDatabase>
+#include <algorithm>
+
+#include <QDateTime>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QUuid>
-
-#include <algorithm>
+#include <QVariant>
 
 namespace {
 
-QString normalizePlateColor(const ExcelDataReader::VehicleRecord& record)
+QString normalizePlateColor(const TrajectoryPoint& record)
 {
     if (record.vehicleColor == QStringLiteral("yellow") || record.vehicleColor == QStringLiteral("blue")) {
         return record.vehicleColor;
@@ -49,17 +46,232 @@ void logImportSkipped(const TrajectoryFileInfo& file,
                         .arg(existingDays));
 }
 
+QString colorFromPlateColorField(const QString& raw)
+{
+    if (raw.contains(QStringLiteral("黄"), Qt::CaseInsensitive)) {
+        return QStringLiteral("yellow");
+    }
+    return QStringLiteral("blue");
+}
+
 } // namespace
 
-PostGisTrajectoryImporter::PostGisTrajectoryImporter(QObject* parent)
+PostGisDataManager::PostGisDataManager(QObject* parent)
     : QObject(parent)
+    , m_connectionName(QStringLiteral("carmove_postgis_%1").arg(QUuid::createUuid().toString()))
 {
 }
 
-QList<TrajectoryFileInfo> PostGisTrajectoryImporter::collectTrajectoryFiles(const QString& folderPath) const
+PostGisDataManager::~PostGisDataManager()
+{
+    disconnectDatabase();
+}
+
+bool PostGisDataManager::isConnected() const
+{
+    return m_connected;
+}
+
+PostGisDatabaseConfig PostGisDataManager::config() const
+{
+    return m_config;
+}
+
+QList<VehicleDayTrajectory> PostGisDataManager::loadTrajectoryByDay(const QString& plateNumber,
+                                                                    QString& errorMessage,
+                                                                    const QDate& startDate,
+                                                                    const QDate& endDate) const
+{
+    const QList<TrajectoryPoint> points =
+        loadTrajectoryPoints(plateNumber, errorMessage, startDate, endDate);
+    if (points.isEmpty() && !errorMessage.isEmpty()) {
+        return {};
+    }
+    return groupPointsByDay(points);
+}
+
+bool PostGisDataManager::connectDatabase(const PostGisDatabaseConfig& config, QString& errorMessage)
+{
+    errorMessage.clear();
+    disconnectDatabase();
+
+    m_config = config;
+    if (!m_config.isValid()) {
+        errorMessage = QStringLiteral("PostGIS 数据库配置不完整");
+        AppLogger::error(errorMessage);
+        return false;
+    }
+
+    if (!PostGisConnection::openDatabase(m_config, m_connectionName, errorMessage)) {
+        return false;
+    }
+
+    m_connected = true;
+    return true;
+}
+
+void PostGisDataManager::disconnectDatabase()
+{
+    if (m_connectionName.isEmpty()) {
+        return;
+    }
+
+    PostGisConnection::closeDatabase(m_connectionName);
+    m_connected = false;
+}
+
+QList<VehicleSummary> PostGisDataManager::listVehicles(QString& errorMessage) const
+{
+    QList<VehicleSummary> vehicles;
+    errorMessage.clear();
+
+    if (!m_connected || !QSqlDatabase::contains(m_connectionName)) {
+        errorMessage = QStringLiteral("数据库未连接");
+        return vehicles;
+    }
+
+    const QSqlDatabase db = QSqlDatabase::database(m_connectionName);
+    const QString vehiclesTable = PostGisSql::qualifiedTable(m_config, m_config.vehiclesTable);
+    const QString plateColumn = PostGisSql::quotedIdentifier(m_config.plateColumn);
+
+    const QString sql = QStringLiteral(
+                            "SELECT %1 AS plate_number, first_seen_at, last_seen_at, "
+                            "total_point_count, day_count "
+                            "FROM %2 "
+                            "WHERE day_count > 0 OR total_point_count > 0 "
+                            "ORDER BY %1")
+                            .arg(plateColumn, vehiclesTable);
+
+    QSqlQuery query(db);
+    if (!query.exec(sql)) {
+        errorMessage = QStringLiteral("查询车辆列表失败: %1").arg(query.lastError().text());
+        return vehicles;
+    }
+
+    while (query.next()) {
+        VehicleSummary info;
+        info.plateNumber = query.value(QStringLiteral("plate_number")).toString().trimmed();
+        info.firstSeenAt = query.value(QStringLiteral("first_seen_at")).toDateTime();
+        info.lastSeenAt = query.value(QStringLiteral("last_seen_at")).toDateTime();
+        info.totalPointCount = query.value(QStringLiteral("total_point_count")).toLongLong();
+        info.dayCount = query.value(QStringLiteral("day_count")).toInt();
+        if (!info.plateNumber.isEmpty()) {
+            vehicles.append(info);
+        }
+    }
+
+    if (vehicles.isEmpty()) {
+        errorMessage = QStringLiteral("数据库中没有轨迹数据");
+    }
+
+    return vehicles;
+}
+
+QList<TrajectoryPoint> PostGisDataManager::loadTrajectoryPoints(const QString& plateNumber,
+                                                               QString& errorMessage,
+                                                               const QDate& startDate,
+                                                               const QDate& endDate) const
+{
+    QList<TrajectoryPoint> records;
+    errorMessage.clear();
+
+    if (plateNumber.trimmed().isEmpty()) {
+        errorMessage = QStringLiteral("车牌号为空");
+        return records;
+    }
+
+    if (!m_connected || !QSqlDatabase::contains(m_connectionName)) {
+        errorMessage = QStringLiteral("数据库未连接");
+        return records;
+    }
+
+    const QSqlDatabase db = QSqlDatabase::database(m_connectionName);
+    const QString trajectoryTable = PostGisSql::qualifiedTable(m_config, m_config.trajectoryTable);
+    const QString trajectoryDaysTable = PostGisSql::qualifiedTable(m_config, m_config.trajectoryDaysTable);
+    const QString vehiclesTable = PostGisSql::qualifiedTable(m_config, m_config.vehiclesTable);
+    const QString plateCol = PostGisSql::quotedIdentifier(m_config.plateColumn);
+    const QString timeCol = PostGisSql::quotedIdentifier(m_config.timeColumn);
+    const QString geomCol = PostGisSql::quotedIdentifier(m_config.geomColumn);
+    const QString speedCol = PostGisSql::quotedIdentifier(m_config.speedColumn);
+    const QString directionCol = PostGisSql::quotedIdentifier(m_config.directionColumn);
+    const QString colorCol = PostGisSql::quotedIdentifier(m_config.colorColumn);
+
+    QString dateFilterSql;
+    if (startDate.isValid() && endDate.isValid()) {
+        dateFilterSql = QStringLiteral("AND td.trajectory_date >= :start_date AND td.trajectory_date <= :end_date ");
+    }
+
+    const QString sql = QStringLiteral(
+                            "SELECT v.%1 AS plate_number, "
+                            "td.trajectory_date, "
+                            "ST_X(tp.%2) AS longitude, ST_Y(tp.%2) AS latitude, "
+                            "tp.%3 AS point_ts, tp.%4 AS speed, tp.%5 AS direction, "
+                            "COALESCE(v.%6, '') AS plate_color "
+                            "FROM %7 tp "
+                            "JOIN %8 td ON td.trajectory_day_id = tp.trajectory_day_id "
+                            "JOIN %9 v ON v.vehicle_id = td.vehicle_id "
+                            "WHERE v.%1 = :plate "
+                            "%10"
+                            "ORDER BY td.trajectory_date, tp.%3")
+                            .arg(plateCol,
+                                 geomCol,
+                                 timeCol,
+                                 speedCol,
+                                 directionCol,
+                                 colorCol,
+                                 trajectoryTable,
+                                 trajectoryDaysTable,
+                                 vehiclesTable,
+                                 dateFilterSql);
+
+    QSqlQuery query(db);
+    query.prepare(sql);
+    query.bindValue(QStringLiteral(":plate"), plateNumber.trimmed());
+    if (startDate.isValid() && endDate.isValid()) {
+        query.bindValue(QStringLiteral(":start_date"), startDate);
+        query.bindValue(QStringLiteral(":end_date"), endDate);
+    }
+
+    if (!query.exec()) {
+        errorMessage = QStringLiteral("查询轨迹失败: %1").arg(query.lastError().text());
+        AppLogger::error(QStringLiteral("查询轨迹失败: 车牌=%1 | %2").arg(plateNumber, errorMessage));
+        return records;
+    }
+
+    while (query.next()) {
+        TrajectoryPoint record;
+        record.plateNumber = query.value(QStringLiteral("plate_number")).toString().trimmed();
+        record.longitude = query.value(QStringLiteral("longitude")).toDouble();
+        record.latitude = query.value(QStringLiteral("latitude")).toDouble();
+        record.timestamp = PostGisSql::calendarDateTime(
+            query.value(QStringLiteral("trajectory_date")).toDate(),
+            query.value(QStringLiteral("point_ts")).toTime());
+        record.speed = query.value(QStringLiteral("speed")).toDouble();
+        record.direction = query.value(QStringLiteral("direction")).toInt();
+        record.vehicleColor = colorFromPlateColorField(query.value(QStringLiteral("plate_color")).toString());
+
+        if (record.isValid()) {
+            records.append(record);
+        }
+    }
+
+    if (records.isEmpty()) {
+        errorMessage = QStringLiteral("未找到车辆 %1 的轨迹数据").arg(plateNumber);
+        const QString periodHint = (startDate.isValid() && endDate.isValid())
+                                       ? QStringLiteral(" | 时段=%1~%2")
+                                             .arg(startDate.toString(Qt::ISODate),
+                                                  endDate.toString(Qt::ISODate))
+                                       : QString();
+        AppLogger::warn(QStringLiteral("加载轨迹为空: 车牌=%1%2").arg(plateNumber, periodHint));
+    }
+
+    return records;
+}
+
+QList<TrajectoryFileInfo> PostGisDataManager::collectTrajectoryFiles(const QString& folderPath) const
 {
     QList<TrajectoryFileInfo> files;
-    const QString localPath = ExcelFilePath::normalizeLocalFilePath(folderPath);
+    const QString localPath = LocalFilePath::normalizeLocalFilePath(folderPath);
     if (localPath.isEmpty()) {
         return files;
     }
@@ -94,7 +306,7 @@ QList<TrajectoryFileInfo> PostGisTrajectoryImporter::collectTrajectoryFiles(cons
     return files;
 }
 
-qint64 PostGisTrajectoryImporter::countExistingDays(QSqlDatabase& db,
+qint64 PostGisDataManager::countExistingDays(QSqlDatabase& db,
                                                     const PostGisDatabaseConfig& config,
                                                     const QString& plateNumber,
                                                     const QDate& periodStart,
@@ -131,17 +343,17 @@ qint64 PostGisTrajectoryImporter::countExistingDays(QSqlDatabase& db,
     return query.value(0).toLongLong();
 }
 
-void PostGisTrajectoryImporter::applyImportSessionSettings(QSqlDatabase& db) const
+void PostGisDataManager::applyImportSessionSettings(QSqlDatabase& db) const
 {
     QSqlQuery query(db);
     query.exec(QStringLiteral("SET synchronous_commit TO OFF"));
     query.exec(QStringLiteral("SET jit TO off"));
 }
 
-bool PostGisTrajectoryImporter::insertTrajectoryDays(QSqlDatabase& db,
+bool PostGisDataManager::insertTrajectoryDays(QSqlDatabase& db,
                                                      const PostGisDatabaseConfig& config,
                                                      qint64 vehicleId,
-                                                     const QMap<QDate, QList<ExcelDataReader::VehicleRecord>>& dayBuckets,
+                                                     const QMap<QDate, QList<TrajectoryPoint>>& dayBuckets,
                                                      QMap<QDate, qint64>& trajectoryDayIds,
                                                      QString& errorMessage) const
 {
@@ -152,7 +364,7 @@ bool PostGisTrajectoryImporter::insertTrajectoryDays(QSqlDatabase& db,
     valuePlaceholders.reserve(dayBuckets.size());
 
     for (auto it = dayBuckets.constBegin(); it != dayBuckets.constEnd(); ++it) {
-        const QList<ExcelDataReader::VehicleRecord>& dayRecords = it.value();
+        const QList<TrajectoryPoint>& dayRecords = it.value();
         if (dayRecords.isEmpty()) {
             continue;
         }
@@ -200,9 +412,9 @@ bool PostGisTrajectoryImporter::insertTrajectoryDays(QSqlDatabase& db,
     return true;
 }
 
-bool PostGisTrajectoryImporter::insertTrajectoryBatch(QSqlDatabase& db,
+bool PostGisDataManager::insertTrajectoryBatch(QSqlDatabase& db,
                                                       const PostGisDatabaseConfig& config,
-                                                      const QList<ExcelDataReader::VehicleRecord>& records,
+                                                      const QList<TrajectoryPoint>& records,
                                                       qint64 trajectoryDayId,
                                                       QString& errorMessage) const
 {
@@ -229,7 +441,7 @@ bool PostGisTrajectoryImporter::insertTrajectoryBatch(QSqlDatabase& db,
         query.prepare(insertPrefix + placeholders.join(QStringLiteral(", ")));
 
         for (qsizetype i = 0; i < currentBatchSize; ++i) {
-            const ExcelDataReader::VehicleRecord& record = records.at(offset + i);
+            const TrajectoryPoint& record = records.at(offset + i);
             query.addBindValue(trajectoryDayId);
             query.addBindValue(PostGisSql::calendarTime(record.timestamp));
             query.addBindValue(record.longitude);
@@ -247,7 +459,7 @@ bool PostGisTrajectoryImporter::insertTrajectoryBatch(QSqlDatabase& db,
     return true;
 }
 
-qint64 PostGisTrajectoryImporter::upsertVehicle(QSqlDatabase& db,
+qint64 PostGisDataManager::upsertVehicle(QSqlDatabase& db,
                                                 const PostGisDatabaseConfig& config,
                                                 const QString& plateNumber,
                                                 const QString& plateColor,
@@ -281,7 +493,7 @@ qint64 PostGisTrajectoryImporter::upsertVehicle(QSqlDatabase& db,
     return query.value(0).toLongLong();
 }
 
-bool PostGisTrajectoryImporter::refreshVehicleStatsBatch(QSqlDatabase& db,
+bool PostGisDataManager::refreshVehicleStatsBatch(QSqlDatabase& db,
                                                          const PostGisDatabaseConfig& config,
                                                          const QList<qint64>& vehicleIds,
                                                          QString& errorMessage) const
@@ -332,8 +544,8 @@ bool PostGisTrajectoryImporter::refreshVehicleStatsBatch(QSqlDatabase& db,
     return true;
 }
 
-PostGisTrajectoryImporter::ImportFileStatus
-PostGisTrajectoryImporter::importSingleFile(const TrajectoryFileInfo& file,
+PostGisDataManager::ImportFileStatus
+PostGisDataManager::importSingleFile(const TrajectoryFileInfo& file,
                                             QSqlDatabase& db,
                                             const PostGisDatabaseConfig& config,
                                             QString& errorMessage,
@@ -355,32 +567,35 @@ PostGisTrajectoryImporter::importSingleFile(const TrajectoryFileInfo& file,
                                                       file.periodEnd,
                                                       errorMessage);
         if (existingDays < 0) {
-            return ImportFileStatus::Failed;
+            return PostGisDataManager::ImportFileStatus::Failed;
         }
         if (existingDays > 0) {
             logImportSkipped(file, file.plateNumber, file.periodStart, file.periodEnd, existingDays);
-            return ImportFileStatus::Skipped;
+            return PostGisDataManager::ImportFileStatus::Skipped;
         }
     }
 
-    ExcelDataReader reader;
-    if (!reader.loadExcelFile(file.filePath)) {
-        errorMessage = QStringLiteral("无法读取 Excel 文件: %1").arg(file.fileName);
-        return ImportFileStatus::Failed;
+    ExcelParserManager parser;
+    QList<TrajectoryPoint> records;
+    QString loadError;
+    if (!parser.loadVehicleRecords(file.filePath, records, loadError)) {
+        errorMessage = loadError.isEmpty()
+                           ? QStringLiteral("无法读取 Excel 文件: %1").arg(file.fileName)
+                           : loadError;
+        return PostGisDataManager::ImportFileStatus::Failed;
     }
 
-    QList<ExcelDataReader::VehicleRecord> records = reader.getVehicleData();
     if (records.isEmpty()) {
         errorMessage = QStringLiteral("文件中没有有效轨迹数据: %1").arg(file.fileName);
-        return ImportFileStatus::Failed;
+        return PostGisDataManager::ImportFileStatus::Failed;
     }
 
     QString plateNumber = file.plateNumber;
     QString plateColor;
-    QList<ExcelDataReader::VehicleRecord> filteredRecords;
+    QList<TrajectoryPoint> filteredRecords;
     filteredRecords.reserve(records.size());
 
-    for (const ExcelDataReader::VehicleRecord& record : records) {
+    for (const TrajectoryPoint& record : records) {
         if (!record.isValid()) {
             continue;
         }
@@ -398,18 +613,18 @@ PostGisTrajectoryImporter::importSingleFile(const TrajectoryFileInfo& file,
 
     if (plateNumber.isEmpty() || filteredRecords.isEmpty()) {
         errorMessage = QStringLiteral("文件中没有有效轨迹数据或车牌号: %1").arg(file.fileName);
-        return ImportFileStatus::Failed;
+        return PostGisDataManager::ImportFileStatus::Failed;
     }
 
     std::sort(filteredRecords.begin(),
               filteredRecords.end(),
-              [](const ExcelDataReader::VehicleRecord& left,
-                 const ExcelDataReader::VehicleRecord& right) {
+              [](const TrajectoryPoint& left,
+                 const TrajectoryPoint& right) {
                   return left.timestamp < right.timestamp;
               });
 
-    QMap<QDate, QList<ExcelDataReader::VehicleRecord>> dayBuckets;
-    for (const ExcelDataReader::VehicleRecord& record : filteredRecords) {
+    QMap<QDate, QList<TrajectoryPoint>> dayBuckets;
+    for (const TrajectoryPoint& record : filteredRecords) {
         const QDate calendarDay = PostGisSql::calendarDate(record.timestamp);
         if (!calendarDay.isValid()) {
             continue;
@@ -419,7 +634,7 @@ PostGisTrajectoryImporter::importSingleFile(const TrajectoryFileInfo& file,
 
     if (dayBuckets.isEmpty()) {
         errorMessage = QStringLiteral("文件中没有有效轨迹时间: %1").arg(file.fileName);
-        return ImportFileStatus::Failed;
+        return PostGisDataManager::ImportFileStatus::Failed;
     }
 
     QDate periodStart = file.hasPeriod ? file.periodStart : dayBuckets.firstKey();
@@ -428,17 +643,17 @@ PostGisTrajectoryImporter::importSingleFile(const TrajectoryFileInfo& file,
     if (!file.hasPeriod) {
         const qint64 existingDays = countExistingDays(db, config, plateNumber, periodStart, periodEnd, errorMessage);
         if (existingDays < 0) {
-            return ImportFileStatus::Failed;
+            return PostGisDataManager::ImportFileStatus::Failed;
         }
         if (existingDays > 0) {
             logImportSkipped(file, plateNumber, periodStart, periodEnd, existingDays);
-            return ImportFileStatus::Skipped;
+            return PostGisDataManager::ImportFileStatus::Skipped;
         }
     }
 
     if (!db.transaction()) {
         errorMessage = QStringLiteral("无法开启数据库事务: %1").arg(db.lastError().text());
-        return ImportFileStatus::Failed;
+        return PostGisDataManager::ImportFileStatus::Failed;
     }
 
     QSqlQuery tuningQuery(db);
@@ -447,19 +662,19 @@ PostGisTrajectoryImporter::importSingleFile(const TrajectoryFileInfo& file,
     const qint64 vehicleId = upsertVehicle(db, config, plateNumber, plateColor, errorMessage);
     if (vehicleId < 0) {
         db.rollback();
-        return ImportFileStatus::Failed;
+        return PostGisDataManager::ImportFileStatus::Failed;
     }
 
     QMap<QDate, qint64> trajectoryDayIds;
     if (!insertTrajectoryDays(db, config, vehicleId, dayBuckets, trajectoryDayIds, errorMessage)) {
         db.rollback();
-        return ImportFileStatus::Failed;
+        return PostGisDataManager::ImportFileStatus::Failed;
     }
 
     qint64 totalImportedPoints = 0;
     for (auto it = dayBuckets.constBegin(); it != dayBuckets.constEnd(); ++it) {
         const QDate trajectoryDate = it.key();
-        const QList<ExcelDataReader::VehicleRecord>& dayRecords = it.value();
+        const QList<TrajectoryPoint>& dayRecords = it.value();
         if (dayRecords.isEmpty()) {
             continue;
         }
@@ -468,13 +683,13 @@ PostGisTrajectoryImporter::importSingleFile(const TrajectoryFileInfo& file,
         if (trajectoryDayId < 0) {
             errorMessage = QStringLiteral("未找到日航迹 ID: %1").arg(trajectoryDate.toString(Qt::ISODate));
             db.rollback();
-            return ImportFileStatus::Failed;
+            return PostGisDataManager::ImportFileStatus::Failed;
         }
 
         if (!insertTrajectoryBatch(db, config, dayRecords, trajectoryDayId, errorMessage)) {
             errorMessage = QStringLiteral("写入轨迹点失败 (%1): %2").arg(file.fileName, errorMessage);
             db.rollback();
-            return ImportFileStatus::Failed;
+            return PostGisDataManager::ImportFileStatus::Failed;
         }
 
         totalImportedPoints += dayRecords.size();
@@ -483,7 +698,7 @@ PostGisTrajectoryImporter::importSingleFile(const TrajectoryFileInfo& file,
     if (!db.commit()) {
         errorMessage = QStringLiteral("提交数据库事务失败: %1").arg(db.lastError().text());
         db.rollback();
-        return ImportFileStatus::Failed;
+        return PostGisDataManager::ImportFileStatus::Failed;
     }
 
     if (importedPoints != nullptr) {
@@ -498,10 +713,10 @@ PostGisTrajectoryImporter::importSingleFile(const TrajectoryFileInfo& file,
                              periodStart.toString(Qt::ISODate),
                              periodEnd.toString(Qt::ISODate))
                         .arg(totalImportedPoints));
-    return ImportFileStatus::Imported;
+    return PostGisDataManager::ImportFileStatus::Imported;
 }
 
-bool PostGisTrajectoryImporter::importFolder(const QString& folderPath,
+bool PostGisDataManager::importFolder(const QString& folderPath,
                                              const PostGisDatabaseConfig& config,
                                              QString& errorMessage,
                                              TrajectoryImportResult* result)
@@ -551,15 +766,15 @@ bool PostGisTrajectoryImporter::importFolder(const QString& folderPath,
             QString fileError;
             qint64 importedPoints = 0;
             qint64 importedVehicleId = -1;
-            const ImportFileStatus status =
+            const PostGisDataManager::ImportFileStatus status =
                 importSingleFile(file, db, config, fileError, &importedPoints, &importedVehicleId);
-            if (status == ImportFileStatus::Imported) {
+            if (status == PostGisDataManager::ImportFileStatus::Imported) {
                 ++result->importedFiles;
                 result->importedPoints += importedPoints;
                 if (importedVehicleId >= 0) {
                     vehiclesToRefresh.insert(importedVehicleId);
                 }
-            } else if (status == ImportFileStatus::Skipped) {
+            } else if (status == PostGisDataManager::ImportFileStatus::Skipped) {
                 ++result->skippedFiles;
             } else {
                 ++result->failedFiles;
@@ -604,3 +819,4 @@ bool PostGisTrajectoryImporter::importFolder(const QString& folderPath,
 
     return true;
 }
+

@@ -1,7 +1,7 @@
 #include "Business/DateColumnDetector.h"
 
-#include "ExcelDriver/ExcelCellFormatter.h"
-#include "ExcelDriver/ExcelPreviewColumnUtils.h"
+#include "Business/BusinessExcelDateUtils.h"
+#include "Business/BusinessColumnUtils.h"
 
 #include <QDateTime>
 #include <QRegularExpression>
@@ -18,7 +18,7 @@ bool isExcelDateSerialString(const QString& text, double* serialOut = nullptr)
         return false;
     }
 
-    const QDateTime dateTime = ExcelCellFormatter::dateTimeFromExcelSerial(serial, false);
+    const QDateTime dateTime = BusinessExcelDateUtils::dateTimeFromExcelSerial(serial, false);
     if (!dateTime.isValid()) {
         return false;
     }
@@ -139,7 +139,7 @@ QDate parseToDate(const QString& text)
 
     double serial = 0.0;
     if (isExcelDateSerialString(trimmed, &serial)) {
-        const QDateTime dateTime = ExcelCellFormatter::dateTimeFromExcelSerial(serial, false);
+        const QDateTime dateTime = BusinessExcelDateUtils::dateTimeFromExcelSerial(serial, false);
         if (dateTime.isValid()) {
             return dateTime.date();
         }
@@ -169,7 +169,7 @@ QDate parseToDate(const QString& text)
 
 QList<int> DateColumnDetector::markedColumnIndices(const ExcelSheetPreview& sheet)
 {
-    return ExcelPreviewColumnUtils::markedColumnIndices(sheet.isDateColumn);
+    return BusinessColumnUtils::markedColumnIndices(sheet.isDateColumn);
 }
 
 int DateColumnDetector::ordinalForDataColumn(const ExcelSheetPreview& sheet, int dataColumnIndex)

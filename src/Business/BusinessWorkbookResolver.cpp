@@ -2,7 +2,7 @@
 
 #include "Business/BusinessColumnIdentifier.h"
 #include "Business/DateColumnDetector.h"
-#include "ExcelDriver/ExcelPreviewLoader.h"
+#include "ExcelDriver/ExcelParserManager.h"
 #include "Business/LicensePlateDetector.h"
 
 #include <algorithm>
@@ -322,6 +322,7 @@ bool BusinessWorkbookResolver::collectWorkbookRows(const ExcelWorkbookInfo& work
                                                    const ExcelSheetPreview& referenceSheet,
                                                    int currentSheetIndex,
                                                    const BusinessColumnSelection& selection,
+                                                   ExcelParserManager& parser,
                                                    BusinessWorkbookRowsResult& result,
                                                    QString& errorMessage)
 {
@@ -350,7 +351,7 @@ bool BusinessWorkbookResolver::collectWorkbookRows(const ExcelWorkbookInfo& work
 
             ExcelSheetPreview sheet;
             QString sheetError;
-            if (!ExcelPreviewLoader::loadSheet(exportInfo, sheetIndex, sheet, sheetError)) {
+            if (!parser.loadSheet(exportInfo, sheetIndex, sheet, sheetError)) {
                 errorMessage = formatSheetError(
                     sheetName,
                     sheetError.isEmpty() ? QStringLiteral("无法加载工作表") : sheetError);
@@ -388,7 +389,7 @@ bool BusinessWorkbookResolver::collectWorkbookRows(const ExcelWorkbookInfo& work
 
     ExcelSheetPreview sheet;
     QString sheetError;
-    if (!ExcelPreviewLoader::loadSheet(exportInfo, currentSheetIndex, sheet, sheetError)) {
+    if (!parser.loadSheet(exportInfo, currentSheetIndex, sheet, sheetError)) {
         errorMessage = sheetError.isEmpty() ? QStringLiteral("无法加载工作表数据") : sheetError;
         return false;
     }
@@ -435,6 +436,7 @@ bool BusinessWorkbookResolver::collectSheetBusinessRows(const ExcelWorkbookInfo&
                                                          const ExcelSheetPreview& referenceSheet,
                                                          int targetSheetIndex,
                                                          const BusinessColumnSelection& selection,
+                                                         ExcelParserManager& parser,
                                                          BusinessSheetRows& outSheetRows,
                                                          QString& errorMessage,
                                                          bool* sheetSkipped)
@@ -463,7 +465,7 @@ bool BusinessWorkbookResolver::collectSheetBusinessRows(const ExcelWorkbookInfo&
 
     ExcelSheetPreview sheet;
     QString sheetError;
-    if (!ExcelPreviewLoader::loadSheet(exportInfo, targetSheetIndex, sheet, sheetError)) {
+    if (!parser.loadSheet(exportInfo, targetSheetIndex, sheet, sheetError)) {
         errorMessage = formatSheetError(
             sheetName,
             sheetError.isEmpty() ? QStringLiteral("无法加载工作表") : sheetError);

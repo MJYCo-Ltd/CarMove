@@ -7,7 +7,7 @@ import CarMove 1.0
 Item {
     id: mapDisplay
 
-    /// 已选车辆且车牌非空：与右侧「坐标切换」等地图工具条显隐一致（供回放条进度条等绑定）
+    /// 已选车辆且车牌非空：与右侧「坐标切换」等地图工具条显隐一致（供时间轴栏等绑定）
     readonly property bool mapVehicleContextActive: controller && controller.selectedVehicle
                                                      && controller.selectedVehicle.length > 0
 
@@ -268,7 +268,6 @@ Item {
         Connections {
             target: mapView.map
             function onCenterChanged() {
-                updateMapCenter()
                 if (!_suppressMapInteractionFlag && !vehicleLayer.suppressInteractionTracking) {
                     vehicleLayer.userHasInteracted = true
                     vehicleLayer.autoFitEnabled = false
@@ -424,10 +423,6 @@ Item {
         }
     }
     MapAnimations     { id: mapAnimations; mapTarget: mapView.map }
-    FuelUnloadingDisplay {
-        id: fuelUnloadingDisplay; anchors.fill: parent
-        Component.onCompleted: fuelUnloadingDisplay.setTargetMap(mapView.map)
-    }
 
     // 车辆层（管理所有车辆/轨迹/搜索图钉）
     MapVehicleLayer {
@@ -483,11 +478,6 @@ Item {
     function clearNavigationStartMarker()               { vehicleLayer.clearNavigationStartMarker() }
     function clearNavigationEndMarker()                 { vehicleLayer.clearNavigationEndMarker() }
     function clearNavigationEndpointMarkers()           { vehicleLayer.clearNavigationEndpointMarkers() }
-
-    // 卸油记录 代理函数
-    function clearFuelMarkers()         { fuelUnloadingDisplay.clearMarkers() }
-    function showVehicleFuelRecords(pn) { fuelUnloadingDisplay.showVehicleRecords(pn) }
-    function showAllFuelRecords()       { fuelUnloadingDisplay.showAllRecords() }
 
     // 定位 & 截图
     function focusTargetArea(zoomLevel) {
@@ -565,8 +555,11 @@ Item {
         mapView.map.activeMapType = availableMapTypes[currentMapTypeIndex]
         mapTypeSelector.setCurrentIndex(currentMapTypeIndex)
         _suppressMapInteractionFlag = true
-        if (cfg.zoomLevel > 0)                    mapView.map.zoomLevel = cfg.zoomLevel
-        if (cfg.mapCenter && cfg.mapCenter.isValid) mapView.map.center = cfg.mapCenter
+        if (cfg.zoomLevel > 0)
+            mapView.map.zoomLevel = cfg.zoomLevel
+        var targetCoord = controller ? controller.targetAreaMapCoordinate() : null
+        if (targetCoord && targetCoord.isValid)
+            mapView.map.center = targetCoord
         _suppressMapInteractionFlag = false
         if (controller.setCoordinateConversionEnabled)
             controller.setCoordinateConversionEnabled(cfg.coordinateConversionEnabled)
@@ -577,9 +570,6 @@ Item {
     }
     function updateZoomLevel() {
         if (controller && controller.configManager) controller.configManager.zoomLevel = mapView.map.zoomLevel
-    }
-    function updateMapCenter() {
-        if (controller && controller.configManager) controller.configManager.mapCenter = mapView.map.center
     }
 
     Connections {

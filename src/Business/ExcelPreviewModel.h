@@ -6,11 +6,10 @@
 #include <QString>
 #include <QStringList>
 
-#include "Business/BusinessWorkbookTypes.h"
-#include "ExcelDriver/ExcelPreviewLoader.h"
-
 #include <QUrl>
 #include <QVariantMap>
+
+#include "Business/BusinessDataManager.h"
 
 class ExcelPreviewModel : public QAbstractTableModel
 {
@@ -35,31 +34,30 @@ class ExcelPreviewModel : public QAbstractTableModel
     Q_PROPERTY(int defaultPlateColumnNumber READ defaultPlateColumnNumber NOTIFY currentSheetChanged)
     Q_PROPERTY(QVariantList dateColumnOptions READ dateColumnOptions NOTIFY currentSheetChanged)
     Q_PROPERTY(QVariantList plateColumnOptions READ plateColumnOptions NOTIFY currentSheetChanged)
+    Q_PROPERTY(BusinessDataManager* businessData READ businessData CONSTANT)
 
 public:
     explicit ExcelPreviewModel(QObject* parent = nullptr);
 
-    QString filePath() const { return m_workbookInfo.filePath; }
-    QString fileName() const { return m_fileName; }
+    QString filePath() const;
+    QString fileName() const;
     QString statusMessage() const { return m_statusMessage; }
-    QString currentSheetStatus() const { return m_currentSheet.statusMessage; }
+    QString currentSheetStatus() const;
     QString errorMessage() const { return m_errorMessage; }
     bool hasData() const;
     bool loading() const { return m_loading; }
-    QStringList sheetNames() const { return m_workbookInfo.sheetNames; }
-    int sheetCount() const { return m_workbookInfo.sheetNames.size(); }
-    int currentSheetIndex() const { return m_currentSheetIndex; }
-    int previewRowCount() const { return m_currentSheet.grid.size(); }
-    int previewDataColumnCount() const { return m_currentSheet.columnCount; }
-    int previewColumnCount() const
-    {
-        return m_currentSheet.columnCount > 0 ? m_currentSheet.columnCount + 1 : 0;
-    }
+    QStringList sheetNames() const;
+    int sheetCount() const;
+    int currentSheetIndex() const;
+    int previewRowCount() const;
+    int previewColumnCount() const;
+    int previewDataColumnCount() const;
     int detectedDateColumnCount() const;
     int detectedPlateColumnCount() const;
     int defaultPlateColumnNumber() const;
     QVariantList dateColumnOptions() const;
     QVariantList plateColumnOptions() const;
+    BusinessDataManager* businessData() const { return m_dataManager; }
 
     static constexpr int RowNumberColumn = 0;
 
@@ -102,42 +100,23 @@ signals:
     void currentSheetChanged();
     void loadFinished(bool success);
 
+private slots:
+    void onBusinessSheetChanged();
+    void onBusinessWorkbookCleared();
+    void onImportProgress(int percentage);
+
 private:
-    bool loadSheetAtIndex(int index);
-    void releaseCurrentSheet();
+    void applyOperationResult(const BusinessDataManager::OperationResult& result,
+                              bool updateStatus = true);
     void setLoading(bool loading);
     void setErrorMessage(const QString& message);
     void setStatusMessage(const QString& message);
+    void resetModelFromBusinessData();
 
-    BusinessColumnSelection makeColumnSelection(int startColumnNumber,
-                                                int endColumnNumber,
-                                                const QString& singleTimeRole,
-                                                int dayOffset) const;
-
-    BusinessColumnSelection makeColumnSelection(const QVariantMap& columnConfig) const;
-
-    bool collectBusinessRows(const BusinessColumnSelection& selection,
-                             BusinessWorkbookRowsResult& result,
-                             QString& errorMessage) const;
-
-    void reportClassifyResult(const BusinessClassifyResult& result);
-
-    bool advanceScreenshotSheet(QString& errorMessage);
-
-    ExcelWorkbookInfo m_workbookInfo;
-    ExcelSheetPreview m_currentSheet;
-    QString m_fileName;
+    BusinessDataManager* m_dataManager = nullptr;
     QString m_statusMessage;
     QString m_errorMessage;
     bool m_loading = false;
-    int m_currentSheetIndex = -1;
-
-    bool m_screenshotIterActive = false;
-    BusinessColumnSelection m_screenshotSelection;
-    QList<int> m_screenshotSheetIndices;
-    int m_screenshotNextSheetListIndex = 0;
-    QList<BusinessExportRow> m_screenshotPendingRows;
-    int m_screenshotNextRowIndex = 0;
 };
 
 #endif // EXCELPREVIEWMODE_H

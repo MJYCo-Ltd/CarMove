@@ -1,7 +1,7 @@
 #ifndef EXCELROWPARSER_H
 #define EXCELROWPARSER_H
 
-#include "DataParsing/ExcelDataReader.h"
+#include "Domain/TrajectoryTypes.h"
 #include <QHash>
 #include <QVariant>
 
@@ -9,7 +9,7 @@ class ExcelRowParser
 {
 public:
     static bool parseRow(const QHash<int, QVariant>& cells,
-                         ExcelDataReader::VehicleRecord& record,
+                         TrajectoryPoint& record,
                          QString& errorMessage);
 
     static QVariant parseAndValidateField(const QVariant& cellValue,

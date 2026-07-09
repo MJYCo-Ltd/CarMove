@@ -1,7 +1,9 @@
 #pragma once
 
 #include "Business/BusinessWorkbookTypes.h"
-#include "ExcelDriver/ExcelPreviewLoader.h"
+#include "ExcelDriver/ExcelPreviewTypes.h"
+
+class ExcelParserManager;
 
 class BusinessWorkbookResolver
 {
@@ -14,6 +16,7 @@ public:
                                     const ExcelSheetPreview& referenceSheet,
                                     int currentSheetIndex,
                                     const BusinessColumnSelection& selection,
+                                    ExcelParserManager& parser,
                                     BusinessWorkbookRowsResult& result,
                                     QString& errorMessage);
 
@@ -25,6 +28,7 @@ public:
                                          const ExcelSheetPreview& referenceSheet,
                                          int targetSheetIndex,
                                          const BusinessColumnSelection& selection,
+                                         ExcelParserManager& parser,
                                          BusinessSheetRows& outSheetRows,
                                          QString& errorMessage,
                                          bool* sheetSkipped = nullptr);

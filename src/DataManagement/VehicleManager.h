@@ -5,10 +5,8 @@
 #include <QString>
 #include <QList>
 #include <QDate>
-#include "DataManagement/FolderScanner.h"
-#include "DataParsing/ExcelDataReader.h"
-
-class PostGisTrajectoryLoader;
+#include "DataManagement/TrajectoryDataManager.h"
+#include "Domain/TrajectoryTypes.h"
 
 class VehicleManager : public QObject
 {
@@ -17,47 +15,37 @@ class VehicleManager : public QObject
 public:
     explicit VehicleManager(QObject *parent = nullptr);
     
-    void setVehicleList(const QList<FolderScanner::VehicleInfo>& vehicles);
-    void setDatabaseMode(bool enabled);
-    void setPostGisLoader(PostGisTrajectoryLoader* loader);
+    void setDataManager(TrajectoryDataManager* manager);
+    void setVehicleList(const QList<TrajectoryDataManager::VehicleInfo>& vehicles);
     void selectVehicle(const QString& plateNumber);
-    void loadVehicleTrajectory(const QString& plateNumber);
-    void loadTrajectoryFromDatabase(const QString& plateNumber,
-                                    const QDate& startDate = {},
-                                    const QDate& endDate = {},
-                                    bool preserveAllPoints = false);
+    void loadTrajectory(const QString& plateNumber,
+                        const QDate& startDate = {},
+                        const QDate& endDate = {},
+                        bool preserveAllPoints = false);
     void applyCoordinateConversion(bool enabled);
-    QList<ExcelDataReader::VehicleRecord> getCurrentTrajectory() const;
-    QList<ExcelDataReader::VehicleRecord> getConvertedTrajectory() const;
-    
-    // Additional utility methods
+    QList<TrajectoryPoint> getCurrentTrajectory() const;
+    QList<TrajectoryPoint> getConvertedTrajectory() const;
     QString getSelectedVehicle() const;
     
 signals:
     void vehicleSelected(const QString& plateNumber);
     void trajectoryLoaded(const QString& plateNumber, 
-                         const QList<ExcelDataReader::VehicleRecord>& trajectory);
+                         const QList<TrajectoryPoint>& trajectory);
     void trajectoryConverted(const QString& plateNumber,
-                           const QList<ExcelDataReader::VehicleRecord>& convertedTrajectory);
+                           const QList<TrajectoryPoint>& convertedTrajectory);
     void loadingProgress(int percentage);
     
 private:
-    void finalizeLoadedTrajectory(const QList<ExcelDataReader::VehicleRecord>& allRecords,
+    void finalizeLoadedTrajectory(const QList<TrajectoryPoint>& allRecords,
                                   bool preserveAllPoints = false);
-    void loadVehicleTrajectoryFromDatabase(const QString& plateNumber);
-
-    QList<FolderScanner::VehicleInfo> m_vehicleList;
-    QString m_selectedVehicle;
-    QList<ExcelDataReader::VehicleRecord> m_currentTrajectory;
-    QList<ExcelDataReader::VehicleRecord> m_convertedTrajectory;
-    bool m_coordinateConversionEnabled;
-    bool m_databaseMode = false;
-    
-    ExcelDataReader* m_excelReader;
-    PostGisTrajectoryLoader* m_postGisLoader = nullptr;
-    
-    // Helper method to apply coordinate conversion to current trajectory
     void applyCoordinateConversionToCurrentTrajectory();
+
+    TrajectoryDataManager* m_dataManager = nullptr;
+    QList<TrajectoryDataManager::VehicleInfo> m_vehicleList;
+    QString m_selectedVehicle;
+    QList<TrajectoryPoint> m_currentTrajectory;
+    QList<TrajectoryPoint> m_convertedTrajectory;
+    bool m_coordinateConversionEnabled = false;
 };
 
 #endif // VEHICLEMANAGER_H

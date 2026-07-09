@@ -9,16 +9,14 @@
 #include <QVariantMap>
 #include <QVariant>
 #include <QGeoCoordinate>
-#include "DataManagement/FolderScanner.h"
-#include "DataParsing/ExcelDataReader.h"
-#include "Map/VehicleAnimationEngine.h"
-#include "UI/PlaybackControl.h"
+#include "Domain/TrajectoryTypes.h"
 #include "Core/ConfigManager.h"
-#include "DataManagement/PostGisTrajectoryLoader.h"
+#include "DataManagement/TrajectoryDataManager.h"
+#include "DataManagement/TrajectoryTimelineManager.h"
+#include "Map/MapServiceManager.h"
+#include "Core/FilePathManager.h"
 
 class VehicleManager;
-class VehicleDataModel;
-
 class MainController : public QObject
 {
     Q_OBJECT
@@ -33,22 +31,26 @@ class MainController : public QObject
     Q_PROPERTY(bool isLoading READ isLoading NOTIFY loadingChanged)
     Q_PROPERTY(QString loadingMessage READ loadingMessage NOTIFY loadingMessageChanged)
     Q_PROPERTY(ConfigManager* configManager READ configManager CONSTANT)
-    Q_PROPERTY(PlaybackControl* playback READ playback CONSTANT)
+    Q_PROPERTY(QDateTime trajectoryStartTime READ trajectoryStartTime NOTIFY trajectoryTimeRangeChanged)
+    Q_PROPERTY(QDateTime trajectoryEndTime READ trajectoryEndTime NOTIFY trajectoryTimeRangeChanged)
+    Q_PROPERTY(QDateTime trajectoryCurrentTime READ trajectoryCurrentTime NOTIFY trajectoryCurrentTimeChanged)
+    Q_PROPERTY(bool trajectorySpansMultipleDays READ trajectorySpansMultipleDays NOTIFY trajectoryTimeRangeChanged)
+    Q_PROPERTY(TrajectoryDataManager* trajectoryData READ trajectoryData CONSTANT)
+    Q_PROPERTY(MapServiceManager* mapService READ mapService CONSTANT)
+    Q_PROPERTY(FilePathManager* paths READ paths CONSTANT)
     Q_PROPERTY(QString trajectorySourceMode READ trajectorySourceMode NOTIFY trajectorySourceModeChanged)
     Q_PROPERTY(bool useDatabaseTrajectorySource READ useDatabaseTrajectorySource NOTIFY trajectorySourceModeChanged)
     Q_PROPERTY(bool databaseConnected READ databaseConnected NOTIFY databaseConnectionChanged)
     Q_PROPERTY(QString databaseStatus READ databaseStatus NOTIFY databaseConnectionChanged)
-    /// 目标区域中心（「定位到目标区域」、统计经过次数、搜索「设为目标区域」共用）
     Q_PROPERTY(double targetAreaLatitude READ targetAreaLatitude WRITE setTargetAreaLatitude NOTIFY targetAreaChanged)
     Q_PROPERTY(double targetAreaLongitude READ targetAreaLongitude WRITE setTargetAreaLongitude NOTIFY targetAreaChanged)
-    /// 目标区域名称（搜索/右键 POI 写入；为空时由地图侧逆地理补全）
     Q_PROPERTY(QString targetAreaName READ targetAreaName WRITE setTargetAreaName NOTIFY targetAreaChanged)
 
 public:
     explicit MainController(QObject *parent = nullptr);
     ~MainController();
 
-    QString currentFolder() const { return m_currentFolder; }
+    QString currentFolder() const;
     QStringList vehicleList() const { return m_vehicleList; }
     QStringList filteredVehicleList() const { return m_filteredVehicleList; }
     QString searchText() const { return m_searchText; }
@@ -57,11 +59,17 @@ public:
     bool isLoading() const { return m_isLoading; }
     QString loadingMessage() const { return m_loadingMessage; }
     ConfigManager* configManager() const { return ConfigManager::GetInstance(); }
-    PlaybackControl* playback() const { return m_playbackControl; }
+    QDateTime trajectoryStartTime() const;
+    QDateTime trajectoryEndTime() const;
+    QDateTime trajectoryCurrentTime() const;
+    bool trajectorySpansMultipleDays() const;
+    TrajectoryDataManager* trajectoryData() const { return m_trajectoryDataManager; }
+    MapServiceManager* mapService() const { return m_mapServiceManager; }
+    FilePathManager* paths() const { return m_filePathManager; }
     QString trajectorySourceMode() const;
     bool useDatabaseTrajectorySource() const;
-    bool databaseConnected() const { return m_databaseConnected; }
-    QString databaseStatus() const { return m_databaseStatus; }
+    bool databaseConnected() const;
+    QString databaseStatus() const;
     double targetAreaLatitude() const { return m_targetAreaLatitude; }
     double targetAreaLongitude() const { return m_targetAreaLongitude; }
     QString targetAreaName() const { return m_targetAreaName; }
@@ -92,46 +100,27 @@ public:
                                             const QString& endDateIso) const;
     Q_INVOKABLE void toggleCoordinateConversion();
     Q_INVOKABLE QVariantList getConvertedTrajectory();
-    /// 一次设置目标区域中心与名称（name 可为空；空名称时由 QML 逆地理补全）
     Q_INVOKABLE void setTargetAreaCenter(double latitude, double longitude, const QString& name);
-    /// 当前选中车辆轨迹上，进入目标半径区域的次数（由「区外→区内」跳变计一次）
     Q_INVOKABLE int calculateTargetAreaVisitCount(const QString& plateNumber, double targetLat, double targetLon, double radiusMeters) const;
-    /// 将轨迹点 QVariant（含 coordinate 或 latitude/longitude）转为 QGeoCoordinate
     Q_INVOKABLE QGeoCoordinate trajectoryPointToCoordinate(const QVariant& point) const;
-    /// 目标区域在地图上的显示坐标（随坐标转换开关与轨迹一致）
     Q_INVOKABLE QGeoCoordinate targetAreaMapCoordinate() const;
-    /// 车牌字符串哈希配色（与地图车辆色一致）
     Q_INVOKABLE QString colorHexForPlate(const QString& plateNumber) const;
-    /// 轨迹点序列 → MapPolyline.path 可用的坐标列表
     Q_INVOKABLE QVariantList trajectoryPolylinePath(const QVariant& trajectoryPoints) const;
-    /// 按时间/距离跨度切分轨迹，避免大间隔点被连成直线
     Q_INVOKABLE QVariantList trajectoryPointSegments(const QVariant& trajectoryPoints) const;
-    /// 分段轨迹 → 每段坐标列表（MapPolyline.path）
     Q_INVOKABLE QVariantList trajectorySegmentPolylinePaths(const QVariant& trajectoryPoints) const;
-    /// 准备当前轨迹分段并返回段数
     Q_INVOKABLE int trajectoryDisplaySegmentCount();
-    /// 当前已加载轨迹的第 index 段坐标列表（MapPolyline.path）
     Q_INVOKABLE QVariantList trajectoryDisplaySegmentPath(int segmentIndex) const;
-    /// 重建回放分段（与地图航线分段一致）
-    Q_INVOKABLE void refreshPlaybackSegments();
-    Q_INVOKABLE int playbackSegmentCount() const;
-    Q_INVOKABLE QDateTime playbackSegmentStartTime(int segmentIndex) const;
-    Q_INVOKABLE QDateTime playbackSegmentEndTime(int segmentIndex) const;
-    Q_INVOKABLE qint64 playbackSegmentDurationMs(int segmentIndex) const;
-    Q_INVOKABLE int playbackActiveSegmentIndex() const;
-    Q_INVOKABLE double playbackSegmentLocalProgress(int segmentIndex) const;
-    Q_INVOKABLE void seekPlaybackSegment(int segmentIndex, double localProgress);
-    /// 轨迹点序列 → QGeoPath（用于 fitViewportToGeoShape）
-    Q_INVOKABLE QVariant geoPathFromTrajectory(const QVariant& trajectoryPoints) const;
-    /// 轨迹 + 目标区域 → QGeoPath（用于 fitViewportToGeoShape）
+    Q_INVOKABLE void seekTrajectoryToProgress(double progress);
+    Q_INVOKABLE int trajectorySegmentCount() const;
+    Q_INVOKABLE QDateTime trajectorySegmentStartTime(int segmentIndex) const;
+    Q_INVOKABLE QDateTime trajectorySegmentEndTime(int segmentIndex) const;
+    Q_INVOKABLE int trajectoryActiveSegmentIndex() const;
+    Q_INVOKABLE double trajectorySegmentLocalProgress(int segmentIndex) const;
+    Q_INVOKABLE void seekTrajectorySegment(int segmentIndex, double localProgress);
     Q_INVOKABLE QVariant geoPathForViewport(const QVariant& trajectoryPoints) const;
-    /// 卸油记录列表 amount 字段求和，格式化为两位小数（吨）
     Q_INVOKABLE QString formatRecordsTotalAmount(const QVariantList& records) const;
-    /// 批量计算目标区域经过次数（车牌列表由 QML 传入）
     Q_INVOKABLE QVariantMap batchTargetAreaVisitCounts(const QVariantList& plateNumbers, double lat, double lon, double radiusMeters) const;
-    /// 车辆位置是否变化小于阈值（米），用于跳过无意义刷新
     Q_INVOKABLE bool isVehicleMoveBelowDistanceThreshold(const QGeoCoordinate& prevCoord, const QGeoCoordinate& newCoord, double thresholdMeters) const;
-    /// 定位到指定地点时，将当前车辆回放位置跳到距该点最近的轨迹点
     Q_INVOKABLE bool seekVehicleToNearestTrajectoryPoint(double latitude, double longitude);
     Q_INVOKABLE QString getDocumentsPath();
     Q_INVOKABLE void clearSearch();
@@ -157,38 +146,31 @@ signals:
     void loadingChanged();
     void loadingMessageChanged();
     void targetAreaChanged();
-    void playbackSegmentsChanged();
+    void trajectoryTimeRangeChanged();
+    void trajectoryCurrentTimeChanged();
+    void trajectorySegmentsChanged();
 
 private slots:
-    void onFolderScanCompleted(const QList<FolderScanner::VehicleInfo>& vehicles);
-    void onFolderScanError(const QString& error);
-    void onFolderScanProgress(int percentage);
+    void onDataSourceScanCompleted(const QList<TrajectoryDataManager::VehicleInfo>& vehicles);
+    void onDataSourceScanError(const QString& error);
+    void onDataSourceScanProgress(int percentage);
+    void onDataSourceReadyChanged();
     void onVehicleTrajectoryLoaded(const QString& plateNumber,
-                                  const QList<ExcelDataReader::VehicleRecord>& trajectory);
+                                  const QList<TrajectoryPoint>& trajectory);
     void onTrajectoryConverted(const QString& plateNumber,
-                              const QList<ExcelDataReader::VehicleRecord>& convertedTrajectory);
+                              const QList<TrajectoryPoint>& convertedTrajectory);
     void onVehicleLoadingProgress(int percentage);
-    void onVehiclePositionUpdate(const QString& plateNumber,
-                                const QGeoCoordinate& position,
-                                int direction, double speed);
 
 private:
-    void updateTimeRange();
-    void setupVehicleDataModel();
-    QVariantMap vehicleRecordToVariant(const ExcelDataReader::VehicleRecord& record) const;
+    void syncTimelineFromVehicleManager();
+    void resetTrajectoryTimeline();
+    QVariantMap vehicleRecordToVariant(const TrajectoryPoint& record) const;
     void updateFilteredVehicleList();
     void persistTargetAreaConfig();
-    void applyTrajectorySourceMode();
     void clearVehicleDataState();
-    void finishVehicleListLoad(const QList<FolderScanner::VehicleInfo>& vehicles);
-    void rebuildTrajectorySegments();
+    void finishVehicleListLoad(const QList<TrajectoryDataManager::VehicleInfo>& vehicles);
+    void updateDatabaseConnectionState();
 
-    struct PlaybackSegmentMeta {
-        QDateTime startTime;
-        QDateTime endTime;
-    };
-
-    QString m_currentFolder;
     QStringList m_vehicleList;
     QStringList m_filteredVehicleList;
     QString m_searchText;
@@ -200,21 +182,15 @@ private:
     double m_targetAreaLongitude = 117.73397758792544;
     QString m_targetAreaName;
 
-    FolderScanner* m_folderScanner;
-    PostGisTrajectoryLoader* m_postGisLoader;
+    TrajectoryDataManager* m_trajectoryDataManager;
+    MapServiceManager* m_mapServiceManager;
+    FilePathManager* m_filePathManager;
     VehicleManager* m_vehicleManager;
-    VehicleAnimationEngine* m_animationEngine;
-    VehicleDataModel* m_vehicleDataModel;
-    PlaybackControl* m_playbackControl = nullptr;
-    bool m_databaseConnected = false;
+    TrajectoryTimelineManager* m_timelineManager = nullptr;
     QString m_databaseStatus;
     bool m_captureTrajectoryPending = false;
 
-    QList<FolderScanner::VehicleInfo> m_vehicleInfoList;
-    mutable QVariantList m_trajectoryDisplaySegments;
-    QList<PlaybackSegmentMeta> m_playbackSegmentMeta;
-    bool m_isRebuildingTrajectorySegments = false;
-    bool m_segmentsNeedRebuild = true;
+    QList<TrajectoryDataManager::VehicleInfo> m_vehicleInfoList;
 };
 
 #endif // MAINCONTROLLER_H

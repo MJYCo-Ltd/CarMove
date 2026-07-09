@@ -1,7 +1,7 @@
 #ifndef BUSINESSCOLUMNIDENTIFIER_H
 #define BUSINESSCOLUMNIDENTIFIER_H
 
-#include "ExcelDriver/ExcelPreviewLoader.h"
+#include "ExcelDriver/ExcelPreviewTypes.h"
 
 class BusinessColumnIdentifier
 {

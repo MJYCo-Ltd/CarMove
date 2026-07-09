@@ -1,10 +1,12 @@
 #pragma once
 
 #include "Business/BusinessWorkbookTypes.h"
-#include "ExcelDriver/ExcelPreviewLoader.h"
+#include "ExcelDriver/ExcelPreviewTypes.h"
 
 #include <QHash>
 #include <QStringList>
+
+class ExcelParserManager;
 
 class BusinessExcelExporter
 {
@@ -27,6 +29,7 @@ public:
                                           const ExcelSheetPreview& referenceSheet,
                                           int currentSheetIndex,
                                           const BusinessColumnSelection& selection,
+                                          ExcelParserManager& parser,
                                           const QString& outputDirectory,
                                           QString& errorMessage,
                                           int* exportedRows = nullptr,
@@ -50,6 +53,7 @@ public:
                                             const ExcelSheetPreview& referenceSheet,
                                             int currentSheetIndex,
                                             const BusinessColumnSelection& selection,
+                                            ExcelParserManager& parser,
                                             const QString& trajectoryDirectory,
                                             const QString& outputDirectory,
                                             QString& errorMessage,

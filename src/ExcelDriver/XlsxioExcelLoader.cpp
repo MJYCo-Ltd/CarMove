@@ -1,6 +1,7 @@
 #include "ExcelDriver/XlsxioExcelLoader.h"
 #include "DataParsing/ExcelRowParser.h"
 #include "ExcelDriver/ExcelFilePath.h"
+#include "Core/LocalFilePath.h"
 #include "DataParsing/ExcelLoadUtils.h"
 #include "Core/ConfigManager.h"
 #include "Core/ErrorHandler.h"
@@ -43,12 +44,12 @@ void discardRowCells(xlsxioreadersheet sheet)
 } // namespace
 
 bool XlsxioExcelLoader::load(const QString& filePath,
-                             QList<ExcelDataReader::VehicleRecord>& records,
+                             QList<TrajectoryPoint>& records,
                              const ProgressCallback& onProgress,
                              QString& errorMessage)
 {
     records.clear();
-    const QString localPath = ExcelFilePath::normalizeLocalFilePath(filePath);
+    const QString localPath = LocalFilePath::normalizeLocalFilePath(filePath);
     const QFileInfo fileInfo(localPath);
     const int dataStartRow = ConfigManager::GetInstance()->getExcelDataStartRow();
 
@@ -87,7 +88,7 @@ bool XlsxioExcelLoader::load(const QString& filePath,
 
         const QHash<int, QVariant> cells = readRowCells(sheet);
 
-        ExcelDataReader::VehicleRecord record;
+        TrajectoryPoint record;
         QString rowError;
         if (ExcelRowParser::parseRow(cells, record, rowError)) {
             ExcelLoadUtils::appendParsedVehicleRecord(static_cast<int>(rowIndex),

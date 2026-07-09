@@ -10,24 +10,24 @@ Item {
     property int segmentCount: 0
 
     function refreshSegments() {
-        segmentCount = timelineController ? timelineController.playbackSegmentCount() : 0
+        segmentCount = timelineController ? timelineController.trajectorySegmentCount() : 0
         updateHandlePosition()
     }
 
-    function playbackStartMs() {
-        if (!timelineController || !timelineController.playback)
+    function trajectoryStartMs() {
+        if (!timelineController)
             return 0
-        var t = timelineController.playback.startTime
+        var t = timelineController.trajectoryStartTime
         if (!t || typeof t.getTime !== "function")
             return 0
         var ms = t.getTime()
         return isNaN(ms) ? 0 : ms
     }
 
-    function playbackEndMs() {
-        if (!timelineController || !timelineController.playback)
+    function trajectoryEndMs() {
+        if (!timelineController)
             return 0
-        var t = timelineController.playback.endTime
+        var t = timelineController.trajectoryEndTime
         if (!t || typeof t.getTime !== "function")
             return 0
         var ms = t.getTime()
@@ -35,8 +35,8 @@ Item {
     }
 
     function totalRangeMs() {
-        var start = playbackStartMs()
-        var end = playbackEndMs()
+        var start = trajectoryStartMs()
+        var end = trajectoryEndMs()
         return end > start ? end - start : 0
     }
 
@@ -44,16 +44,16 @@ Item {
         var total = totalRangeMs()
         if (!timelineController || total <= 0 || index < 0 || index >= segmentCount)
             return 0
-        var t = timelineController.playbackSegmentStartTime(index)
-        return t && t.getTime ? Math.max(0, Math.min(1, (t.getTime() - playbackStartMs()) / total)) : 0
+        var t = timelineController.trajectorySegmentStartTime(index)
+        return t && t.getTime ? Math.max(0, Math.min(1, (t.getTime() - trajectoryStartMs()) / total)) : 0
     }
 
     function segmentEndProgress(index) {
         var total = totalRangeMs()
         if (!timelineController || total <= 0 || index < 0 || index >= segmentCount)
             return 0
-        var t = timelineController.playbackSegmentEndTime(index)
-        return t && t.getTime ? Math.max(0, Math.min(1, (t.getTime() - playbackStartMs()) / total)) : 0
+        var t = timelineController.trajectorySegmentEndTime(index)
+        return t && t.getTime ? Math.max(0, Math.min(1, (t.getTime() - trajectoryStartMs()) / total)) : 0
     }
 
     function segmentStartX(index) {
@@ -87,7 +87,7 @@ Item {
     function applySeekFromX(xPos) {
         var hit = xToSegmentAndProgress(xPos)
         if (hit.index >= 0)
-            timelineController.seekPlaybackSegment(hit.index, hit.progress)
+            timelineController.seekTrajectorySegment(hit.index, hit.progress)
     }
 
     function updateHandlePosition() {
@@ -95,13 +95,13 @@ Item {
             handle.visible = false
             return
         }
-        var idx = timelineController.playbackActiveSegmentIndex()
+        var idx = timelineController.trajectoryActiveSegmentIndex()
         if (idx < 0) {
             handle.visible = false
             return
         }
         handle.visible = interactive
-        var localProgress = timelineController.playbackSegmentLocalProgress(idx)
+        var localProgress = timelineController.trajectorySegmentLocalProgress(idx)
         var cx = segmentStartX(idx) + localProgress * segmentWidth(idx)
         handle.x = Math.max(0, Math.min(width - handle.width, cx - handle.width / 2))
     }
@@ -149,9 +149,7 @@ Item {
             var hit = root.xToSegmentAndProgress(mouse.x)
             if (hit.index < 0)
                 return
-            if (timelineController && timelineController.playback)
-                timelineController.playback.setDraggingMode(true)
-            timelineController.seekPlaybackSegment(hit.index, hit.progress)
+            timelineController.seekTrajectorySegment(hit.index, hit.progress)
         }
         onPositionChanged: function(mouse) {
             if (pressed)
@@ -159,32 +157,25 @@ Item {
         }
         onReleased: function(mouse) {
             root.applySeekFromX(mouse.x)
-            if (timelineController && timelineController.playback)
-                timelineController.playback.setDraggingMode(false)
         }
         onWheel: function(wheel) {
             if (!timelineController)
                 return
-            var idx = timelineController.playbackActiveSegmentIndex()
+            var idx = timelineController.trajectoryActiveSegmentIndex()
             if (idx < 0)
                 return
             var step = wheel.angleDelta.y > 0 ? 0.02 : -0.02
-            var progress = timelineController.playbackSegmentLocalProgress(idx) + step
-            timelineController.seekPlaybackSegment(idx, progress)
+            var progress = timelineController.trajectorySegmentLocalProgress(idx) + step
+            timelineController.seekTrajectorySegment(idx, progress)
             wheel.accepted = true
         }
     }
 
     Connections {
         target: timelineController
-        function onPlaybackSegmentsChanged() { root.refreshSegments() }
-    }
-
-    Connections {
-        target: timelineController && timelineController.playback ? timelineController.playback : null
-        function onCurrentTimeChanged() { root.updateHandlePosition() }
-        function onProgressChanged() { root.updateHandlePosition() }
-        function onTimeRangeChanged() { root.refreshSegments() }
+        function onTrajectorySegmentsChanged() { root.refreshSegments() }
+        function onTrajectoryCurrentTimeChanged() { root.updateHandlePosition() }
+        function onTrajectoryTimeRangeChanged() { root.refreshSegments() }
     }
 
     onTimelineControllerChanged: refreshSegments()

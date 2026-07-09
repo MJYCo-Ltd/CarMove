@@ -24,10 +24,10 @@ ApplicationWindow {
         onActivated: {
             if (!controller)
                 return
-            if (controller.playbackSegmentCount() > 0)
-                controller.seekPlaybackSegment(0, 0)
-            else if (controller.playback)
-                controller.playback.seekToProgress(0)
+            if (controller.trajectorySegmentCount() > 0)
+                controller.seekTrajectorySegment(0, 0)
+            else
+                controller.seekTrajectoryToProgress(0)
         }
     }
 
@@ -38,7 +38,7 @@ ApplicationWindow {
         RowLayout {
             anchors.fill: parent
             anchors.margins: 5
-            /// 与 MapDisplay.mapVehicleContextActive、回放栏、坐标切换按钮同源
+            /// 与 MapDisplay.mapVehicleContextActive、时间轴栏、坐标切换按钮同源
             Label {
                 text: mapDisplay.mapVehicleContextActive
                       ? ("已选择车辆: " + controller.selectedVehicle)
@@ -73,27 +73,17 @@ ApplicationWindow {
             onModeChanged: function(mode) {
                 trajectoryPanel.visible = (mode === "trajectory")
                 businessPanel.visible = (mode === "business")
-                fuelRecordsPanel.visible = (mode === "fuel")
                 geoSearchPanel.visible   = (mode === "search")
                 navigationPanel.visible  = (mode === "nav")
                 if (mode === "trajectory") {
-                    mapDisplay.clearFuelMarkers()
                     mapDisplay.clearSearchResult()
                     mapDisplay.clearNavigationRoute()
                     mapDisplay.clearNavigationEndpointMarkers()
-                    mapDisplay.focusTargetArea()
                 } else if (mode === "business") {
-                    mapDisplay.clearFuelMarkers()
-                    mapDisplay.clearSearchResult()
-                    mapDisplay.clearNavigationRoute()
-                    mapDisplay.clearNavigationEndpointMarkers()
-                } else if (mode === "fuel") {
-                    mapDisplay.clearTrajectory()
                     mapDisplay.clearSearchResult()
                     mapDisplay.clearNavigationRoute()
                     mapDisplay.clearNavigationEndpointMarkers()
                 } else if (mode === "nav") {
-                    mapDisplay.clearFuelMarkers()
                     mapDisplay.clearSearchResult()
                 }
             }
@@ -114,15 +104,6 @@ ApplicationWindow {
             Layout.fillHeight: true
             visible: sidebarPanel.currentMode === "trajectory"
             onOpenFolderDialogRequested: folderDialog.open()
-        }
-
-        FuelRecordsPanel {
-            id: fuelRecordsPanel
-            Layout.preferredWidth: 300
-            Layout.fillHeight: true
-            visible: sidebarPanel.currentMode === "fuel"
-            onVehicleSelected: function(pn) { mapDisplay.showVehicleFuelRecords(pn) }
-            onShowAllRecords: mapDisplay.showAllFuelRecords()
         }
 
         GeoSearchPanel {
@@ -146,8 +127,8 @@ ApplicationWindow {
                 trajectoryModeActive: sidebarPanel.currentMode === "trajectory"
             }
 
-            PlaybackControls {
-                id: playbackControls
+            TrajectoryTimelineBar {
+                id: trajectoryTimelineBar
                 Layout.fillWidth: true
                 Layout.preferredHeight: 62
                 mapVehicleContextActive: mapDisplay.mapVehicleContextActive

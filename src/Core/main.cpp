@@ -4,11 +4,7 @@
 #include <QQuickStyle>
 
 #include "UI/MainController.h"
-#include "UI/PlaybackControl.h"
-#include "DataManagement/FuelUnloadingDataLoader.h"
 #include "Core/ConfigManager.h"
-#include "Map/TianDiTu/TiandituGeocoder.h"
-#include "Map/TianDiTu/TiandituRoutePlanner.h"
 #include "Business/ExcelPreviewModel.h"
 #include "Core/AppLogger.h"
 
@@ -31,10 +27,7 @@ int main(int argc, char *argv[])
     
     // Register QML types for all components
     qmlRegisterType<MainController>("CarMove", 1, 0, "MainController");
-    qmlRegisterType<PlaybackControl>("CarMove", 1, 0, "PlaybackControl");
-    qmlRegisterType<FuelUnloadingDataLoader>("CarMove", 1, 0, "FuelUnloadingDataLoader");
     qmlRegisterType<ConfigManager>("CarMove", 1, 0, "ConfigManager");
-    qmlRegisterType<TiandituGeocoder>("CarMove", 1, 0, "TiandituGeocoder");
     qmlRegisterType<ExcelPreviewModel>("CarMove", 1, 0, "ExcelPreviewModel");
 
     // Create QML engine
@@ -44,10 +37,12 @@ int main(int argc, char *argv[])
     MainController controller;
     engine.rootContext()->setContextProperty("controller", &controller);
 
-    TiandituGeocoder geocoder;
-    engine.rootContext()->setContextProperty("geocoder", &geocoder);
-    TiandituRoutePlanner routePlanner;
-    engine.rootContext()->setContextProperty("routePlanner", &routePlanner);
+    // 地图服务：经 MapServiceManager 统一管理，保留 geocoder/routePlanner 别名以兼容现有 QML
+    if (controller.mapService()) {
+        engine.rootContext()->setContextProperty("mapService", controller.mapService());
+        engine.rootContext()->setContextProperty("geocoder", controller.mapService()->geocoder());
+        engine.rootContext()->setContextProperty("routePlanner", controller.mapService()->routePlanner());
+    }
 
     // Load main QML file
     const QUrl url(QStringLiteral("qrc:/MainWindow.qml"));

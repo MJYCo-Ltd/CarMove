@@ -56,32 +56,36 @@ set(SOURCES
     src/Core/AppLogger.cpp
     src/Core/ErrorHandler.cpp
     src/Core/ConfigManager.cpp
+    src/Core/FilePathManager.cpp
+    src/Core/LocalFilePath.cpp
     # UI
     src/UI/MainController.cpp
     src/UI/MainControllerSlots.cpp
     src/UI/MainControllerHelpers.cpp
-    src/UI/PlaybackControl.cpp
     # Map
-    src/Map/VehicleAnimationEngine.cpp
     src/Map/CoordinateConverter.cpp
     src/Map/TianDiTu/TiandituGeocoder.cpp
     src/Map/TianDiTu/TiandituRoutePlanner.cpp
+    src/Map/MapServiceManager.cpp
     # DataManagement
-    src/DataManagement/FolderScanner.cpp
+    src/DataManagement/TrajectoryDataManager.cpp
+    src/DataManagement/PostGisDataManager.cpp
+    src/DataManagement/TrajectoryImportManager.cpp
     src/DataManagement/VehicleManager.cpp
-    src/DataManagement/VehicleDataModel.cpp
+    src/DataManagement/TrajectoryTimeIndex.cpp
+    src/DataManagement/TrajectoryTimelineManager.cpp
+    src/DataManagement/TrajectorySegmentBreak.cpp
     src/DataManagement/PostGisDatabaseConfig.cpp
     src/DataManagement/PostGisConnection.cpp
-    src/DataManagement/PostGisTrajectoryLoader.cpp
-    src/DataManagement/PostGisTrajectoryImporter.cpp
-    src/DataManagement/FuelUnloadingDataLoader.cpp
     # DataParsing
-    src/DataParsing/ExcelDataReader.cpp
     src/DataParsing/ExcelRowParser.cpp
     src/DataParsing/ExcelLoadUtils.cpp
     src/DataParsing/TrajectoryFileNaming.cpp
     # ExcelDriver
-    src/ExcelDriver/ExcelPreviewLoader.cpp
+    src/ExcelDriver/ExcelPreviewTypes.cpp
+    src/ExcelDriver/ExcelParserPreview.cpp
+    src/ExcelDriver/ExcelParserManager.cpp
+    src/ExcelDriver/ExcelTrajectoryManager.cpp
     src/ExcelDriver/ExcelCellFormatter.cpp
     src/ExcelDriver/ExcelSheetGridUtils.cpp
     src/ExcelDriver/ExcelFilePath.cpp
@@ -96,6 +100,7 @@ set(SOURCES
     src/Business/DateColumnDetector.cpp
     src/Business/BusinessExcelExporter.cpp
     src/Business/BusinessWorkbookResolver.cpp
+    src/Business/BusinessDataManager.cpp
     src/Business/BusinessCsvWriter.cpp
     src/Business/ExcelPreviewModel.cpp
 )
@@ -105,48 +110,45 @@ set(HEADERS
     src/Core/AppLogger.h
     src/Core/ErrorHandler.h
     src/Core/ConfigManager.h
+    src/Core/FilePathManager.h
+    src/Core/LocalFilePath.h
     # UI
     src/UI/MainController.h
-    src/UI/PlaybackControl.h
     # Map
-    src/Map/VehicleAnimationEngine.h
     src/Map/CoordinateConverter.h
     src/Map/TianDiTu/TiandituGeocoder.h
     src/Map/TianDiTu/TiandituRoutePlanner.h
+    src/Map/MapServiceManager.h
     # DataManagement
-    src/DataManagement/FolderScanner.h
+    src/DataManagement/TrajectoryDataManager.h
+    src/DataManagement/PostGisDataManager.h
+    src/DataManagement/TrajectoryImportManager.h
     src/DataManagement/VehicleManager.h
-    src/DataManagement/VehicleDataModel.h
+    src/DataManagement/TrajectoryTimeIndex.h
+    src/DataManagement/TrajectoryTimelineManager.h
     src/DataManagement/PostGisDatabaseConfig.h
     src/DataManagement/PostGisConnection.h
     src/DataManagement/PostGisSqlHelpers.h
-    src/DataManagement/PostGisTrajectoryLoader.h
-    src/DataManagement/PostGisTrajectoryImporter.h
-    src/DataManagement/FuelUnloadingDataLoader.h
     # DataParsing
-    src/DataParsing/ExcelDataReader.h
     src/DataParsing/ExcelRowParser.h
     src/DataParsing/ExcelLoadUtils.h
     src/DataParsing/TrajectoryFileNaming.h
-    # ExcelDriver
-    src/ExcelDriver/ExcelBackend.h
-    src/ExcelDriver/ExcelPreviewLoader.h
-    src/ExcelDriver/ExcelCellFormatter.h
-    src/ExcelDriver/ExcelSheetGridUtils.h
-    src/ExcelDriver/ExcelFilePath.h
-    src/ExcelDriver/ExcelPreviewColumnUtils.h
-    src/ExcelDriver/OoxmlSaxExcelLoader.h
-    src/ExcelDriver/QXlsxExcelLoader.h
-    src/ExcelDriver/XlsxioExcelLoader.h
+    # ExcelDriver (public API only)
+    src/ExcelDriver/ExcelPreviewTypes.h
+    src/ExcelDriver/ExcelParserManager.h
+    src/ExcelDriver/ExcelTrajectoryManager.h
     # Business
     src/Business/BusinessColumnIdentifier.h
+    src/Business/BusinessColumnUtils.h
     src/Business/BusinessWorkbookTypes.h
     src/Business/LicensePlateDetector.h
     src/Business/DateColumnDetector.h
     src/Business/BusinessWorkbookResolver.h
+    src/Business/BusinessDataManager.h
     src/Business/BusinessExcelExporter.h
     src/Business/BusinessCsvWriter.h
     src/Business/ExcelPreviewModel.h
+    src/Domain/TrajectoryTypes.h
 )
 
 qt6_add_resources(QML_RESOURCES qml/qml.qrc)
