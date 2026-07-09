@@ -35,6 +35,7 @@ class ConfigManager : public QObject
     Q_PROPERTY(QString dbPassword READ dbPassword WRITE setDbPassword NOTIFY postGisSettingsChanged)
     Q_PROPERTY(QString dbSchema READ dbSchema WRITE setDbSchema NOTIFY postGisSettingsChanged)
     Q_PROPERTY(QString dbTrajectoryTable READ dbTrajectoryTable WRITE setDbTrajectoryTable NOTIFY postGisSettingsChanged)
+    Q_PROPERTY(QString dbTrajectoryDaysTable READ dbTrajectoryDaysTable WRITE setDbTrajectoryDaysTable NOTIFY postGisSettingsChanged)
     Q_PROPERTY(QString dbVehiclesTable READ dbVehiclesTable WRITE setDbVehiclesTable NOTIFY postGisSettingsChanged)
 
 public:
@@ -98,6 +99,7 @@ public:
     QString dbPassword() const { return m_dbPassword; }
     QString dbSchema() const { return m_dbSchema; }
     QString dbTrajectoryTable() const { return m_dbTrajectoryTable; }
+    QString dbTrajectoryDaysTable() const { return m_dbTrajectoryDaysTable; }
     QString dbVehiclesTable() const { return m_dbVehiclesTable; }
 
     PostGisDatabaseConfig postGisDatabaseConfig() const;
@@ -116,6 +118,7 @@ public:
     void setDbPassword(const QString& password);
     void setDbSchema(const QString& schema);
     void setDbTrajectoryTable(const QString& table);
+    void setDbTrajectoryDaysTable(const QString& table);
     void setDbVehiclesTable(const QString& table);
 
     // Excel column mapping methods
@@ -191,6 +194,7 @@ private:
     QString m_dbPassword;
     QString m_dbSchema;
     QString m_dbTrajectoryTable;
+    QString m_dbTrajectoryDaysTable;
     QString m_dbVehiclesTable;
 
     // Excel configuration properties
@@ -214,6 +218,7 @@ private:
     static inline const char* DEFAULT_DB_USER = "postgres";
     static inline const char* DEFAULT_DB_SCHEMA = "public";
     static inline const char* DEFAULT_DB_TRAJECTORY_TABLE = "trajectory_points";
+    static inline const char* DEFAULT_DB_TRAJECTORY_DAYS_TABLE = "trajectory_days";
     static inline const char* DEFAULT_DB_VEHICLES_TABLE = "vehicles";
     static const int DEFAULT_EXCEL_DATA_START_ROW = 2;
     static ConfigManager* m_pManager;

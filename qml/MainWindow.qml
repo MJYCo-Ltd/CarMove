@@ -23,11 +23,22 @@ ApplicationWindow {
         sequence: "Space"
         onActivated: {
             if (!controller || !controller.playback || !mapDisplay.mapVehicleContextActive) return
+            if (!mapDisplay.simulationPanelActive) return
             if (controller.playback.isPlaying) controller.playback.pausePlayback()
             else controller.playback.startPlayback()
         }
     }
-    Shortcut { sequence: "Escape"; onActivated: { if (controller && controller.playback) controller.playback.stopPlayback() } }
+    Shortcut {
+        sequence: "Escape"
+        onActivated: {
+            if (mapDisplay.simulationPanelActive) {
+                mapDisplay.closeSimulationPanel()
+                return
+            }
+            if (controller && controller.playback)
+                controller.playback.stopPlayback()
+        }
+    }
 
     property bool isBusinessMode: sidebarPanel.currentMode === "business"
 
@@ -59,6 +70,8 @@ ApplicationWindow {
             }
             Label {
                 visible: mapDisplay.mapVehicleContextActive
+                         && mapDisplay.trajectoryModeActive
+                         && mapDisplay.simulationPanelActive
                 text: (controller && controller.playback && controller.playback.isPlaying) ? "播放中" : "已暂停"
                 color: (controller && controller.playback && controller.playback.isPlaying) ? "#27ae60" : "#7f8c8d"
             }
@@ -108,6 +121,7 @@ ApplicationWindow {
             Layout.fillHeight: true
             visible: mainWindow.isBusinessMode
             configManager: controller ? controller.configManager : null
+            batchScreenshotController: batchScreenshotController
         }
 
         TrajectoryPanel {
@@ -153,6 +167,9 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 80
                 mapVehicleContextActive: mapDisplay.mapVehicleContextActive
+                                         && mapDisplay.trajectoryModeActive
+                                         && mapDisplay.simulationPanelActive
+                onCloseRequested: mapDisplay.closeSimulationPanel()
             }
         }
 
@@ -174,8 +191,127 @@ ApplicationWindow {
     NotificationDialog { id: errorDialog }
     NotificationDialog { id: successDialog }
 
+    QtObject {
+        id: batchScreenshotController
+
+        property bool running: false
+        property var queue: []
+        property int index: 0
+        property string outputDir: ""
+        property string restoreMode: "business"
+        property int capturedCount: 0
+        property int skippedCount: 0
+        property string currentLabel: ""
+
+        function normalizeFolderPath(path) {
+            if (!path || !controller)
+                return ""
+            return controller.normalizeLocalPath(path)
+        }
+
+        function start(tasks, outputFolderPath) {
+            if (!controller || !tasks || tasks.length === 0) {
+                errorDialog.showError("没有可截图的业务行")
+                return
+            }
+
+            const folder = normalizeFolderPath(outputFolderPath)
+            if (!controller.ensureScreenshotOutputDirectory(folder)) {
+                errorDialog.showError("无法创建截图输出目录")
+                return
+            }
+
+            queue = tasks
+            index = 0
+            outputDir = folder
+            capturedCount = 0
+            skippedCount = 0
+            running = true
+            restoreMode = sidebarPanel.currentMode
+
+            if (!controller.useDatabaseTrajectorySource)
+                controller.setTrajectorySourceMode("database")
+
+            if (!controller.databaseConnected)
+                controller.connectPostGisDatabase()
+
+            if (!controller.databaseConnected) {
+                running = false
+                errorDialog.showError("PostGIS 数据库未连接，请检查 CarMoveTracker.ini")
+                return
+            }
+
+            sidebarPanel.activateMode("trajectory")
+            mapDisplay.waitForMapSettled(function() {
+                batchScreenshotController.processNext()
+            }, 800, 1200, 8000)
+        }
+
+        function processNext() {
+            if (!running || index >= queue.length) {
+                finish()
+                return
+            }
+
+            const task = queue[index]
+            currentLabel = task.plate + "  " + task.startDate + " ~ " + task.endDate
+            controller.loadTrajectoryForCapture(task.plate, task.startDate, task.endDate)
+        }
+
+        function onCaptureReady(success, pointCount) {
+            if (!running)
+                return
+
+            if (!success || pointCount < 2) {
+                skippedCount++
+                index++
+                Qt.callLater(processNext)
+                return
+            }
+
+            const task = queue[index]
+            const traj = controller.getConvertedTrajectory()
+            mapDisplay.prepareTrajectoryForCapture(task.plate, traj, "#3498db")
+            mapDisplay.waitForMapSettled(function() {
+                batchScreenshotController.takeShotAndContinue()
+            }, 1200, 2000, 12000)
+        }
+
+        function takeShotAndContinue() {
+            if (!running || index >= queue.length)
+                return
+
+            const task = queue[index]
+            const path = controller.screenshotFilePath(outputDir, task.plate, task.startDate, task.endDate)
+            mapDisplay.captureScreenshotTo(path, function(ok) {
+                if (ok)
+                    capturedCount++
+                else
+                    skippedCount++
+                index++
+                processNext()
+            })
+        }
+
+        function finish() {
+            if (!running)
+                return
+            running = false
+            currentLabel = ""
+            mapDisplay.cancelMapSettleWait()
+            mapDisplay.resetCaptureViewportMargin()
+            sidebarPanel.activateMode(restoreMode)
+            successDialog.showSuccess("截图完成：共 " + queue.length + " 条，成功 "
+                                    + capturedCount + " 张，跳过 " + skippedCount + " 条")
+        }
+    }
+
     Connections {
         target: controller
+
+        function onCaptureTrajectoryReady(success, pointCount) {
+            batchScreenshotController.onCaptureReady(success, pointCount)
+        }
 
         function onFolderScanned(success, message) {
             if (success) successDialog.showSuccess(message)
@@ -183,6 +319,8 @@ ApplicationWindow {
         }
 
         function onTrajectoryLoaded(success, message) {
+            if (batchScreenshotController.running)
+                return
             if (!success) { errorDialog.showError(message); return }
             if (controller && controller.selectedVehicle) {
                 var traj = controller.getConvertedTrajectory()
@@ -204,6 +342,9 @@ ApplicationWindow {
         }
 
         function onSelectedVehicleChanged() {
+            if (batchScreenshotController.running)
+                return
+            mapDisplay.closeSimulationPanel()
             if (!controller || !controller.selectedVehicle) mapDisplay.clearTrajectory()
         }
     }

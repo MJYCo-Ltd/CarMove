@@ -23,6 +23,7 @@ Item {
     property string currentVehicleColor: "#0061F6"
     property bool   autoFitEnabled:     true
     property bool   userHasInteracted:  false
+    property int    fitViewportMargin:  1
     property var    searchResultPin:    null
     property var    navigationPolyline:  null
     property var    navigationStartPin:   null
@@ -77,11 +78,17 @@ Item {
     function addVehicleTrajectory(plateNumber, trajectoryPoints, vehicleColor) {
         clearTrajectory()
         currentVehicle = plateNumber
-        if (trajectoryPoints && trajectoryPoints.length > 1) {
-            var line = _createMapLineOnMap(trajectoryPoints, currentVehicleColor, 3)
-            if (line) {
-                mapTarget.addMapItem(line)
-                trajectoryItems.push(line)
+        if (trajectoryPoints && trajectoryPoints.length > 0 && typeof controller !== 'undefined' && controller) {
+            var segments = controller.trajectoryPointSegments(trajectoryPoints)
+            for (var i = 0; i < segments.length; i++) {
+                var segmentPoints = segments[i]
+                if (!segmentPoints || segmentPoints.length < 2)
+                    continue
+                var line = _createMapLineOnMap(segmentPoints, currentVehicleColor, 3)
+                if (line) {
+                    mapTarget.addMapItem(line)
+                    trajectoryItems.push(line)
+                }
             }
         }
         if (trajectoryPoints && trajectoryPoints.length > 0) {
@@ -278,8 +285,8 @@ Item {
     function _fitViewport(trajectoryPoints) {
         if (typeof controller === 'undefined' || !controller || !mapTarget)
             return
-        var shape = controller.geoPathFromTrajectory(trajectoryPoints)
-        mapTarget.fitViewportToGeoShape(shape, Qt.size(1, 1))
+        var shape = controller.geoPathForViewport(trajectoryPoints)
+        mapTarget.fitViewportToGeoShape(shape, Qt.size(fitViewportMargin, fitViewportMargin))
     }
 
     Connections {

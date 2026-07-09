@@ -2,6 +2,8 @@
 #include "CoordinateConverter.h"
 #include "PostGisTrajectoryLoader.h"
 
+#include <QDate>
+
 VehicleManager::VehicleManager(QObject *parent)
     : QObject(parent)
     , m_coordinateConversionEnabled(false)
@@ -175,6 +177,14 @@ void VehicleManager::loadVehicleTrajectory(const QString& plateNumber)
 
 void VehicleManager::loadVehicleTrajectoryFromDatabase(const QString& plateNumber)
 {
+    loadTrajectoryFromDatabase(plateNumber, {}, {});
+}
+
+void VehicleManager::loadTrajectoryFromDatabase(const QString& plateNumber,
+                                                const QDate& startDate,
+                                                const QDate& endDate,
+                                                bool preserveAllPoints)
+{
     m_currentTrajectory.clear();
 
     if (!m_postGisLoader || !m_postGisLoader->isConnected()) {
@@ -185,7 +195,8 @@ void VehicleManager::loadVehicleTrajectoryFromDatabase(const QString& plateNumbe
 
     emit loadingProgress(10);
     QString errorMessage;
-    QList<ExcelDataReader::VehicleRecord> allRecords = m_postGisLoader->loadTrajectory(plateNumber, errorMessage);
+    QList<ExcelDataReader::VehicleRecord> allRecords =
+        m_postGisLoader->loadTrajectory(plateNumber, errorMessage, startDate, endDate);
     emit loadingProgress(80);
 
     if (allRecords.isEmpty()) {
@@ -194,10 +205,12 @@ void VehicleManager::loadVehicleTrajectoryFromDatabase(const QString& plateNumbe
         return;
     }
 
-    finalizeLoadedTrajectory(allRecords);
+    m_selectedVehicle = plateNumber;
+    finalizeLoadedTrajectory(allRecords, preserveAllPoints);
 }
 
-void VehicleManager::finalizeLoadedTrajectory(const QList<ExcelDataReader::VehicleRecord>& allRecords)
+void VehicleManager::finalizeLoadedTrajectory(const QList<ExcelDataReader::VehicleRecord>& allRecords,
+                                              bool preserveAllPoints)
 {
     QList<ExcelDataReader::VehicleRecord> sortedRecords = allRecords;
     std::sort(sortedRecords.begin(), sortedRecords.end(),
@@ -205,9 +218,10 @@ void VehicleManager::finalizeLoadedTrajectory(const QList<ExcelDataReader::Vehic
                   return a.timestamp < b.timestamp;
               });
     
-    // Filter out stationary vehicle data points (speed = 0 and same mileage as previous record)
     QList<ExcelDataReader::VehicleRecord> filteredRecords;
-    if (!sortedRecords.isEmpty()) {
+    if (preserveAllPoints) {
+        filteredRecords = sortedRecords;
+    } else if (!sortedRecords.isEmpty()) {
         filteredRecords.reserve(sortedRecords.size());
         filteredRecords.append(sortedRecords.first());
         

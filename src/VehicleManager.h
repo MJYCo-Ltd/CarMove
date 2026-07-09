@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QString>
 #include <QList>
+#include <QDate>
 #include "FolderScanner.h"
 #include "ParseData/ExcelDataReader.h"
 
@@ -21,6 +22,10 @@ public:
     void setPostGisLoader(PostGisTrajectoryLoader* loader);
     void selectVehicle(const QString& plateNumber);
     void loadVehicleTrajectory(const QString& plateNumber);
+    void loadTrajectoryFromDatabase(const QString& plateNumber,
+                                    const QDate& startDate = {},
+                                    const QDate& endDate = {},
+                                    bool preserveAllPoints = false);
     void applyCoordinateConversion(bool enabled);
     QList<ExcelDataReader::VehicleRecord> getCurrentTrajectory() const;
     QList<ExcelDataReader::VehicleRecord> getConvertedTrajectory() const;
@@ -37,7 +42,8 @@ signals:
     void loadingProgress(int percentage);
     
 private:
-    void finalizeLoadedTrajectory(const QList<ExcelDataReader::VehicleRecord>& allRecords);
+    void finalizeLoadedTrajectory(const QList<ExcelDataReader::VehicleRecord>& allRecords,
+                                  bool preserveAllPoints = false);
     void loadVehicleTrajectoryFromDatabase(const QString& plateNumber);
 
     QList<FolderScanner::VehicleInfo> m_vehicleList;

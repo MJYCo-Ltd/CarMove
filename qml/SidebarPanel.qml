@@ -15,6 +15,13 @@ Rectangle {
     signal searchRequested()
     signal businessFileOpenRequested()
 
+    function activateMode(mode) {
+        if (currentMode !== mode) {
+            currentMode = mode
+            modeChanged(mode)
+        }
+    }
+
     Column {
         anchors.fill: parent
         anchors.margins: 5

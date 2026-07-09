@@ -9,6 +9,7 @@ Rectangle {
     color: "#f5f6fa"
 
     property var configManager: null
+    property var batchScreenshotController: null
 
     ExcelPreviewModel {
         id: excelModel
@@ -37,13 +38,7 @@ Rectangle {
                 return
 
             const config = exportDialog.pendingConfig
-            const success = excelModel.exportBusinessCsv(
-                selectedFile,
-                config.startColumnNumber,
-                config.endColumnNumber,
-                config.singleTimeRole,
-                config.dayOffset
-            )
+            const success = excelModel.exportBusinessWithConfig(selectedFile, config)
 
             exportDialog.pendingConfig = null
             if (success) {
@@ -62,13 +57,7 @@ Rectangle {
                 return
 
             const config = exportDialog.pendingConfig
-            const success = excelModel.exportBusinessCsvToFolder(
-                selectedFolder,
-                config.startColumnNumber,
-                config.endColumnNumber,
-                config.singleTimeRole,
-                config.dayOffset
-            )
+            const success = excelModel.exportBusinessFolderWithConfig(selectedFolder, config)
 
             exportDialog.pendingConfig = null
             if (success) {
@@ -106,13 +95,10 @@ Rectangle {
         parent: Overlay.overlay
 
         onRequestClassify: function(config) {
-            const success = excelModel.classifyTrajectoryFiles(
+            const success = excelModel.classifyWithConfig(
                 config.outputFolderPath,
                 config.trajectoryFolderPath,
-                config.startColumnNumber,
-                config.endColumnNumber,
-                config.singleTimeRole,
-                config.dayOffset
+                config
             )
 
             if (success) {
@@ -143,6 +129,28 @@ Rectangle {
         }
     }
 
+    BusinessScreenshotDialog {
+        id: screenshotDialog
+        excelModel: excelModel
+        parent: Overlay.overlay
+
+        onRequestBatchScreenshot: function(config, outputFolderPath) {
+            const tasks = excelModel.screenshotTasksWithConfig(config)
+            if (tasks.length === 0) {
+                errorDialog.showError(excelModel.errorMessage.length > 0
+                                      ? excelModel.errorMessage
+                                      : "没有可截图的业务行")
+                return
+            }
+            if (businessPanel.batchScreenshotController)
+                businessPanel.batchScreenshotController.start(tasks, outputFolderPath)
+        }
+
+        onScreenshotFailed: function(message) {
+            errorDialog.showError(message)
+        }
+    }
+
     function openExcelFile() {
         excelFileDialog.open()
     }
@@ -165,6 +173,14 @@ Rectangle {
 
     function openImportDatabaseDialog() {
         importDatabaseDialog.open()
+    }
+
+    function openScreenshotDialog() {
+        if (!excelModel.hasData) {
+            errorDialog.showError("请先打开 Excel 文件")
+            return
+        }
+        screenshotDialog.open()
     }
 
     NotificationDialog { id: errorDialog }
@@ -198,8 +214,15 @@ Rectangle {
 
             Button {
                 text: "导入数据库"
-                enabled: !excelModel.loading
+                enabled: !excelModel.loading && !(batchScreenshotController && batchScreenshotController.running)
                 onClicked: openImportDatabaseDialog()
+            }
+
+            Button {
+                text: batchScreenshotController && batchScreenshotController.running ? "截图中..." : "批量截图"
+                enabled: excelModel.hasData && !excelModel.loading
+                         && !(batchScreenshotController && batchScreenshotController.running)
+                onClicked: openScreenshotDialog()
             }
 
             Text {
@@ -212,10 +235,15 @@ Rectangle {
             }
 
             Text {
-                text: excelModel.statusMessage
-                color: "#27ae60"
+                text: batchScreenshotController && batchScreenshotController.running
+                      ? ("正在截图 " + (batchScreenshotController.index + 1)
+                         + "/" + batchScreenshotController.queue.length
+                         + "：" + batchScreenshotController.currentLabel)
+                      : excelModel.statusMessage
+                color: batchScreenshotController && batchScreenshotController.running ? "#2980b9" : "#27ae60"
                 font.pixelSize: 12
-                visible: excelModel.statusMessage.length > 0 && !excelModel.loading
+                visible: (batchScreenshotController && batchScreenshotController.running)
+                         || (excelModel.statusMessage.length > 0 && !excelModel.loading)
             }
 
             BusyIndicator {

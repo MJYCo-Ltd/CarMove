@@ -101,8 +101,7 @@ Dialog {
             wrapMode: Text.WordWrap
             font.pixelSize: 11
             color: "#7f8c8d"
-            text: "表：" + (configManager ? configManager.dbTrajectoryTable : "trajectory_points")
-                  + "；车辆表：" + (configManager ? configManager.dbVehiclesTable : "vehicles")
+            text: "数据库连接参数见 CarMoveTracker.ini 的 [PostGISDatabase] 段"
         }
     }
 

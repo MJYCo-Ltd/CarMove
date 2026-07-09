@@ -2,11 +2,14 @@
 
 #include "PostGisDatabaseConfig.h"
 #include "ParseData/ExcelDataReader.h"
+#include "ParseData/TrajectoryFileNaming.h"
 
 #include <QDate>
+#include <QMap>
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QTime>
 
 #include <QSqlDatabase>
 
@@ -41,40 +44,35 @@ private:
         Failed
     };
 
-    struct ParsedTrajectoryFile {
-        QString filePath;
-        QString fileName;
-        QString plateNumber;
-        QDate periodStart;
-        QDate periodEnd;
-        bool hasPeriod = false;
-    };
+    QList<TrajectoryFileInfo> collectTrajectoryFiles(const QString& folderPath) const;
 
-    bool ensureDriverAvailable(QString& errorMessage) const;
-    bool validateIdentifier(const QString& identifier, QString& errorMessage) const;
-    QString quotedIdentifier(const QString& identifier) const;
-    QString qualifiedTable(const PostGisDatabaseConfig& config, const QString& tableName) const;
-
-    QList<ParsedTrajectoryFile> collectTrajectoryFiles(const QString& folderPath) const;
-    ParsedTrajectoryFile parseFileName(const QString& filePath) const;
-
-    ImportFileStatus importSingleFile(const ParsedTrajectoryFile& file,
+    ImportFileStatus importSingleFile(const TrajectoryFileInfo& file,
                                       QSqlDatabase& db,
                                       const PostGisDatabaseConfig& config,
                                       QString& errorMessage,
-                                      qint64* importedPoints) const;
+                                      qint64* importedPoints,
+                                      qint64* importedVehicleId = nullptr) const;
 
-    qint64 countExistingPoints(QSqlDatabase& db,
-                               const PostGisDatabaseConfig& config,
-                               const QString& plateNumber,
-                               const QDate& periodStart,
-                               const QDate& periodEnd,
-                               QString& errorMessage) const;
+    void applyImportSessionSettings(QSqlDatabase& db) const;
+
+    qint64 countExistingDays(QSqlDatabase& db,
+                             const PostGisDatabaseConfig& config,
+                             const QString& plateNumber,
+                             const QDate& periodStart,
+                             const QDate& periodEnd,
+                             QString& errorMessage) const;
+
+    bool insertTrajectoryDays(QSqlDatabase& db,
+                              const PostGisDatabaseConfig& config,
+                              qint64 vehicleId,
+                              const QMap<QDate, QList<ExcelDataReader::VehicleRecord>>& dayBuckets,
+                              QMap<QDate, qint64>& trajectoryDayIds,
+                              QString& errorMessage) const;
+
     bool insertTrajectoryBatch(QSqlDatabase& db,
                                const PostGisDatabaseConfig& config,
                                const QList<ExcelDataReader::VehicleRecord>& records,
-                               qint64 vehicleId,
-                               const QString& plateNumber,
+                               qint64 trajectoryDayId,
                                QString& errorMessage) const;
 
     qint64 upsertVehicle(QSqlDatabase& db,
@@ -82,4 +80,9 @@ private:
                          const QString& plateNumber,
                          const QString& plateColor,
                          QString& errorMessage) const;
+
+    bool refreshVehicleStatsBatch(QSqlDatabase& db,
+                                  const PostGisDatabaseConfig& config,
+                                  const QList<qint64>& vehicleIds,
+                                  QString& errorMessage) const;
 };

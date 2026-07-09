@@ -6,10 +6,11 @@
 #include <QString>
 #include <QStringList>
 
+#include "ParseData/BusinessWorkbookTypes.h"
 #include "ParseData/ExcelPreviewLoader.h"
 
 #include <QUrl>
-#include <QVariant>
+#include <QVariantMap>
 
 class ExcelPreviewModel : public QAbstractTableModel
 {
@@ -71,22 +72,13 @@ public:
     Q_INVOKABLE QUrl suggestedExportFileUrl() const;
     Q_INVOKABLE QUrl suggestedExportFolderUrl() const;
     Q_INVOKABLE bool exportUsesFolder() const;
-    Q_INVOKABLE bool exportBusinessCsv(const QString& filePath,
-                                       int startColumnNumber,
-                                       int endColumnNumber,
-                                       const QString& singleTimeRole,
-                                       int dayOffset);
-    Q_INVOKABLE bool exportBusinessCsvToFolder(const QString& folderPath,
-                                               int startColumnNumber,
-                                               int endColumnNumber,
-                                               const QString& singleTimeRole,
-                                               int dayOffset);
-    Q_INVOKABLE bool classifyTrajectoryFiles(const QString& outputFolderPath,
-                                             const QString& trajectoryFolderPath,
-                                             int startColumnNumber,
-                                             int endColumnNumber,
-                                             const QString& singleTimeRole,
-                                             int dayOffset);
+    Q_INVOKABLE bool exportBusinessWithConfig(const QString& filePath, const QVariantMap& columnConfig);
+    Q_INVOKABLE bool exportBusinessFolderWithConfig(const QString& folderPath,
+                                                    const QVariantMap& columnConfig);
+    Q_INVOKABLE bool classifyWithConfig(const QString& outputFolderPath,
+                                        const QString& trajectoryFolderPath,
+                                        const QVariantMap& columnConfig);
+    Q_INVOKABLE QVariantList screenshotTasksWithConfig(const QVariantMap& columnConfig);
     Q_INVOKABLE bool importTrajectoryFolderToDatabase(const QString& folderPath);
 
     int rowCount(const QModelIndex& parent = QModelIndex()) const override;
@@ -114,6 +106,19 @@ private:
     void setLoading(bool loading);
     void setErrorMessage(const QString& message);
     void setStatusMessage(const QString& message);
+
+    BusinessColumnSelection makeColumnSelection(int startColumnNumber,
+                                                int endColumnNumber,
+                                                const QString& singleTimeRole,
+                                                int dayOffset) const;
+
+    BusinessColumnSelection makeColumnSelection(const QVariantMap& columnConfig) const;
+
+    bool collectBusinessRows(const BusinessColumnSelection& selection,
+                             BusinessWorkbookRowsResult& result,
+                             QString& errorMessage) const;
+
+    void reportClassifyResult(const BusinessClassifyResult& result);
 
     ExcelWorkbookInfo m_workbookInfo;
     ExcelSheetPreview m_currentSheet;

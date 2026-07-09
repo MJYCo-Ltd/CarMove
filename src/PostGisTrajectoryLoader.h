@@ -4,6 +4,7 @@
 #include "ParseData/ExcelDataReader.h"
 #include "PostGisDatabaseConfig.h"
 
+#include <QDate>
 #include <QObject>
 #include <QSqlDatabase>
 
@@ -23,14 +24,11 @@ public:
 
     QList<FolderScanner::VehicleInfo> listVehicles(QString& errorMessage) const;
     QList<ExcelDataReader::VehicleRecord> loadTrajectory(const QString& plateNumber,
-                                                         QString& errorMessage) const;
+                                                         QString& errorMessage,
+                                                         const QDate& startDate = {},
+                                                         const QDate& endDate = {}) const;
 
 private:
-    QString qualifiedTable(const QString& tableName) const;
-    QString quotedIdentifier(const QString& identifier) const;
-    bool validateIdentifier(const QString& identifier, QString& errorMessage) const;
-    bool ensureDriverAvailable(QString& errorMessage) const;
-
     PostGisDatabaseConfig m_config;
     QString m_connectionName;
     bool m_connected = false;

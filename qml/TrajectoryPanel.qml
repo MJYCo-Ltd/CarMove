@@ -10,16 +10,10 @@ SidePanelContainer {
 
     signal openFolderDialogRequested()
 
-    readonly property var cfg: controller ? controller.configManager : null
     readonly property bool databaseMode: controller ? controller.useDatabaseTrajectorySource : false
 
     function updateVehicleListModel() {
         vehicleListView.model = controller ? (controller.filteredVehicleList || []) : []
-    }
-
-    function saveDatabaseSettings() {
-        if (controller)
-            controller.savePostGisSettings()
     }
 
     Connections {
@@ -72,7 +66,7 @@ SidePanelContainer {
                 font.pixelSize: 11
                 color: "#7f8c8d"
                 text: databaseMode
-                      ? "从 PostgreSQL/PostGIS 读取轨迹；配置保存在 CarMoveTracker.ini。"
+                      ? "从 PostgreSQL/PostGIS 读取轨迹；连接参数在 CarMoveTracker.ini 中配置，切换后自动连接。"
                       : "从本地 Excel 文件夹读取轨迹文件。"
             }
         }
@@ -98,143 +92,6 @@ SidePanelContainer {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 color: (controller && controller.currentFolder) ? "#2c3e50" : "#7f8c8d"
-            }
-        }
-    }
-
-    GroupBox {
-        title: "PostGIS 数据库"
-        Layout.fillWidth: true
-        visible: databaseMode
-
-        ColumnLayout {
-            anchors.fill: parent
-            spacing: 6
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 6
-                Text { text: "主机"; Layout.preferredWidth: 48; font.pixelSize: 12 }
-                TextField {
-                    Layout.fillWidth: true
-                    font.pixelSize: 12
-                    placeholderText: "localhost"
-                    text: cfg ? cfg.dbHost : ""
-                    onTextChanged: if (cfg) cfg.dbHost = text
-                    onEditingFinished: trajectoryPanel.saveDatabaseSettings()
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 6
-                Text { text: "端口"; Layout.preferredWidth: 48; font.pixelSize: 12 }
-                TextField {
-                    Layout.preferredWidth: 80
-                    font.pixelSize: 12
-                    placeholderText: "5432"
-                    text: cfg ? String(cfg.dbPort) : "5432"
-                    inputMethodHints: Qt.ImhDigitsOnly
-                    onTextChanged: if (cfg) cfg.dbPort = parseInt(text) || 5432
-                    onEditingFinished: trajectoryPanel.saveDatabaseSettings()
-                }
-                Text { text: "数据库"; Layout.preferredWidth: 48; font.pixelSize: 12 }
-                TextField {
-                    Layout.fillWidth: true
-                    font.pixelSize: 12
-                    placeholderText: "carmove"
-                    text: cfg ? cfg.dbName : ""
-                    onTextChanged: if (cfg) cfg.dbName = text
-                    onEditingFinished: trajectoryPanel.saveDatabaseSettings()
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 6
-                Text { text: "用户"; Layout.preferredWidth: 48; font.pixelSize: 12 }
-                TextField {
-                    Layout.fillWidth: true
-                    font.pixelSize: 12
-                    text: cfg ? cfg.dbUser : ""
-                    onTextChanged: if (cfg) cfg.dbUser = text
-                    onEditingFinished: trajectoryPanel.saveDatabaseSettings()
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 6
-                Text { text: "密码"; Layout.preferredWidth: 48; font.pixelSize: 12 }
-                TextField {
-                    Layout.fillWidth: true
-                    font.pixelSize: 12
-                    echoMode: TextInput.Password
-                    text: cfg ? cfg.dbPassword : ""
-                    onTextChanged: if (cfg) cfg.dbPassword = text
-                    onEditingFinished: trajectoryPanel.saveDatabaseSettings()
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 6
-                Text { text: "模式"; Layout.preferredWidth: 48; font.pixelSize: 12 }
-                TextField {
-                    Layout.preferredWidth: 80
-                    font.pixelSize: 12
-                    text: cfg ? cfg.dbSchema : "public"
-                    onTextChanged: if (cfg) cfg.dbSchema = text
-                    onEditingFinished: trajectoryPanel.saveDatabaseSettings()
-                }
-                Text { text: "轨迹表"; Layout.preferredWidth: 48; font.pixelSize: 12 }
-                TextField {
-                    Layout.fillWidth: true
-                    font.pixelSize: 12
-                    text: cfg ? cfg.dbTrajectoryTable : "trajectory_points"
-                    onTextChanged: if (cfg) cfg.dbTrajectoryTable = text
-                    onEditingFinished: trajectoryPanel.saveDatabaseSettings()
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 6
-                Text { text: "车辆表"; Layout.preferredWidth: 48; font.pixelSize: 12 }
-                TextField {
-                    Layout.fillWidth: true
-                    font.pixelSize: 12
-                    text: cfg ? cfg.dbVehiclesTable : "vehicles"
-                    onTextChanged: if (cfg) cfg.dbVehiclesTable = text
-                    onEditingFinished: trajectoryPanel.saveDatabaseSettings()
-                }
-            }
-
-            Button {
-                text: controller && controller.isLoading ? "连接中..." : "连接数据库"
-                Layout.fillWidth: true
-                enabled: controller && !controller.isLoading && cfg
-                onClicked: {
-                    trajectoryPanel.saveDatabaseSettings()
-                    if (controller)
-                        controller.connectPostGisDatabase()
-                }
-            }
-
-            Text {
-                Layout.fillWidth: true
-                wrapMode: Text.WordWrap
-                font.pixelSize: 11
-                color: controller && controller.databaseConnected ? "#1e8449" : "#7f8c8d"
-                text: {
-                    if (!controller)
-                        return ""
-                    if (controller.databaseConnected)
-                        return "已连接：" + controller.databaseStatus
-                    if (controller.databaseStatus && controller.databaseStatus.length > 0)
-                        return controller.databaseStatus
-                    return "未连接数据库"
-                }
             }
         }
     }
@@ -342,8 +199,10 @@ SidePanelContainer {
                         if (!controller)
                             return ""
                         if (trajectoryPanel.databaseMode) {
+                            if (controller.isLoading)
+                                return "正在连接 PostGIS 数据库..."
                             if (!controller.databaseConnected)
-                                return "请先连接 PostGIS 数据库"
+                                return "数据库未连接，请检查 CarMoveTracker.ini"
                             if (controller.vehicleList && controller.vehicleList.length === 0)
                                 return "数据库中未找到车辆轨迹"
                         } else {

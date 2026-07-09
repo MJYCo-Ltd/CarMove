@@ -67,6 +67,9 @@ set(SOURCES
     src/ParseData/LicensePlateDetector.cpp
     src/ParseData/DateColumnDetector.cpp
     src/ParseData/BusinessExcelExporter.cpp
+    src/ParseData/BusinessWorkbookResolver.cpp
+    src/ParseData/BusinessCsvWriter.cpp
+    src/ParseData/TrajectoryFileNaming.cpp
     src/ParseData/OoxmlSaxExcelLoader.cpp
     ${QXLSX_SOURCE_DIR}/source/xlsxreadsax.cpp
     ${QXLSX_SOURCE_DIR}/source/xlsxzipreader.cpp
@@ -80,6 +83,7 @@ set(SOURCES
     src/ConfigManager.cpp
     src/FuelUnloadingDataLoader.cpp
     src/PostGisDatabaseConfig.cpp
+    src/PostGisConnection.cpp
     src/PostGisTrajectoryLoader.cpp
     src/PostGisTrajectoryImporter.cpp
     src/TianDiTu/TiandituGeocoder.cpp
@@ -102,6 +106,10 @@ set(HEADERS
     src/ParseData/LicensePlateDetector.h
     src/ParseData/DateColumnDetector.h
     src/ParseData/BusinessExcelExporter.h
+    src/ParseData/BusinessWorkbookTypes.h
+    src/ParseData/BusinessWorkbookResolver.h
+    src/ParseData/BusinessCsvWriter.h
+    src/ParseData/TrajectoryFileNaming.h
     src/ParseData/OoxmlSaxExcelLoader.h
     src/ParseData/QXlsxExcelLoader.h
     src/ParseData/XlsxioExcelLoader.h
@@ -113,6 +121,7 @@ set(HEADERS
     src/ConfigManager.h
     src/FuelUnloadingDataLoader.h
     src/PostGisDatabaseConfig.h
+    src/PostGisConnection.h
     src/PostGisTrajectoryLoader.h
     src/PostGisTrajectoryImporter.h
     src/TianDiTu/TiandituGeocoder.h

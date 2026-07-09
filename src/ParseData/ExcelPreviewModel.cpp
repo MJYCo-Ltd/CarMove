@@ -4,7 +4,7 @@
 #include <QVariantMap>
 
 #include "ParseData/BusinessExcelExporter.h"
-#include "ParseData/DateColumnDetector.h"
+#include "ParseData/BusinessWorkbookResolver.h"
 #include "ParseData/ExcelFilePath.h"
 #include "ParseData/LicensePlateDetector.h"
 #include "ConfigManager.h"
@@ -165,49 +165,74 @@ QUrl ExcelPreviewModel::suggestedExportFolderUrl() const
 
 bool ExcelPreviewModel::exportUsesFolder() const
 {
-    return m_workbookInfo.sheetNames.size() > 1;
+    return BusinessWorkbookResolver::workbookUsesAllSheets(m_workbookInfo);
 }
 
-namespace {
-
-BusinessExportOptions buildExportOptions(const ExcelSheetPreview& sheet,
-                                         int startColumnNumber,
-                                         int endColumnNumber,
-                                         const QString& singleTimeRole,
-                                         int dayOffset)
+BusinessColumnSelection ExcelPreviewModel::makeColumnSelection(int startColumnNumber,
+                                                               int endColumnNumber,
+                                                               const QString& singleTimeRole,
+                                                               int dayOffset) const
 {
-    BusinessExportOptions options;
-    options.dayOffset = dayOffset;
+    return BusinessColumnSelection::fromUi(
+        startColumnNumber, endColumnNumber, singleTimeRole, dayOffset);
+}
 
-    const bool hasSingleRole = !singleTimeRole.isEmpty();
-    options.singleDateColumn = hasSingleRole;
-    if (hasSingleRole) {
-        options.singleColumnIsStart = singleTimeRole == QStringLiteral("start");
-        const int dataColumn =
-            (options.singleColumnIsStart ? startColumnNumber : endColumnNumber) - 1;
-        const int ordinal = DateColumnDetector::ordinalForDataColumn(sheet, dataColumn);
-        if (options.singleColumnIsStart) {
-            options.startDateOrdinal = ordinal;
-        } else {
-            options.endDateOrdinal = ordinal;
+BusinessColumnSelection ExcelPreviewModel::makeColumnSelection(const QVariantMap& columnConfig) const
+{
+    return BusinessColumnSelection::fromUi(
+        columnConfig.value(QStringLiteral("startColumnNumber")).toInt(),
+        columnConfig.value(QStringLiteral("endColumnNumber")).toInt(),
+        columnConfig.value(QStringLiteral("singleTimeRole")).toString(),
+        columnConfig.value(QStringLiteral("dayOffset")).toInt());
+}
+
+bool ExcelPreviewModel::collectBusinessRows(const BusinessColumnSelection& selection,
+                                            BusinessWorkbookRowsResult& result,
+                                            QString& errorMessage) const
+{
+    return BusinessWorkbookResolver::collectWorkbookRows(m_workbookInfo,
+                                                         m_currentSheet,
+                                                         m_currentSheetIndex,
+                                                         selection,
+                                                         result,
+                                                         errorMessage);
+}
+
+void ExcelPreviewModel::reportClassifyResult(const BusinessClassifyResult& result)
+{
+    setErrorMessage(QString());
+
+    QString statusMessage =
+        QStringLiteral("归类完成：已移动 %1 个轨迹文件，导出 %2 个 CSV（共 %3 行）")
+            .arg(result.movedFiles)
+            .arg(result.exportedCsvFiles)
+            .arg(result.exportedRows);
+
+    if (result.missingFiles > 0) {
+        const int previewCount = qMin(result.missingEntries.size(), 5);
+        const QStringList previewEntries = result.missingEntries.mid(0, previewCount);
+        statusMessage += QStringLiteral("；未找到 %1 个轨迹文件").arg(result.missingFiles);
+        if (!previewEntries.isEmpty()) {
+            statusMessage += QStringLiteral("（如 %1").arg(previewEntries.join(QStringLiteral("、")));
+            if (result.missingEntries.size() > previewCount) {
+                statusMessage += QStringLiteral(" 等");
+            }
+            statusMessage += QStringLiteral("）");
         }
-    } else {
-        options.startDateOrdinal =
-            DateColumnDetector::ordinalForDataColumn(sheet, startColumnNumber - 1);
-        options.endDateOrdinal =
-            DateColumnDetector::ordinalForDataColumn(sheet, endColumnNumber - 1);
     }
 
-    return options;
+    if (!result.skippedSheetNames.isEmpty()) {
+        statusMessage += QStringLiteral("；跳过 %1 张表：%2")
+                             .arg(result.skippedSheetNames.size())
+                             .arg(result.skippedSheetNames.join(QStringLiteral("、")));
+    }
+
+    setStatusMessage(statusMessage);
+    emit statusMessageChanged();
 }
 
-} // namespace
-
-bool ExcelPreviewModel::exportBusinessCsv(const QString& filePath,
-                                          int startColumnNumber,
-                                          int endColumnNumber,
-                                          const QString& singleTimeRole,
-                                          int dayOffset)
+bool ExcelPreviewModel::exportBusinessWithConfig(const QString& filePath,
+                                                 const QVariantMap& columnConfig)
 {
     const QString localPath = ExcelFilePath::normalizeLocalFilePath(filePath);
     if (localPath.isEmpty()) {
@@ -220,26 +245,21 @@ bool ExcelPreviewModel::exportBusinessCsv(const QString& filePath,
         return false;
     }
 
-    ExcelWorkbookInfo exportInfo = m_workbookInfo;
-    exportInfo.limits = ExcelPreviewLimits::forExport();
+    const BusinessColumnSelection selection = makeColumnSelection(columnConfig);
 
-    ExcelSheetPreview exportSheet;
-    QString loadError;
-    if (!ExcelPreviewLoader::loadSheet(exportInfo, m_currentSheetIndex, exportSheet, loadError)) {
-        setErrorMessage(loadError.isEmpty() ? QStringLiteral("无法加载工作表数据") : loadError);
+    BusinessWorkbookRowsResult collected;
+    QString errorMessage;
+    if (!collectBusinessRows(selection, collected, errorMessage)) {
+        setErrorMessage(errorMessage);
         return false;
     }
 
-    const BusinessExportOptions options = buildExportOptions(
-        exportSheet, startColumnNumber, endColumnNumber, singleTimeRole, dayOffset);
-
-    QString errorMessage;
     int exportedRows = 0;
-    if (!BusinessExcelExporter::exportSheetToCsv(exportSheet,
-                                                 options,
-                                                 localPath,
-                                                 errorMessage,
-                                                 &exportedRows)) {
+    if (!BusinessExcelExporter::exportRowsToCsv(collected.sheets.first().rows,
+                                                localPath,
+                                                collected.sheets.first().sheetName,
+                                                errorMessage,
+                                                &exportedRows)) {
         setErrorMessage(errorMessage);
         return false;
     }
@@ -250,11 +270,8 @@ bool ExcelPreviewModel::exportBusinessCsv(const QString& filePath,
     return true;
 }
 
-bool ExcelPreviewModel::exportBusinessCsvToFolder(const QString& folderPath,
-                                                  int startColumnNumber,
-                                                  int endColumnNumber,
-                                                  const QString& singleTimeRole,
-                                                  int dayOffset)
+bool ExcelPreviewModel::exportBusinessFolderWithConfig(const QString& folderPath,
+                                                       const QVariantMap& columnConfig)
 {
     const QString localPath = ExcelFilePath::normalizeLocalFilePath(folderPath);
     if (localPath.isEmpty()) {
@@ -267,15 +284,16 @@ bool ExcelPreviewModel::exportBusinessCsvToFolder(const QString& folderPath,
         return false;
     }
 
-    const BusinessExportOptions options = buildExportOptions(
-        m_currentSheet, startColumnNumber, endColumnNumber, singleTimeRole, dayOffset);
+    const BusinessColumnSelection selection = makeColumnSelection(columnConfig);
 
     QString errorMessage;
     int exportedRows = 0;
     int exportedFiles = 0;
     QStringList skippedSheets;
     if (!BusinessExcelExporter::exportWorkbookToDirectory(m_workbookInfo,
-                                                          options,
+                                                          m_currentSheet,
+                                                          m_currentSheetIndex,
+                                                          selection,
                                                           localPath,
                                                           errorMessage,
                                                           &exportedRows,
@@ -301,12 +319,9 @@ bool ExcelPreviewModel::exportBusinessCsvToFolder(const QString& folderPath,
     return true;
 }
 
-bool ExcelPreviewModel::classifyTrajectoryFiles(const QString& outputFolderPath,
-                                                const QString& trajectoryFolderPath,
-                                                int startColumnNumber,
-                                                int endColumnNumber,
-                                                const QString& singleTimeRole,
-                                                int dayOffset)
+bool ExcelPreviewModel::classifyWithConfig(const QString& outputFolderPath,
+                                           const QString& trajectoryFolderPath,
+                                           const QVariantMap& columnConfig)
 {
     const QString outputPath = ExcelFilePath::normalizeLocalFilePath(outputFolderPath);
     const QString trajectoryPath = ExcelFilePath::normalizeLocalFilePath(trajectoryFolderPath);
@@ -326,76 +341,55 @@ bool ExcelPreviewModel::classifyTrajectoryFiles(const QString& outputFolderPath,
 
     QString errorMessage;
     BusinessClassifyResult result;
+    const BusinessColumnSelection selection = makeColumnSelection(columnConfig);
 
-    if (exportUsesFolder()) {
-        const BusinessExportOptions options = buildExportOptions(
-            m_currentSheet, startColumnNumber, endColumnNumber, singleTimeRole, dayOffset);
-        if (!BusinessExcelExporter::classifyWorkbookToDirectory(m_workbookInfo,
-                                                                options,
-                                                                trajectoryPath,
-                                                                outputPath,
-                                                                errorMessage,
-                                                                &result)) {
-            setErrorMessage(errorMessage);
-            return false;
-        }
-    } else {
-        ExcelWorkbookInfo exportInfo = m_workbookInfo;
-        exportInfo.limits = ExcelPreviewLimits::forExport();
+    if (!BusinessExcelExporter::classifyWorkbookToDirectory(m_workbookInfo,
+                                                            m_currentSheet,
+                                                            m_currentSheetIndex,
+                                                            selection,
+                                                            trajectoryPath,
+                                                            outputPath,
+                                                            errorMessage,
+                                                            &result)) {
+        setErrorMessage(errorMessage);
+        return false;
+    }
 
-        ExcelSheetPreview exportSheet;
-        QString loadError;
-        if (!ExcelPreviewLoader::loadSheet(exportInfo, m_currentSheetIndex, exportSheet, loadError)) {
-            setErrorMessage(loadError.isEmpty() ? QStringLiteral("无法加载工作表数据") : loadError);
-            return false;
-        }
+    reportClassifyResult(result);
+    return true;
+}
 
-        const BusinessExportOptions options = buildExportOptions(
-            exportSheet, startColumnNumber, endColumnNumber, singleTimeRole, dayOffset);
+QVariantList ExcelPreviewModel::screenshotTasksWithConfig(const QVariantMap& columnConfig)
+{
+    QVariantList tasks;
+    if (!hasData()) {
+        setErrorMessage(QStringLiteral("当前没有可导出的数据"));
+        return tasks;
+    }
 
-        if (!BusinessExcelExporter::classifySheet(exportSheet,
-                                                  options,
-                                                  trajectoryPath,
-                                                  outputPath,
-                                                  m_fileName,
-                                                  false,
-                                                  errorMessage,
-                                                  &result)) {
-            setErrorMessage(errorMessage);
-            return false;
-        }
+    const BusinessColumnSelection selection = makeColumnSelection(columnConfig);
+
+    BusinessWorkbookRowsResult collected;
+    QString errorMessage;
+    if (!collectBusinessRows(selection, collected, errorMessage)) {
+        setErrorMessage(errorMessage);
+        emit errorMessageChanged();
+        return tasks;
+    }
+
+    const QList<BusinessExportRow> rows = collected.allRowsFlat();
+    tasks.reserve(rows.size());
+    for (const BusinessExportRow& row : rows) {
+        QVariantMap task;
+        task.insert(QStringLiteral("plate"), row.plate);
+        task.insert(QStringLiteral("startDate"), row.startDate.toString(Qt::ISODate));
+        task.insert(QStringLiteral("endDate"), row.endDate.toString(Qt::ISODate));
+        tasks.append(task);
     }
 
     setErrorMessage(QString());
-
-    QString statusMessage =
-        QStringLiteral("归类完成：已移动 %1 个轨迹文件，导出 %2 个 CSV（共 %3 行）")
-            .arg(result.movedFiles)
-            .arg(result.exportedCsvFiles)
-            .arg(result.exportedRows);
-
-    if (result.missingFiles > 0) {
-        const int previewCount = qMin(result.missingEntries.size(), 5);
-        QStringList previewEntries = result.missingEntries.mid(0, previewCount);
-        statusMessage += QStringLiteral("；未找到 %1 个轨迹文件").arg(result.missingFiles);
-        if (!previewEntries.isEmpty()) {
-            statusMessage += QStringLiteral("（如 %1").arg(previewEntries.join(QStringLiteral("、")));
-            if (result.missingEntries.size() > previewCount) {
-                statusMessage += QStringLiteral(" 等");
-            }
-            statusMessage += QStringLiteral("）");
-        }
-    }
-
-    if (!result.skippedSheetNames.isEmpty()) {
-        statusMessage += QStringLiteral("；跳过 %1 张表：%2")
-                             .arg(result.skippedSheetNames.size())
-                             .arg(result.skippedSheetNames.join(QStringLiteral("、")));
-    }
-
-    setStatusMessage(statusMessage);
-    emit statusMessageChanged();
-    return true;
+    emit errorMessageChanged();
+    return tasks;
 }
 
 bool ExcelPreviewModel::importTrajectoryFolderToDatabase(const QString& folderPath)

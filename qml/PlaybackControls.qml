@@ -4,9 +4,11 @@ import QtQuick.Layouts
 
 Rectangle {
     id: playbackControls
-    /// 与 MapDisplay 中坐标切换按钮显隐同源（由 MainWindow 绑定 mapDisplay.mapVehicleContextActive）；控制整条回放栏显隐
+    /// 由 MainWindow 绑定：仅在选择车辆且用户打开仿真面板时为 true
     property bool mapVehicleContextActive: false
     visible: mapVehicleContextActive
+
+    signal closeRequested()
 
     color: "#34495e"
     border.color: "#2c3e50"
@@ -222,10 +224,19 @@ Rectangle {
                 }
             }
         }
+
+        Button {
+            text: "✕"
+            font.pixelSize: 14
+            ToolTip.visible: hovered
+            ToolTip.text: "关闭仿真面板"
+            onClicked: playbackControls.closeRequested()
+        }
     }
 
     Connections {
         target: pb
+        enabled: playbackControls.visible
         function onTimeRangeChanged() {
             if (!pb) return
             speedCombo.currentIndex = Math.min(pb.playbackSpeedDefaultIndex, speedCombo.count - 1)
@@ -235,6 +246,7 @@ Rectangle {
 
     Connections {
         target: controller
+        enabled: playbackControls.visible
         function onSelectedVehicleChanged() {
             if (!controller) return
             speedSyncTimer.restart()
@@ -254,7 +266,14 @@ Rectangle {
     }
 
     Component.onCompleted: {
-        if (pb && speedCombo.count > 0) {
+        if (playbackControls.visible && pb && speedCombo.count > 0) {
+            speedCombo.currentIndex = Math.min(pb.playbackSpeedDefaultIndex, speedCombo.count - 1)
+            pb.setPlaybackSpeedFromLabelIndex(speedCombo.currentIndex)
+        }
+    }
+
+    onVisibleChanged: {
+        if (visible && pb && speedCombo.count > 0) {
             speedCombo.currentIndex = Math.min(pb.playbackSpeedDefaultIndex, speedCombo.count - 1)
             pb.setPlaybackSpeedFromLabelIndex(speedCombo.currentIndex)
         }

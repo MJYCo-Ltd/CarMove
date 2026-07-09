@@ -26,6 +26,93 @@ Item {
 
     /// 轨迹模式下允许双击地图目标区域编辑名称
     property bool trajectoryModeActive: false
+    /// 用户点击「仿真」后才显示回放控制栏
+    property bool simulationPanelActive: false
+    property int captureFitMargin: 80
+
+    function openSimulationPanel() {
+        simulationPanelActive = true
+    }
+
+    function closeSimulationPanel() {
+        if (!simulationPanelActive)
+            return
+        simulationPanelActive = false
+        if (controller && controller.playback)
+            controller.playback.stopPlayback()
+    }
+
+    onTrajectoryModeActiveChanged: {
+        if (!trajectoryModeActive)
+            closeSimulationPanel()
+    }
+
+    function waitForMapSettled(callback, minimumMs, stableMs, timeoutMs) {
+        mapSettleHelper.callback = callback || null
+        mapSettleHelper.minimumMs = minimumMs !== undefined ? minimumMs : 1000
+        mapSettleHelper.stableMsRequired = stableMs !== undefined ? stableMs : 1800
+        mapSettleHelper.timeoutMs = timeoutMs !== undefined ? timeoutMs : 10000
+        mapSettleHelper.elapsedMs = 0
+        mapSettleHelper.stableMs = 0
+        mapSettleTimer.restart()
+    }
+
+    function cancelMapSettleWait() {
+        mapSettleTimer.stop()
+        mapSettleHelper.callback = null
+    }
+
+    function prepareTrajectoryForCapture(plateNumber, trajectoryPoints, vehicleColor) {
+        vehicleLayer.userHasInteracted = false
+        vehicleLayer.autoFitEnabled = true
+        vehicleLayer.fitViewportMargin = captureFitMargin
+        clearTrajectory()
+        addVehicleTrajectory(plateNumber, trajectoryPoints, vehicleColor || "#3498db")
+    }
+
+    function resetCaptureViewportMargin() {
+        vehicleLayer.fitViewportMargin = 1
+    }
+
+    QtObject {
+        id: mapSettleHelper
+        property var callback: null
+        property int minimumMs: 1000
+        property int stableMsRequired: 1800
+        property int timeoutMs: 10000
+        property int elapsedMs: 0
+        property int stableMs: 0
+    }
+
+    Timer {
+        id: mapSettleTimer
+        interval: 200
+        repeat: true
+        onTriggered: {
+            mapSettleHelper.elapsedMs += interval
+            mapSettleHelper.stableMs += interval
+
+            const ready = mapSettleHelper.elapsedMs >= mapSettleHelper.minimumMs
+                          && mapSettleHelper.stableMs >= mapSettleHelper.stableMsRequired
+            const timedOut = mapSettleHelper.elapsedMs >= mapSettleHelper.timeoutMs
+
+            if (ready || timedOut) {
+                stop()
+                const cb = mapSettleHelper.callback
+                mapSettleHelper.callback = null
+                if (cb)
+                    cb()
+            }
+        }
+    }
+
+    Connections {
+        target: mapView.map
+        function onCenterChanged() { mapSettleHelper.stableMs = 0 }
+        function onZoomLevelChanged() { mapSettleHelper.stableMs = 0 }
+        function onBearingChanged() { mapSettleHelper.stableMs = 0 }
+        function onTiltChanged() { mapSettleHelper.stableMs = 0 }
+    }
 
     function scheduleMaybeFillTargetAreaName() {
         if (!controller)
@@ -252,10 +339,24 @@ Item {
         }
     }
 
+    // 轨迹仿真（点击后才显示底部回放栏）
+    StatusButton {
+        id: simulationButton
+        anchors.right: parent.right; anchors.top: coordinateMapButton.bottom
+        anchors.rightMargin: 20; anchors.topMargin: 10
+        buttonSize: mapDisplay.buttonSize
+        iconText: "⏯"
+        buttonColor: mapDisplay.simulationPanelActive ? "#8e44ad" : "#9b59b6"
+        hoverColor: "#7d3c98"
+        tooltipText: mapDisplay.simulationPanelActive ? "仿真面板已打开" : "打开轨迹仿真"
+        visible: mapDisplay.mapVehicleContextActive && mapDisplay.trajectoryModeActive
+        onClicked: mapDisplay.openSimulationPanel()
+    }
+
     // 截屏按钮
     StatusButton {
         id: screenshotButton
-        anchors.right: parent.right; anchors.top: coordinateMapButton.bottom
+        anchors.right: parent.right; anchors.top: simulationButton.bottom
         anchors.rightMargin: 20; anchors.topMargin: 10
         buttonSize: mapDisplay.buttonSize
         iconText: "📷"; buttonColor: "#27ae60"; hoverColor: "#229954"
@@ -369,17 +470,26 @@ Item {
     }
 
     function takeScreenshot() {
-        var name = vehicleLayer.currentVehicle
-                   ? vehicleLayer.currentVehicle + "_map_screenshot.png"
-                   : "map_screenshot_" + Qt.formatDateTime(new Date(), "yyyyMMdd_HHmmss") + ".png"
+        captureScreenshotTo("")
+    }
+
+    function captureScreenshotTo(filePath, callback) {
+        var targetPath = filePath
+        if (!targetPath || targetPath.length === 0) {
+            var name = vehicleLayer.currentVehicle
+                       ? vehicleLayer.currentVehicle + "_map_screenshot.png"
+                       : "map_screenshot_" + Qt.formatDateTime(new Date(), "yyyyMMdd_HHmmss") + ".png"
+            targetPath = (controller ? controller.getDocumentsPath() : "") + "/CarMove_Screenshots/" + name
+        }
+
         mapView.grabToImage(function(result) {
-            var dir = (controller ? controller.getDocumentsPath() : "") + "/CarMove_Screenshots"
-            if (result.saveToFile(dir + "/" + name)) {
-                console.log("截图保存成功:", dir + "/" + name)
-                mapNotifications.showScreenshotNotification(name)
-            } else {
-                console.error("截图保存失败:", dir + "/" + name)
+            var ok = result.saveToFile(targetPath)
+            if (ok && (!filePath || filePath.length === 0)) {
+                var fileName = targetPath.substring(targetPath.lastIndexOf("/") + 1)
+                mapNotifications.showScreenshotNotification(fileName)
             }
+            if (callback)
+                callback(ok, targetPath)
         })
     }
 

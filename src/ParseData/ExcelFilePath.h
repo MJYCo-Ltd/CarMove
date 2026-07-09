@@ -12,6 +12,12 @@ namespace ExcelFilePath {
 
 QString normalizeLocalFilePath(const QString& path);
 
+QString sanitizeFileComponent(const QString& name);
+
+QString sanitizePlateForFilename(const QString& plateNumber);
+
+QString displayFolderUrl(const QString& folderUrl);
+
 bool openReadableFile(QFile& file, const QString& localFilePath);
 
 xlsxioreader openXlsxioReader(const QString& localFilePath);

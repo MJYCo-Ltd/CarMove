@@ -1,10 +1,10 @@
 #include "PostGisTrajectoryLoader.h"
+#include "PostGisConnection.h"
+#include "PostGisSqlHelpers.h"
 
 #include <QDateTime>
-#include <QRegularExpression>
 #include <QSqlError>
 #include <QSqlQuery>
-#include <QSqlRecord>
 #include <QUuid>
 #include <QVariant>
 
@@ -31,35 +31,6 @@ PostGisTrajectoryLoader::~PostGisTrajectoryLoader()
     disconnectDatabase();
 }
 
-bool PostGisTrajectoryLoader::validateIdentifier(const QString& identifier, QString& errorMessage) const
-{
-    static const QRegularExpression identifierPattern(QStringLiteral("^[A-Za-z_][A-Za-z0-9_]*$"));
-    if (!identifierPattern.match(identifier).hasMatch()) {
-        errorMessage = QStringLiteral("非法 SQL 标识符: %1").arg(identifier);
-        return false;
-    }
-    return true;
-}
-
-bool PostGisTrajectoryLoader::ensureDriverAvailable(QString& errorMessage) const
-{
-    if (!QSqlDatabase::isDriverAvailable(QStringLiteral("QPSQL"))) {
-        errorMessage = QStringLiteral("未找到 PostgreSQL 驱动 (QPSQL)，请确认已安装 Qt SQL 驱动 libpq 插件");
-        return false;
-    }
-    return true;
-}
-
-QString PostGisTrajectoryLoader::quotedIdentifier(const QString& identifier) const
-{
-    return QLatin1Char('"') + identifier + QLatin1Char('"');
-}
-
-QString PostGisTrajectoryLoader::qualifiedTable(const QString& tableName) const
-{
-    return quotedIdentifier(m_config.schema) + QLatin1Char('.') + quotedIdentifier(tableName);
-}
-
 bool PostGisTrajectoryLoader::connectDatabase(const PostGisDatabaseConfig& config, QString& errorMessage)
 {
     errorMessage.clear();
@@ -71,38 +42,7 @@ bool PostGisTrajectoryLoader::connectDatabase(const PostGisDatabaseConfig& confi
         return false;
     }
 
-    if (!ensureDriverAvailable(errorMessage)) {
-        return false;
-    }
-
-    const QStringList identifiers = {
-        m_config.schema,
-        m_config.trajectoryTable,
-        m_config.vehiclesTable,
-        m_config.plateColumn,
-        m_config.timeColumn,
-        m_config.geomColumn,
-        m_config.speedColumn,
-        m_config.directionColumn,
-        m_config.mileageColumn,
-        m_config.colorColumn,
-    };
-    for (const QString& identifier : identifiers) {
-        if (!validateIdentifier(identifier, errorMessage)) {
-            return false;
-        }
-    }
-
-    QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QPSQL"), m_connectionName);
-    db.setHostName(m_config.host);
-    db.setPort(m_config.port);
-    db.setDatabaseName(m_config.database);
-    db.setUserName(m_config.username);
-    db.setPassword(m_config.password);
-
-    if (!db.open()) {
-        errorMessage = QStringLiteral("连接数据库失败: %1").arg(db.lastError().text());
-        QSqlDatabase::removeDatabase(m_connectionName);
+    if (!PostGisConnection::openDatabase(m_config, m_connectionName, errorMessage)) {
         return false;
     }
 
@@ -116,16 +56,7 @@ void PostGisTrajectoryLoader::disconnectDatabase()
         return;
     }
 
-    if (QSqlDatabase::contains(m_connectionName)) {
-        {
-            QSqlDatabase db = QSqlDatabase::database(m_connectionName);
-            if (db.isOpen()) {
-                db.close();
-            }
-        }
-        QSqlDatabase::removeDatabase(m_connectionName);
-    }
-
+    PostGisConnection::closeDatabase(m_connectionName);
     m_connected = false;
 }
 
@@ -140,16 +71,16 @@ QList<FolderScanner::VehicleInfo> PostGisTrajectoryLoader::listVehicles(QString&
     }
 
     const QSqlDatabase db = QSqlDatabase::database(m_connectionName);
-    const QString trajectoryTable = qualifiedTable(m_config.trajectoryTable);
-    const QString plateColumn = quotedIdentifier(m_config.plateColumn);
-    const QString timeColumn = quotedIdentifier(m_config.timeColumn);
+    const QString vehiclesTable = PostGisSql::qualifiedTable(m_config, m_config.vehiclesTable);
+    const QString plateColumn = PostGisSql::quotedIdentifier(m_config.plateColumn);
 
     const QString sql = QStringLiteral(
-                            "SELECT %1 AS plate_number, MIN(%2) AS first_ts, MAX(%2) AS last_ts, COUNT(*) AS point_count "
-                            "FROM %3 "
-                            "GROUP BY %1 "
+                            "SELECT %1 AS plate_number, first_seen_at, last_seen_at, "
+                            "total_point_count, day_count "
+                            "FROM %2 "
+                            "WHERE day_count > 0 OR total_point_count > 0 "
                             "ORDER BY %1")
-                            .arg(plateColumn, timeColumn, trajectoryTable);
+                            .arg(plateColumn, vehiclesTable);
 
     QSqlQuery query(db);
     if (!query.exec(sql)) {
@@ -160,9 +91,9 @@ QList<FolderScanner::VehicleInfo> PostGisTrajectoryLoader::listVehicles(QString&
     while (query.next()) {
         FolderScanner::VehicleInfo info;
         info.plateNumber = query.value(QStringLiteral("plate_number")).toString().trimmed();
-        info.firstTimestamp = query.value(QStringLiteral("first_ts")).toDateTime();
-        info.lastTimestamp = query.value(QStringLiteral("last_ts")).toDateTime();
-        info.recordCount = query.value(QStringLiteral("point_count")).toInt();
+        info.firstTimestamp = query.value(QStringLiteral("first_seen_at")).toDateTime();
+        info.lastTimestamp = query.value(QStringLiteral("last_seen_at")).toDateTime();
+        info.recordCount = query.value(QStringLiteral("total_point_count")).toInt();
         if (!info.plateNumber.isEmpty()) {
             vehicles.append(info);
         }
@@ -176,7 +107,9 @@ QList<FolderScanner::VehicleInfo> PostGisTrajectoryLoader::listVehicles(QString&
 }
 
 QList<ExcelDataReader::VehicleRecord> PostGisTrajectoryLoader::loadTrajectory(const QString& plateNumber,
-                                                                              QString& errorMessage) const
+                                                                              QString& errorMessage,
+                                                                              const QDate& startDate,
+                                                                              const QDate& endDate) const
 {
     QList<ExcelDataReader::VehicleRecord> records;
     errorMessage.clear();
@@ -192,38 +125,51 @@ QList<ExcelDataReader::VehicleRecord> PostGisTrajectoryLoader::loadTrajectory(co
     }
 
     const QSqlDatabase db = QSqlDatabase::database(m_connectionName);
-    const QString trajectoryTable = qualifiedTable(m_config.trajectoryTable);
-    const QString vehiclesTable = qualifiedTable(m_config.vehiclesTable);
-    const QString plateCol = quotedIdentifier(m_config.plateColumn);
-    const QString timeCol = quotedIdentifier(m_config.timeColumn);
-    const QString geomCol = quotedIdentifier(m_config.geomColumn);
-    const QString speedCol = quotedIdentifier(m_config.speedColumn);
-    const QString directionCol = quotedIdentifier(m_config.directionColumn);
-    const QString mileageCol = quotedIdentifier(m_config.mileageColumn);
-    const QString colorCol = quotedIdentifier(m_config.colorColumn);
+    const QString trajectoryTable = PostGisSql::qualifiedTable(m_config, m_config.trajectoryTable);
+    const QString trajectoryDaysTable = PostGisSql::qualifiedTable(m_config, m_config.trajectoryDaysTable);
+    const QString vehiclesTable = PostGisSql::qualifiedTable(m_config, m_config.vehiclesTable);
+    const QString plateCol = PostGisSql::quotedIdentifier(m_config.plateColumn);
+    const QString timeCol = PostGisSql::quotedIdentifier(m_config.timeColumn);
+    const QString geomCol = PostGisSql::quotedIdentifier(m_config.geomColumn);
+    const QString speedCol = PostGisSql::quotedIdentifier(m_config.speedColumn);
+    const QString directionCol = PostGisSql::quotedIdentifier(m_config.directionColumn);
+    const QString colorCol = PostGisSql::quotedIdentifier(m_config.colorColumn);
+
+    QString dateFilterSql;
+    if (startDate.isValid() && endDate.isValid()) {
+        dateFilterSql = QStringLiteral("AND td.trajectory_date >= :start_date AND td.trajectory_date <= :end_date ");
+    }
 
     const QString sql = QStringLiteral(
-                            "SELECT tp.%1 AS plate_number, "
+                            "SELECT v.%1 AS plate_number, "
+                            "td.trajectory_date, "
                             "ST_X(tp.%2) AS longitude, ST_Y(tp.%2) AS latitude, "
-                            "tp.%3 AS ts, tp.%4 AS speed, tp.%5 AS direction, tp.%6 AS total_mileage, "
-                            "COALESCE(v.%7, '') AS plate_color "
-                            "FROM %8 tp "
-                            "LEFT JOIN %9 v ON v.%1 = tp.%1 "
-                            "WHERE tp.%1 = :plate "
-                            "ORDER BY tp.%3")
+                            "tp.%3 AS point_ts, tp.%4 AS speed, tp.%5 AS direction, "
+                            "COALESCE(v.%6, '') AS plate_color "
+                            "FROM %7 tp "
+                            "JOIN %8 td ON td.trajectory_day_id = tp.trajectory_day_id "
+                            "JOIN %9 v ON v.vehicle_id = td.vehicle_id "
+                            "WHERE v.%1 = :plate "
+                            "%10"
+                            "ORDER BY td.trajectory_date, tp.%3")
                             .arg(plateCol,
                                  geomCol,
                                  timeCol,
                                  speedCol,
                                  directionCol,
-                                 mileageCol,
                                  colorCol,
                                  trajectoryTable,
-                                 vehiclesTable);
+                                 trajectoryDaysTable,
+                                 vehiclesTable,
+                                 dateFilterSql);
 
     QSqlQuery query(db);
     query.prepare(sql);
     query.bindValue(QStringLiteral(":plate"), plateNumber.trimmed());
+    if (startDate.isValid() && endDate.isValid()) {
+        query.bindValue(QStringLiteral(":start_date"), startDate);
+        query.bindValue(QStringLiteral(":end_date"), endDate);
+    }
 
     if (!query.exec()) {
         errorMessage = QStringLiteral("查询轨迹失败: %1").arg(query.lastError().text());
@@ -235,10 +181,11 @@ QList<ExcelDataReader::VehicleRecord> PostGisTrajectoryLoader::loadTrajectory(co
         record.plateNumber = query.value(QStringLiteral("plate_number")).toString().trimmed();
         record.longitude = query.value(QStringLiteral("longitude")).toDouble();
         record.latitude = query.value(QStringLiteral("latitude")).toDouble();
-        record.timestamp = query.value(QStringLiteral("ts")).toDateTime();
+        record.timestamp = PostGisSql::calendarDateTime(
+            query.value(QStringLiteral("trajectory_date")).toDate(),
+            query.value(QStringLiteral("point_ts")).toTime());
         record.speed = query.value(QStringLiteral("speed")).toDouble();
         record.direction = query.value(QStringLiteral("direction")).toInt();
-        record.totalMileage = query.value(QStringLiteral("total_mileage")).toString();
         record.vehicleColor = colorFromPlateColorField(query.value(QStringLiteral("plate_color")).toString());
 
         if (record.isValid()) {

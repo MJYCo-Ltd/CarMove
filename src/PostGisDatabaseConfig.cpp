@@ -8,6 +8,8 @@ bool PostGisDatabaseConfig::isValid() const
            && !username.trimmed().isEmpty()
            && !schema.trimmed().isEmpty()
            && !trajectoryTable.trimmed().isEmpty()
+           && !trajectoryDaysTable.trimmed().isEmpty()
+           && !vehiclesTable.trimmed().isEmpty()
            && !plateColumn.trimmed().isEmpty()
            && !timeColumn.trimmed().isEmpty()
            && !geomColumn.trimmed().isEmpty();

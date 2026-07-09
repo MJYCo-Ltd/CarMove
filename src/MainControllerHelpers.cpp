@@ -9,7 +9,24 @@
 #include <QStandardPaths>
 #include <QVariantMap>
 #include <QDir>
+#include <QDateTime>
 #include <limits>
+
+namespace {
+
+constexpr double kTrajectorySegmentMaxDistanceMeters = 5000.0;
+constexpr qint64 kTrajectorySegmentMaxGapSeconds = 2 * 3600;
+
+QDateTime trajectoryPointTimestamp(const QVariant& point)
+{
+    const QVariantMap map = point.toMap();
+    if (map.isEmpty()) {
+        return {};
+    }
+    return map.value(QStringLiteral("timestamp")).toDateTime();
+}
+
+} // namespace
 
 void MainController::updateFilteredVehicleList()
 {
@@ -145,6 +162,59 @@ QVariantList MainController::trajectoryPolylinePath(const QVariantList& trajecto
     return out;
 }
 
+QVariantList MainController::trajectoryPointSegments(const QVariantList& trajectoryPoints) const
+{
+    QVariantList segments;
+    QVariantList currentSegment;
+
+    QGeoCoordinate previousCoordinate;
+    QDateTime previousTimestamp;
+    bool hasPrevious = false;
+
+    auto flushSegment = [&]() {
+        if (currentSegment.size() >= 2) {
+            segments.append(currentSegment);
+        }
+        currentSegment = QVariantList();
+    };
+
+    for (const QVariant& point : trajectoryPoints) {
+        const QGeoCoordinate coordinate = trajectoryPointToCoordinate(point);
+        if (!coordinate.isValid()) {
+            continue;
+        }
+
+        const QDateTime timestamp = trajectoryPointTimestamp(point);
+        bool shouldBreak = false;
+        if (hasPrevious) {
+            if (previousCoordinate.distanceTo(coordinate) > kTrajectorySegmentMaxDistanceMeters) {
+                shouldBreak = true;
+            }
+            if (previousTimestamp.isValid() && timestamp.isValid()
+                && previousTimestamp.secsTo(timestamp) > kTrajectorySegmentMaxGapSeconds) {
+                shouldBreak = true;
+            }
+        }
+
+        if (shouldBreak) {
+            flushSegment();
+        }
+
+        currentSegment.append(point);
+        previousCoordinate = coordinate;
+        previousTimestamp = timestamp;
+        hasPrevious = true;
+    }
+
+    flushSegment();
+
+    if (segments.isEmpty() && trajectoryPoints.size() >= 2) {
+        segments.append(trajectoryPoints);
+    }
+
+    return segments;
+}
+
 QVariant MainController::geoPathFromTrajectory(const QVariantList& trajectoryPoints) const
 {
     QGeoPath path;
@@ -153,6 +223,24 @@ QVariant MainController::geoPathFromTrajectory(const QVariantList& trajectoryPoi
         if (c.isValid())
             path.addCoordinate(c);
     }
+    return QVariant::fromValue(path);
+}
+
+QVariant MainController::geoPathForViewport(const QVariantList& trajectoryPoints) const
+{
+    QGeoPath path;
+    for (const QVariant& v : trajectoryPoints) {
+        const QGeoCoordinate c = trajectoryPointToCoordinate(v);
+        if (c.isValid()) {
+            path.addCoordinate(c);
+        }
+    }
+
+    const QGeoCoordinate target(m_targetAreaLatitude, m_targetAreaLongitude);
+    if (target.isValid()) {
+        path.addCoordinate(target);
+    }
+
     return QVariant::fromValue(path);
 }
 

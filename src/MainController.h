@@ -77,6 +77,15 @@ public:
     Q_INVOKABLE void setTrajectorySourceMode(const QString& mode);
     Q_INVOKABLE void savePostGisSettings();
     Q_INVOKABLE void selectVehicle(const QString& plateNumber);
+    Q_INVOKABLE void loadTrajectoryForCapture(const QString& plateNumber,
+                                              const QString& startDateIso,
+                                              const QString& endDateIso);
+    Q_INVOKABLE QString normalizeLocalPath(const QString& path) const;
+    Q_INVOKABLE bool ensureScreenshotOutputDirectory(const QString& folderPath) const;
+    Q_INVOKABLE QString screenshotFilePath(const QString& folderPath,
+                                             const QString& plateNumber,
+                                             const QString& startDateIso,
+                                             const QString& endDateIso) const;
     Q_INVOKABLE void toggleCoordinateConversion();
     Q_INVOKABLE QVariantList getConvertedTrajectory();
     /// 一次设置目标区域中心与名称（name 可为空；空名称时由 QML 逆地理补全）
@@ -89,8 +98,12 @@ public:
     Q_INVOKABLE QString colorHexForPlate(const QString& plateNumber) const;
     /// 轨迹点序列 → MapPolyline.path 可用的坐标列表
     Q_INVOKABLE QVariantList trajectoryPolylinePath(const QVariantList& trajectoryPoints) const;
+    /// 按时间/距离跨度切分轨迹，避免大间隔点被连成直线
+    Q_INVOKABLE QVariantList trajectoryPointSegments(const QVariantList& trajectoryPoints) const;
     /// 轨迹点序列 → QGeoPath（用于 fitViewportToGeoShape）
     Q_INVOKABLE QVariant geoPathFromTrajectory(const QVariantList& trajectoryPoints) const;
+    /// 轨迹 + 目标区域 → QGeoPath（用于 fitViewportToGeoShape）
+    Q_INVOKABLE QVariant geoPathForViewport(const QVariantList& trajectoryPoints) const;
     /// 卸油记录列表 amount 字段求和，格式化为两位小数（吨）
     Q_INVOKABLE QString formatRecordsTotalAmount(const QVariantList& records) const;
     /// 批量计算目标区域经过次数（车牌列表由 QML 传入）
@@ -118,6 +131,7 @@ signals:
                                const QGeoCoordinate& position,
                                int direction, double speed);
     void errorOccurred(const QString& error);
+    void captureTrajectoryReady(bool success, int pointCount);
     void loadingProgress(int percentage);
     void loadingChanged();
     void loadingMessageChanged();
@@ -144,6 +158,7 @@ private:
     void persistTargetAreaConfig();
     void applyTrajectorySourceMode();
     void clearVehicleDataState();
+    void finishVehicleListLoad(const QList<FolderScanner::VehicleInfo>& vehicles);
 
     QString m_currentFolder;
     QStringList m_vehicleList;
@@ -165,6 +180,7 @@ private:
     PlaybackControl* m_playbackControl = nullptr;
     bool m_databaseConnected = false;
     QString m_databaseStatus;
+    bool m_captureTrajectoryPending = false;
 
     QList<FolderScanner::VehicleInfo> m_vehicleInfoList;
 };

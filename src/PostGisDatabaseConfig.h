@@ -10,13 +10,13 @@ struct PostGisDatabaseConfig {
     QString password;
     QString schema = QStringLiteral("public");
     QString trajectoryTable = QStringLiteral("trajectory_points");
+    QString trajectoryDaysTable = QStringLiteral("trajectory_days");
     QString vehiclesTable = QStringLiteral("vehicles");
     QString plateColumn = QStringLiteral("plate_number");
     QString timeColumn = QStringLiteral("ts");
     QString geomColumn = QStringLiteral("geom");
     QString speedColumn = QStringLiteral("speed");
     QString directionColumn = QStringLiteral("direction");
-    QString mileageColumn = QStringLiteral("total_mileage");
     QString colorColumn = QStringLiteral("plate_color");
 
     bool isValid() const;

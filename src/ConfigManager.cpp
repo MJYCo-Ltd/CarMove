@@ -20,6 +20,7 @@ ConfigManager::ConfigManager(QObject *parent)
     , m_dbUser(QString::fromLatin1(DEFAULT_DB_USER))
     , m_dbSchema(QString::fromLatin1(DEFAULT_DB_SCHEMA))
     , m_dbTrajectoryTable(QString::fromLatin1(DEFAULT_DB_TRAJECTORY_TABLE))
+    , m_dbTrajectoryDaysTable(QString::fromLatin1(DEFAULT_DB_TRAJECTORY_DAYS_TABLE))
     , m_dbVehiclesTable(QString::fromLatin1(DEFAULT_DB_VEHICLES_TABLE))
     , m_excelDataStartRow(DEFAULT_EXCEL_DATA_START_ROW)
     , m_settings(nullptr)
@@ -160,6 +161,14 @@ void ConfigManager::setDbTrajectoryTable(const QString& table)
     }
 }
 
+void ConfigManager::setDbTrajectoryDaysTable(const QString& table)
+{
+    if (m_dbTrajectoryDaysTable != table) {
+        m_dbTrajectoryDaysTable = table;
+        emit postGisSettingsChanged();
+    }
+}
+
 void ConfigManager::setDbVehiclesTable(const QString& table)
 {
     if (m_dbVehiclesTable != table) {
@@ -178,6 +187,7 @@ PostGisDatabaseConfig ConfigManager::postGisDatabaseConfig() const
     config.password = m_dbPassword;
     config.schema = m_dbSchema;
     config.trajectoryTable = m_dbTrajectoryTable;
+    config.trajectoryDaysTable = m_dbTrajectoryDaysTable;
     config.vehiclesTable = m_dbVehiclesTable;
     return config;
 }
@@ -514,6 +524,7 @@ void ConfigManager::saveTrajectorySourceSettings()
     m_settings->setValue("password", m_dbPassword);
     m_settings->setValue("schema", m_dbSchema);
     m_settings->setValue("trajectoryTable", m_dbTrajectoryTable);
+    m_settings->setValue("trajectoryDaysTable", m_dbTrajectoryDaysTable);
     m_settings->setValue("vehiclesTable", m_dbVehiclesTable);
     m_settings->endGroup();
 }
@@ -537,6 +548,8 @@ void ConfigManager::loadTrajectorySourceSettings()
     m_dbSchema = m_settings->value("schema", QString::fromLatin1(DEFAULT_DB_SCHEMA)).toString();
     m_dbTrajectoryTable =
         m_settings->value("trajectoryTable", QString::fromLatin1(DEFAULT_DB_TRAJECTORY_TABLE)).toString();
+    m_dbTrajectoryDaysTable =
+        m_settings->value("trajectoryDaysTable", QString::fromLatin1(DEFAULT_DB_TRAJECTORY_DAYS_TABLE)).toString();
     m_dbVehiclesTable =
         m_settings->value("vehiclesTable", QString::fromLatin1(DEFAULT_DB_VEHICLES_TABLE)).toString();
     m_settings->endGroup();

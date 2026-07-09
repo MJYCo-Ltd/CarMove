@@ -6,6 +6,8 @@
 #include "ConfigManager.h"
 #include "ErrorHandler.h"
 #include "PostGisDatabaseConfig.h"
+#include "ParseData/ExcelFilePath.h"
+#include <QDate>
 #include <QDir>
 #include <QVariantMap>
 #include <QUrl>
@@ -120,6 +122,7 @@ void MainController::applyTrajectorySourceMode()
     if (databaseMode) {
         m_currentFolder.clear();
         emit currentFolderChanged();
+        connectPostGisDatabase();
     } else {
         if (m_postGisLoader) {
             m_postGisLoader->disconnectDatabase();
@@ -127,9 +130,27 @@ void MainController::applyTrajectorySourceMode()
         m_databaseConnected = false;
         m_databaseStatus.clear();
         emit databaseConnectionChanged();
+        clearVehicleDataState();
+    }
+}
+
+void MainController::finishVehicleListLoad(const QList<FolderScanner::VehicleInfo>& vehicles)
+{
+    m_vehicleInfoList = vehicles;
+    m_vehicleList.clear();
+
+    for (const auto& vehicle : vehicles) {
+        m_vehicleList.append(vehicle.plateNumber);
     }
 
-    clearVehicleDataState();
+    m_vehicleManager->setVehicleList(vehicles);
+    updateFilteredVehicleList();
+
+    m_isLoading = false;
+    m_loadingMessage.clear();
+    emit loadingChanged();
+    emit loadingMessageChanged();
+    emit vehicleListChanged();
 }
 
 void MainController::clearVehicleDataState()
@@ -146,11 +167,8 @@ void MainController::clearVehicleDataState()
 void MainController::connectPostGisDatabase()
 {
     if (!useDatabaseTrajectorySource()) {
-        emit errorOccurred(QStringLiteral("当前轨迹数据源不是 PostGIS 数据库"));
         return;
     }
-
-    ConfigManager::GetInstance()->savePostGisSettings();
 
     m_isLoading = true;
     m_loadingMessage = QStringLiteral("正在连接 PostGIS 数据库...");
@@ -168,7 +186,6 @@ void MainController::connectPostGisDatabase()
         emit databaseConnectionChanged();
         emit loadingChanged();
         emit loadingMessageChanged();
-        emit folderScanned(false, errorMessage);
         emit errorOccurred(errorMessage);
         return;
     }
@@ -186,12 +203,11 @@ void MainController::connectPostGisDatabase()
         emit databaseConnectionChanged();
         emit loadingChanged();
         emit loadingMessageChanged();
-        emit folderScanned(false, errorMessage);
         emit errorOccurred(errorMessage);
         return;
     }
 
-    onFolderScanCompleted(vehicles);
+    finishVehicleListLoad(vehicles);
     m_currentFolder = config.connectionSummary();
     emit currentFolderChanged();
 }
@@ -199,7 +215,6 @@ void MainController::connectPostGisDatabase()
 void MainController::selectFolder(const QString& folderPath)
 {
     if (useDatabaseTrajectorySource()) {
-        emit errorOccurred(QStringLiteral("当前为 PostGIS 数据库模式，请使用「连接数据库」加载车辆列表"));
         return;
     }
     // Validate folder path
@@ -263,41 +278,37 @@ void MainController::selectFolder(const QString& folderPath)
 
 void MainController::selectVehicle(const QString& plateNumber)
 {
-    // Validate plate number
     if (plateNumber.isEmpty()) {
-        emit errorOccurred("请选择一个有效的车辆");
+        emit errorOccurred(QStringLiteral("请选择一个有效的车辆"));
         return;
     }
-    
-    // Check if vehicle exists in the list
+
     if (!m_vehicleList.contains(plateNumber)) {
-        emit errorOccurred(QString("车辆 %1 不在当前车辆列表中").arg(plateNumber));
+        emit errorOccurred(QString(QStringLiteral("车辆 %1 不在当前车辆列表中")).arg(plateNumber));
         return;
     }
-    
+
     if (m_selectedVehicle != plateNumber) {
         m_selectedVehicle = plateNumber;
         emit selectedVehicleChanged();
-        
-        // Stop any current playback
+
         try {
-            if (m_playbackControl)
+            if (m_playbackControl) {
                 m_playbackControl->stopPlayback();
+            }
         } catch (const std::exception& e) {
             qWarning() << "Error stopping playback:" << e.what();
-            emit errorOccurred(QString("停止播放时发生错误: %1").arg(e.what()));
+            emit errorOccurred(QString(QStringLiteral("停止播放时发生错误: %1")).arg(e.what()));
         } catch (...) {
             qWarning() << "Unknown error stopping playback";
-            emit errorOccurred("停止播放时发生未知错误");
+            emit errorOccurred(QStringLiteral("停止播放时发生未知错误"));
         }
-        
-        // Set loading state
+
         m_isLoading = true;
-        m_loadingMessage = QString("正在加载车辆 %1 的轨迹数据...").arg(plateNumber);
+        m_loadingMessage = QString(QStringLiteral("正在加载车辆 %1 的轨迹数据...")).arg(plateNumber);
         emit loadingChanged();
         emit loadingMessageChanged();
-        
-        // Load vehicle trajectory with error handling
+
         try {
             m_vehicleManager->selectVehicle(plateNumber);
         } catch (const std::exception& e) {
@@ -312,12 +323,77 @@ void MainController::selectVehicle(const QString& plateNumber)
     }
 }
 
+void MainController::loadTrajectoryForCapture(const QString& plateNumber,
+                                              const QString& startDateIso,
+                                              const QString& endDateIso)
+{
+    if (plateNumber.trimmed().isEmpty()) {
+        emit captureTrajectoryReady(false, 0);
+        return;
+    }
+
+    if (!useDatabaseTrajectorySource() || !m_databaseConnected) {
+        emit errorOccurred(QStringLiteral("PostGIS 数据库未连接，请检查 CarMoveTracker.ini 配置"));
+        emit captureTrajectoryReady(false, 0);
+        return;
+    }
+
+    const QDate startDate = QDate::fromString(startDateIso, Qt::ISODate);
+    const QDate endDate = QDate::fromString(endDateIso, Qt::ISODate);
+    if (!startDate.isValid() || !endDate.isValid()) {
+        emit captureTrajectoryReady(false, 0);
+        return;
+    }
+
+    m_captureTrajectoryPending = true;
+    m_selectedVehicle = plateNumber.trimmed();
+    emit selectedVehicleChanged();
+
+    if (m_playbackControl) {
+        m_playbackControl->stopPlayback();
+    }
+
+    m_isLoading = true;
+    m_loadingMessage = QString(QStringLiteral("正在加载 %1 的轨迹 (%2 ~ %3)..."))
+                           .arg(plateNumber, startDateIso, endDateIso);
+    emit loadingChanged();
+    emit loadingMessageChanged();
+
+    m_vehicleManager->loadTrajectoryFromDatabase(plateNumber.trimmed(), startDate, endDate, true);
+}
+
+QString MainController::normalizeLocalPath(const QString& path) const
+{
+    return ExcelFilePath::normalizeLocalFilePath(path);
+}
+
+bool MainController::ensureScreenshotOutputDirectory(const QString& folderPath) const
+{
+    const QString localPath = ExcelFilePath::normalizeLocalFilePath(folderPath);
+    if (localPath.trimmed().isEmpty()) {
+        return false;
+    }
+    return QDir().mkpath(localPath);
+}
+
+QString MainController::screenshotFilePath(const QString& folderPath,
+                                           const QString& plateNumber,
+                                           const QString& startDateIso,
+                                           const QString& endDateIso) const
+{
+    const QString localFolder = ExcelFilePath::normalizeLocalFilePath(folderPath);
+    const QString safePlate = ExcelFilePath::sanitizePlateForFilename(plateNumber);
+
+    const QString fileName =
+        safePlate + QLatin1Char('_') + startDateIso + QLatin1Char('_') + endDateIso + QStringLiteral(".png");
+    return QDir(localFolder).filePath(fileName);
+}
+
 void MainController::toggleCoordinateConversion()
 {
     try {
         setCoordinateConversionEnabled(!m_coordinateConversionEnabled);
-        
-        // Trigger trajectory conversion signal
+
         if (!m_selectedVehicle.isEmpty()) {
             emit trajectoryConverted();
         }
