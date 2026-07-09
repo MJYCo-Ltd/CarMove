@@ -1,4 +1,5 @@
 #include "PostGisConnection.h"
+#include "AppLogger.h"
 
 #include <QRegularExpression>
 #include <QSqlDatabase>
@@ -11,6 +12,7 @@ bool ensureDriverAvailable(QString& errorMessage)
 {
     if (!QSqlDatabase::isDriverAvailable(QStringLiteral("QPSQL"))) {
         errorMessage = QStringLiteral("未找到 PostgreSQL 驱动 (QPSQL)，请确认已安装 Qt SQL 驱动 libpq 插件");
+        AppLogger::error(errorMessage);
         return false;
     }
     return true;
@@ -21,6 +23,7 @@ bool validateIdentifier(const QString& identifier, QString& errorMessage)
     static const QRegularExpression identifierPattern(QStringLiteral("^[A-Za-z_][A-Za-z0-9_]*$"));
     if (!identifierPattern.match(identifier).hasMatch()) {
         errorMessage = QStringLiteral("非法 SQL 标识符: %1").arg(identifier);
+        AppLogger::warn(errorMessage);
         return false;
     }
     return true;
@@ -81,6 +84,12 @@ bool openDatabase(const PostGisDatabaseConfig& config,
 
     if (!db.open()) {
         errorMessage = QStringLiteral("连接数据库失败: %1").arg(db.lastError().text());
+        AppLogger::error(QStringLiteral("PostGIS 连接失败: %1@%2:%3/%4 | %5")
+                             .arg(config.username,
+                                  config.host,
+                                  QString::number(config.port),
+                                  config.database,
+                                  db.lastError().text()));
         QSqlDatabase::removeDatabase(connectionName);
         return false;
     }

@@ -1,6 +1,7 @@
 // Private helper implementations for MainController
 // Separated from MainController.cpp for maintainability
 #include "MainController.h"
+#include "AppLogger.h"
 #include "VehicleManager.h"
 #include "VehicleDataModel.h"
 #include "VehicleAnimationEngine.h"
@@ -62,7 +63,7 @@ void MainController::setupVehicleDataModel()
         m_animationEngine->setVehicleModel(m_vehicleDataModel);
 }
 
-QVariantMap MainController::vehicleRecordToVariant(const ExcelDataReader::VehicleRecord& record)
+QVariantMap MainController::vehicleRecordToVariant(const ExcelDataReader::VehicleRecord& record) const
 {
     QVariantMap result;
     result["plateNumber"]  = record.plateNumber;
@@ -151,10 +152,11 @@ QString MainController::colorHexForPlate(const QString& plateNumber) const
     return colors.at(idx);
 }
 
-QVariantList MainController::trajectoryPolylinePath(const QVariantList& trajectoryPoints) const
+QVariantList MainController::trajectoryPolylinePath(const QVariant& trajectoryPoints) const
 {
     QVariantList out;
-    for (const QVariant& v : trajectoryPoints) {
+    const QVariantList points = trajectoryPoints.toList();
+    for (const QVariant& v : points) {
         const QGeoCoordinate c = trajectoryPointToCoordinate(v);
         if (c.isValid())
             out.append(QVariant::fromValue(c));
@@ -162,8 +164,9 @@ QVariantList MainController::trajectoryPolylinePath(const QVariantList& trajecto
     return out;
 }
 
-QVariantList MainController::trajectoryPointSegments(const QVariantList& trajectoryPoints) const
+QVariantList MainController::trajectoryPointSegments(const QVariant& trajectoryPoints) const
 {
+    const QVariantList trajectoryPointList = trajectoryPoints.toList();
     QVariantList segments;
     QVariantList currentSegment;
 
@@ -178,7 +181,7 @@ QVariantList MainController::trajectoryPointSegments(const QVariantList& traject
         currentSegment = QVariantList();
     };
 
-    for (const QVariant& point : trajectoryPoints) {
+    for (const QVariant& point : trajectoryPointList) {
         const QGeoCoordinate coordinate = trajectoryPointToCoordinate(point);
         if (!coordinate.isValid()) {
             continue;
@@ -208,17 +211,135 @@ QVariantList MainController::trajectoryPointSegments(const QVariantList& traject
 
     flushSegment();
 
-    if (segments.isEmpty() && trajectoryPoints.size() >= 2) {
-        segments.append(trajectoryPoints);
+    if (segments.isEmpty() && trajectoryPointList.size() >= 2) {
+        segments.append(trajectoryPointList);
     }
 
     return segments;
 }
 
-QVariant MainController::geoPathFromTrajectory(const QVariantList& trajectoryPoints) const
+QVariantList MainController::trajectorySegmentPolylinePaths(const QVariant& trajectoryPoints) const
+{
+    QVariantList paths;
+    const QVariantList segments = trajectoryPointSegments(trajectoryPoints);
+    for (const QVariant& segment : segments) {
+        const QVariantList polyline = trajectoryPolylinePath(segment);
+        if (polyline.size() >= 2) {
+            paths.append(polyline);
+        }
+    }
+    return paths;
+}
+
+QVariantList MainController::buildTrajectoryDisplaySegments() const
+{
+    if (!m_vehicleManager) {
+        return {};
+    }
+
+    const QList<ExcelDataReader::VehicleRecord> trajectory =
+        m_coordinateConversionEnabled ? m_vehicleManager->getConvertedTrajectory()
+                                      : m_vehicleManager->getCurrentTrajectory();
+
+    if (trajectory.size() < 2) {
+        return {};
+    }
+
+    QVariantList segments;
+    QVariantList currentSegment;
+
+    QGeoCoordinate previousCoordinate;
+    QDateTime previousTimestamp;
+    bool hasPrevious = false;
+
+    auto flushSegment = [&]() {
+        if (currentSegment.size() >= 2) {
+            segments.append(currentSegment);
+        }
+        currentSegment = QVariantList();
+    };
+
+    for (const ExcelDataReader::VehicleRecord& record : trajectory) {
+        if (!record.isValid()) {
+            continue;
+        }
+
+        const QGeoCoordinate coordinate(record.latitude, record.longitude);
+        if (!coordinate.isValid()) {
+            continue;
+        }
+
+        bool shouldBreak = false;
+        if (hasPrevious) {
+            if (previousCoordinate.distanceTo(coordinate) > kTrajectorySegmentMaxDistanceMeters) {
+                shouldBreak = true;
+            }
+            if (previousTimestamp.isValid() && record.timestamp.isValid()
+                && previousTimestamp.secsTo(record.timestamp) > kTrajectorySegmentMaxGapSeconds) {
+                shouldBreak = true;
+            }
+        }
+
+        if (shouldBreak) {
+            flushSegment();
+        }
+
+        currentSegment.append(QVariant::fromValue(coordinate));
+        previousCoordinate = coordinate;
+        previousTimestamp = record.timestamp;
+        hasPrevious = true;
+    }
+
+    flushSegment();
+
+    if (segments.isEmpty()) {
+        QVariantList fullPath;
+        fullPath.reserve(trajectory.size());
+        for (const ExcelDataReader::VehicleRecord& record : trajectory) {
+            if (!record.isValid()) {
+                continue;
+            }
+            const QGeoCoordinate coordinate(record.latitude, record.longitude);
+            if (coordinate.isValid()) {
+                fullPath.append(QVariant::fromValue(coordinate));
+            }
+        }
+        if (fullPath.size() >= 2) {
+            segments.append(fullPath);
+        }
+    }
+
+    return segments;
+}
+
+int MainController::trajectoryDisplaySegmentCount()
+{
+    m_trajectoryDisplaySegments = buildTrajectoryDisplaySegments();
+    if (m_trajectoryDisplaySegments.isEmpty() && m_vehicleManager) {
+        const int pointCount = m_coordinateConversionEnabled
+                                   ? m_vehicleManager->getConvertedTrajectory().size()
+                                   : m_vehicleManager->getCurrentTrajectory().size();
+        if (pointCount > 0) {
+            AppLogger::warn(QStringLiteral("轨迹绘制分段为空 | 车牌=%1 | 原始点数=%2")
+                                .arg(m_selectedVehicle)
+                                .arg(pointCount));
+        }
+    }
+    return m_trajectoryDisplaySegments.size();
+}
+
+QVariantList MainController::trajectoryDisplaySegmentPath(int segmentIndex) const
+{
+    if (segmentIndex < 0 || segmentIndex >= m_trajectoryDisplaySegments.size()) {
+        return {};
+    }
+    return m_trajectoryDisplaySegments.at(segmentIndex).toList();
+}
+
+QVariant MainController::geoPathFromTrajectory(const QVariant& trajectoryPoints) const
 {
     QGeoPath path;
-    for (const QVariant& v : trajectoryPoints) {
+    for (const QVariant& v : trajectoryPoints.toList()) {
         const QGeoCoordinate c = trajectoryPointToCoordinate(v);
         if (c.isValid())
             path.addCoordinate(c);
@@ -226,10 +347,10 @@ QVariant MainController::geoPathFromTrajectory(const QVariantList& trajectoryPoi
     return QVariant::fromValue(path);
 }
 
-QVariant MainController::geoPathForViewport(const QVariantList& trajectoryPoints) const
+QVariant MainController::geoPathForViewport(const QVariant& trajectoryPoints) const
 {
     QGeoPath path;
-    for (const QVariant& v : trajectoryPoints) {
+    for (const QVariant& v : trajectoryPoints.toList()) {
         const QGeoCoordinate c = trajectoryPointToCoordinate(v);
         if (c.isValid()) {
             path.addCoordinate(c);
@@ -327,7 +448,7 @@ QString MainController::getDocumentsPath()
 
     QDir dir;
     if (!dir.exists(screenshotDir) && !dir.mkpath(screenshotDir))
-        qWarning() << "无法创建截图目录:" << screenshotDir;
+        AppLogger::warn(QStringLiteral("无法创建截图目录: %1").arg(screenshotDir));
 
     return docPath;
 }

@@ -1,7 +1,7 @@
 #include "FuelUnloadingDataLoader.h"
+#include "AppLogger.h"
 #include <QFile>
 #include <QJsonParseError>
-#include <QDebug>
 #include <QStandardPaths>
 #include <QDir>
 
@@ -217,7 +217,7 @@ void FuelUnloadingDataLoader::setError(const QString& error)
     m_isLoaded = false;
     emit errorMessageChanged();
     emit isLoadedChanged();
-    qWarning() << "FuelUnloadingDataLoader错误:" << error;
+    AppLogger::warn(QStringLiteral("FuelUnloadingDataLoader错误: %1").arg(error));
 }
 
 void FuelUnloadingDataLoader::clearError()

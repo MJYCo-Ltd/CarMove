@@ -1,7 +1,6 @@
 #include "ConfigManager.h"
 #include <QCoreApplication>
 #include <QDir>
-#include <QDebug>
 #include <algorithm>
 
 ConfigManager* ConfigManager::m_pManager{};

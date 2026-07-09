@@ -1,4 +1,5 @@
 #include "ErrorHandler.h"
+#include "AppLogger.h"
 #include <QFileInfo>
 #include <QDir>
 
@@ -25,7 +26,7 @@ QString ErrorHandler::handleFileAccessError(const QString& filePath, const QStri
         userMessage = QString("文件访问错误：%1\n操作：%2\n请稍后重试或联系技术支持。").arg(fileName).arg(operation);
     }
     
-    qWarning() << "File access error:" << filePath << "Operation:" << operation;
+    AppLogger::warn(QStringLiteral("文件访问错误: %1 | 操作: %2").arg(filePath, operation));
     return userMessage;
 }
 
@@ -67,7 +68,7 @@ QString ErrorHandler::handleDataFormatError(const QString& fileName, const QStri
                              "• 尝试重新保存文件").arg(fileName).arg(issue);
     }
     
-    qWarning() << "Data format error in file:" << fileName << "Issue:" << issue;
+    AppLogger::warn(QStringLiteral("数据格式错误: 文件=%1 | 问题=%2").arg(fileName, issue));
     return userMessage;
 }
 
@@ -83,7 +84,7 @@ QString ErrorHandler::handleCoordinateConversionError(const QString& details)
                                  "• 尝试关闭坐标转换功能\n"
                                  "• 联系技术支持").arg(details);
     
-    qWarning() << "Coordinate conversion error:" << details;
+    AppLogger::warn(QStringLiteral("坐标转换错误: %1").arg(details));
     return userMessage;
 }
 
@@ -124,7 +125,7 @@ QString ErrorHandler::handleValidationError(const QString& field, const QString&
                              "请检查数据格式是否正确。").arg(field).arg(value).arg(expected);
     }
     
-    qWarning() << "Validation error - Field:" << field << "Value:" << value << "Expected:" << expected;
+    AppLogger::warn(QStringLiteral("数据验证失败: 字段=%1 | 值=%2 | 要求=%3").arg(field, value, expected));
     return userMessage;
 }
 
@@ -153,7 +154,7 @@ QString ErrorHandler::handleNetworkError(const QString& service, const QString& 
                              "• 联系网络管理员").arg(service).arg(details);
     }
     
-    qWarning() << "Network error - Service:" << service << "Details:" << details;
+    AppLogger::warn(QStringLiteral("网络错误: 服务=%1 | 详情=%2").arg(service, details));
     return userMessage;
 }
 
@@ -168,7 +169,7 @@ QString ErrorHandler::handleMemoryError(const QString& operation)
                                  "• 重启应用程序\n"
                                  "• 考虑升级系统内存").arg(operation);
     
-    qCritical() << "Memory error during operation:" << operation;
+    AppLogger::critical(QStringLiteral("内存不足: 操作=%1").arg(operation));
     return userMessage;
 }
 
@@ -184,7 +185,7 @@ QString ErrorHandler::handleSystemError(const QString& operation, const QString&
                                  "• 联系技术支持\n"
                                  "• 查看系统日志").arg(operation).arg(details);
     
-    qCritical() << "System error - Operation:" << operation << "Details:" << details;
+    AppLogger::critical(QStringLiteral("系统错误: 操作=%1 | 详情=%2").arg(operation, details));
     return userMessage;
 }
 
@@ -201,16 +202,16 @@ void ErrorHandler::reportError(const ErrorInfo& error)
     
     switch (error.severity) {
         case Info:
-            qInfo() << logMessage;
+            AppLogger::info(logMessage);
             break;
         case Warning:
-            qWarning() << logMessage;
+            AppLogger::warn(logMessage);
             break;
         case Error:
-            qWarning() << logMessage;
+            AppLogger::error(logMessage);
             break;
         case Critical:
-            qCritical() << logMessage;
+            AppLogger::critical(logMessage);
             emit criticalErrorOccurred(error);
             break;
     }

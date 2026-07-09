@@ -1,6 +1,7 @@
 #include "FolderScanner.h"
 #include "ParseData/ExcelDataReader.h"
 #include "ErrorHandler.h"
+#include "AppLogger.h"
 #include <QDir>
 #include <QFileInfo>
 #include <QMap>
@@ -59,7 +60,7 @@ void FolderScanner::scanFolder(const QString& folderPath)
     
     // Check for very large number of files
     if (files.size() > 1000) {
-        qWarning() << "Large number of Excel files detected:" << files.size() << "This may take some time.";
+        AppLogger::warn(QStringLiteral("检测到大量 Excel 文件: %1，可能需要较长时间").arg(files.size()));
     }
     
     // Map to store vehicle information aggregated by plate number from filenames
@@ -84,7 +85,7 @@ void FolderScanner::scanFolder(const QString& folderPath)
             
             // Additional file validation
             if (fileInfo.size() == 0) {
-                qWarning() << "Skipping empty file:" << filePath;
+                AppLogger::warn(QStringLiteral("扫描跳过空文件: %1").arg(filePath));
                 invalidFiles++;
                 if (errorSummary.size() < 5) {
                     errorSummary.append(QString("文件为空: %1").arg(fileName));
@@ -94,7 +95,9 @@ void FolderScanner::scanFolder(const QString& folderPath)
             
             // Check if file is too large (>500MB)
             if (fileInfo.size() > 500 * 1024 * 1024) {
-                qWarning() << "Skipping very large file:" << filePath << "Size:" << fileInfo.size();
+                AppLogger::warn(QStringLiteral("扫描跳过过大文件: %1 | 大小=%2")
+                                    .arg(filePath)
+                                    .arg(fileInfo.size()));
                 invalidFiles++;
                 if (errorSummary.size() < 5) {
                     errorSummary.append(QString("文件过大: %1").arg(fileName));
@@ -132,7 +135,7 @@ void FolderScanner::scanFolder(const QString& folderPath)
                 validFiles++;
             } else {
                 // 文件名不符合车牌号格式
-                qWarning() << "无法从文件名提取车牌号:" << fileName;
+                AppLogger::warn(QStringLiteral("无法从文件名提取车牌号: %1").arg(fileName));
                 invalidFiles++;
                 if (errorSummary.size() < 5) {
                     errorSummary.append(QString("文件名格式不正确: %1").arg(fileName));
@@ -194,8 +197,9 @@ void FolderScanner::scanFolder(const QString& folderPath)
         
         // Show warning if many files are invalid
         if (invalidFiles > validFiles * 0.2) { // More than 20% invalid
-            qWarning() << QString("警告：较多文件无效 (%1/%2)，请检查文件命名格式")
-                         .arg(invalidFiles).arg(processedFiles);
+            AppLogger::warn(QStringLiteral("警告：较多文件无效 (%1/%2)，请检查文件命名格式")
+                                .arg(invalidFiles)
+                                .arg(processedFiles));
         }
         
         emit scanCompleted(m_vehicleList);

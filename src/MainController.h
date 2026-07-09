@@ -97,13 +97,19 @@ public:
     /// 车牌字符串哈希配色（与地图车辆色一致）
     Q_INVOKABLE QString colorHexForPlate(const QString& plateNumber) const;
     /// 轨迹点序列 → MapPolyline.path 可用的坐标列表
-    Q_INVOKABLE QVariantList trajectoryPolylinePath(const QVariantList& trajectoryPoints) const;
+    Q_INVOKABLE QVariantList trajectoryPolylinePath(const QVariant& trajectoryPoints) const;
     /// 按时间/距离跨度切分轨迹，避免大间隔点被连成直线
-    Q_INVOKABLE QVariantList trajectoryPointSegments(const QVariantList& trajectoryPoints) const;
+    Q_INVOKABLE QVariantList trajectoryPointSegments(const QVariant& trajectoryPoints) const;
+    /// 分段轨迹 → 每段坐标列表（MapPolyline.path）
+    Q_INVOKABLE QVariantList trajectorySegmentPolylinePaths(const QVariant& trajectoryPoints) const;
+    /// 准备当前轨迹分段并返回段数
+    Q_INVOKABLE int trajectoryDisplaySegmentCount();
+    /// 当前已加载轨迹的第 index 段坐标列表（MapPolyline.path）
+    Q_INVOKABLE QVariantList trajectoryDisplaySegmentPath(int segmentIndex) const;
     /// 轨迹点序列 → QGeoPath（用于 fitViewportToGeoShape）
-    Q_INVOKABLE QVariant geoPathFromTrajectory(const QVariantList& trajectoryPoints) const;
+    Q_INVOKABLE QVariant geoPathFromTrajectory(const QVariant& trajectoryPoints) const;
     /// 轨迹 + 目标区域 → QGeoPath（用于 fitViewportToGeoShape）
-    Q_INVOKABLE QVariant geoPathForViewport(const QVariantList& trajectoryPoints) const;
+    Q_INVOKABLE QVariant geoPathForViewport(const QVariant& trajectoryPoints) const;
     /// 卸油记录列表 amount 字段求和，格式化为两位小数（吨）
     Q_INVOKABLE QString formatRecordsTotalAmount(const QVariantList& records) const;
     /// 批量计算目标区域经过次数（车牌列表由 QML 传入）
@@ -153,12 +159,13 @@ private slots:
 private:
     void updateTimeRange();
     void setupVehicleDataModel();
-    QVariantMap vehicleRecordToVariant(const ExcelDataReader::VehicleRecord& record);
+    QVariantMap vehicleRecordToVariant(const ExcelDataReader::VehicleRecord& record) const;
     void updateFilteredVehicleList();
     void persistTargetAreaConfig();
     void applyTrajectorySourceMode();
     void clearVehicleDataState();
     void finishVehicleListLoad(const QList<FolderScanner::VehicleInfo>& vehicles);
+    QVariantList buildTrajectoryDisplaySegments() const;
 
     QString m_currentFolder;
     QStringList m_vehicleList;
@@ -183,6 +190,7 @@ private:
     bool m_captureTrajectoryPending = false;
 
     QList<FolderScanner::VehicleInfo> m_vehicleInfoList;
+    mutable QVariantList m_trajectoryDisplaySegments;
 };
 
 #endif // MAINCONTROLLER_H

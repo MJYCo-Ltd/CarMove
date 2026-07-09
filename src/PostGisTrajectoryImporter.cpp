@@ -1,6 +1,7 @@
 #include "PostGisTrajectoryImporter.h"
 #include "PostGisConnection.h"
 #include "PostGisSqlHelpers.h"
+#include "AppLogger.h"
 
 #include "ParseData/ExcelDataReader.h"
 #include "ParseData/ExcelFilePath.h"
@@ -34,6 +35,20 @@ QString normalizePlateColor(const ExcelDataReader::VehicleRecord& record)
     return record.vehicleColor.isEmpty() ? QString() : record.vehicleColor;
 }
 
+void logImportSkipped(const TrajectoryFileInfo& file,
+                      const QString& plateNumber,
+                      const QDate& periodStart,
+                      const QDate& periodEnd,
+                      qint64 existingDays)
+{
+    AppLogger::info(QStringLiteral("导入跳过: 文件=%1 | 车牌=%2 | 时段=%3~%4 | 已有 %5 天轨迹")
+                        .arg(file.fileName,
+                             plateNumber,
+                             periodStart.toString(Qt::ISODate),
+                             periodEnd.toString(Qt::ISODate))
+                        .arg(existingDays));
+}
+
 } // namespace
 
 PostGisTrajectoryImporter::PostGisTrajectoryImporter(QObject* parent)
@@ -56,7 +71,14 @@ QList<TrajectoryFileInfo> PostGisTrajectoryImporter::collectTrajectoryFiles(cons
     while (iterator.hasNext()) {
         const QString filePath = iterator.next();
         const QFileInfo fileInfo(filePath);
-        if (fileInfo.size() == 0 || fileInfo.size() > 500LL * 1024 * 1024) {
+        if (fileInfo.size() == 0) {
+            AppLogger::warn(QStringLiteral("扫描跳过: 空文件 %1").arg(filePath));
+            continue;
+        }
+        if (fileInfo.size() > 500LL * 1024 * 1024) {
+            AppLogger::warn(QStringLiteral("扫描跳过: 文件过大 (%1 MB) %2")
+                                .arg(fileInfo.size() / (1024 * 1024))
+                                .arg(filePath));
             continue;
         }
 
@@ -64,6 +86,8 @@ QList<TrajectoryFileInfo> PostGisTrajectoryImporter::collectTrajectoryFiles(cons
             TrajectoryFileNaming::parseFileName(filePath, TrajectoryFileNaming::ParseMode::AllPatterns);
         if (!parsed.plateNumber.isEmpty()) {
             files.append(parsed);
+        } else {
+            AppLogger::warn(QStringLiteral("扫描跳过: 文件名无法解析车牌 %1").arg(fileInfo.fileName()));
         }
     }
 
@@ -334,6 +358,7 @@ PostGisTrajectoryImporter::importSingleFile(const TrajectoryFileInfo& file,
             return ImportFileStatus::Failed;
         }
         if (existingDays > 0) {
+            logImportSkipped(file, file.plateNumber, file.periodStart, file.periodEnd, existingDays);
             return ImportFileStatus::Skipped;
         }
     }
@@ -406,6 +431,7 @@ PostGisTrajectoryImporter::importSingleFile(const TrajectoryFileInfo& file,
             return ImportFileStatus::Failed;
         }
         if (existingDays > 0) {
+            logImportSkipped(file, plateNumber, periodStart, periodEnd, existingDays);
             return ImportFileStatus::Skipped;
         }
     }
@@ -466,6 +492,12 @@ PostGisTrajectoryImporter::importSingleFile(const TrajectoryFileInfo& file,
     if (importedVehicleId != nullptr) {
         *importedVehicleId = vehicleId;
     }
+    AppLogger::info(QStringLiteral("导入成功: 文件=%1 | 车牌=%2 | 时段=%3~%4 | 新增 %5 点")
+                        .arg(file.fileName,
+                             plateNumber,
+                             periodStart.toString(Qt::ISODate),
+                             periodEnd.toString(Qt::ISODate))
+                        .arg(totalImportedPoints));
     return ImportFileStatus::Imported;
 }
 
@@ -484,14 +516,18 @@ bool PostGisTrajectoryImporter::importFolder(const QString& folderPath,
 
     if (!config.isValid()) {
         errorMessage = QStringLiteral("PostGIS 数据库配置不完整，请先在轨迹面板配置 ini");
+        AppLogger::error(errorMessage);
         return false;
     }
 
     const QList<TrajectoryFileInfo> files = collectTrajectoryFiles(folderPath);
     if (files.isEmpty()) {
         errorMessage = QStringLiteral("文件夹中没有找到轨迹 Excel 文件");
+        AppLogger::warn(QStringLiteral("导入终止: 目录=%1 | %2").arg(folderPath, errorMessage));
         return false;
     }
+
+    AppLogger::info(QStringLiteral("开始导入: 目录=%1 | 待处理文件=%2").arg(folderPath).arg(files.size()));
 
     const QString connectionName = PostGisConnection::makeConnectionName(QStringLiteral("carmove_import"));
 
@@ -499,6 +535,7 @@ bool PostGisTrajectoryImporter::importFolder(const QString& folderPath,
         QString connectError;
         if (!PostGisConnection::openDatabase(config, connectionName, connectError)) {
             errorMessage = connectError;
+            AppLogger::error(QStringLiteral("导入失败: 无法连接数据库 | %1").arg(errorMessage));
             return false;
         }
 
@@ -526,6 +563,7 @@ bool PostGisTrajectoryImporter::importFolder(const QString& folderPath,
                 ++result->skippedFiles;
             } else {
                 ++result->failedFiles;
+                AppLogger::warn(QStringLiteral("导入失败: 文件=%1 | %2").arg(file.fileName, fileError));
                 if (result->errorSamples.size() < 8) {
                     result->errorSamples.append(QStringLiteral("%1: %2").arg(file.fileName, fileError));
                 }
@@ -542,16 +580,25 @@ bool PostGisTrajectoryImporter::importFolder(const QString& folderPath,
                                       vehiclesToRefresh.values(),
                                       statsError)) {
             errorMessage = statsError;
+            AppLogger::error(QStringLiteral("导入失败: 更新车辆汇总信息 | %1").arg(errorMessage));
             PostGisConnection::closeDatabase(connectionName);
             return false;
         }
     }
     PostGisConnection::closeDatabase(connectionName);
 
+    AppLogger::info(QStringLiteral("导入汇总: 共 %1 文件 | 成功 %2 | 跳过 %3 | 失败 %4 | 新增 %5 点")
+                        .arg(result->totalFiles)
+                        .arg(result->importedFiles)
+                        .arg(result->skippedFiles)
+                        .arg(result->failedFiles)
+                        .arg(result->importedPoints));
+
     if (result->importedFiles == 0 && result->skippedFiles == 0) {
         errorMessage = result->errorSamples.isEmpty()
                            ? QStringLiteral("没有成功导入任何轨迹文件")
                            : result->errorSamples.join(QStringLiteral("\n"));
+        AppLogger::error(QStringLiteral("导入失败: %1").arg(errorMessage));
         return false;
     }
 

@@ -4,6 +4,7 @@
 #include "ParseData/QXlsxExcelLoader.h"
 #include "ParseData/XlsxioExcelLoader.h"
 #include "ErrorHandler.h"
+#include "AppLogger.h"
 
 #include <QFileInfo>
 #include <algorithm>
@@ -36,10 +37,10 @@ bool ExcelDataReader::loadExcelFile(const QString& filePath)
     const ExcelBackend::ReaderType readerType =
         ExcelBackend::selectReader(fileSize, suffix);
 
-    qInfo() << QStringLiteral("读取 %1 (%2 bytes)，使用 %3 后端")
-                   .arg(fileInfo.fileName())
-                   .arg(fileSize)
-                   .arg(ExcelBackend::readerTypeName(readerType));
+    AppLogger::info(QStringLiteral("读取 %1 (%2 bytes)，使用 %3 后端")
+                        .arg(fileInfo.fileName())
+                        .arg(fileSize)
+                        .arg(ExcelBackend::readerTypeName(readerType)));
 
     const auto progressCallback = [this](int percentage) {
         emit loadingProgress(percentage);
@@ -54,7 +55,7 @@ bool ExcelDataReader::loadExcelFile(const QString& filePath)
         } else {
             loaded = QXlsxExcelLoader::load(localPath, m_vehicleData, progressCallback, loadError);
             if (!loaded && suffix == QLatin1String("xlsx")) {
-                qWarning() << QStringLiteral("QXlsx 加载失败，回退到 xlsxio：%1").arg(loadError);
+                AppLogger::warn(QStringLiteral("QXlsx 加载失败，回退到 xlsxio：%1").arg(loadError));
                 loadError.clear();
                 loaded =
                     XlsxioExcelLoader::load(localPath, m_vehicleData, progressCallback, loadError);
@@ -88,10 +89,10 @@ bool ExcelDataReader::finalizeLoadedData(const QString& fileName)
                       return a.timestamp < b.timestamp;
                   });
     } catch (const std::exception& e) {
-        qWarning() << QStringLiteral("Error sorting data by timestamp:") << e.what();
+        AppLogger::warn(QStringLiteral("按时间排序失败: %1").arg(e.what()));
     }
 
-    qInfo() << QStringLiteral("成功加载 %1 条有效记录").arg(m_vehicleData.size());
+    AppLogger::info(QStringLiteral("成功加载 %1 条有效记录").arg(m_vehicleData.size()));
 
     emit dataLoaded(m_vehicleData);
     emit loadingProgress(100);

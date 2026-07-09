@@ -6,6 +6,7 @@
 #include "ParseData/ExcelSheetGridUtils.h"
 #include "ParseData/OoxmlSaxExcelLoader.h"
 #include "ErrorHandler.h"
+#include "AppLogger.h"
 
 #include <QFileInfo>
 #include <QMap>
@@ -305,16 +306,16 @@ bool ExcelPreviewLoader::inspectWorkbook(const QString& filePath,
     if (fileInfo.suffix().compare(QLatin1String("xlsx"), Qt::CaseInsensitive) == 0) {
         QString xlsxioError;
         if (inspectWithXlsxio(localPath, info, xlsxioError)) {
-            qInfo() << QStringLiteral("QXlsx 无法解析，已回退到 xlsxio：%1")
-                           .arg(QFileInfo(localPath).fileName());
+            AppLogger::info(QStringLiteral("QXlsx 无法解析，已回退到 xlsxio：%1")
+                                .arg(QFileInfo(localPath).fileName()));
             errorMessage.clear();
             info.readerType = ExcelBackend::ReaderType::Xlsxio;
             return true;
         }
 
         if (OoxmlSaxExcelLoader::inspectWorkbook(localPath, info.sheetNames, errorMessage)) {
-            qInfo() << QStringLiteral("已使用 Strict OOXML 解析：%1")
-                           .arg(QFileInfo(localPath).fileName());
+            AppLogger::info(QStringLiteral("已使用 Strict OOXML 解析：%1")
+                                .arg(QFileInfo(localPath).fileName()));
             info.readerType = ExcelBackend::ReaderType::OoxmlSax;
             return true;
         }

@@ -1,5 +1,6 @@
 #include "ParseData/ExcelLoadUtils.h"
 
+#include "AppLogger.h"
 #include "ErrorHandler.h"
 
 namespace ExcelLoadUtils {
@@ -22,18 +23,18 @@ bool appendParsedVehicleRecord(int row,
     }
 
     if (!record.isInChinaRange()) {
-        qWarning() << QStringLiteral("警告：车辆 %1 在第 %2 行的坐标可能不在中国境内: (%3, %4)")
-                          .arg(record.plateNumber)
-                          .arg(row)
-                          .arg(record.latitude)
-                          .arg(record.longitude);
+        AppLogger::warn(QStringLiteral("警告：车辆 %1 在第 %2 行的坐标可能不在中国境内: (%3, %4)")
+                            .arg(record.plateNumber)
+                            .arg(row)
+                            .arg(record.latitude)
+                            .arg(record.longitude));
     }
 
     if (record.speed > 300.0) {
-        qWarning() << QStringLiteral("警告：车辆 %1 在第 %2 行的速度异常高: %3 km/h")
-                          .arg(record.plateNumber)
-                          .arg(row)
-                          .arg(record.speed);
+        AppLogger::warn(QStringLiteral("警告：车辆 %1 在第 %2 行的速度异常高: %3 km/h")
+                            .arg(record.plateNumber)
+                            .arg(row)
+                            .arg(record.speed));
     }
 
     records.append(record);
@@ -61,9 +62,9 @@ bool finalizeVehicleLoad(const QString& fileName,
     }
 
     if (skippedRows > processedRows * 0.1) {
-        qWarning() << QStringLiteral("警告：跳过了较多无效数据行 (%1/%2)，请检查数据质量")
+        AppLogger::warn(QStringLiteral("警告：跳过了较多无效数据行 (%1/%2)，请检查数据质量")
                             .arg(skippedRows)
-                            .arg(processedRows);
+                            .arg(processedRows));
     }
 
     return true;

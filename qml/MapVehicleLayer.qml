@@ -59,7 +59,7 @@ Item {
 
     function addVehicle(plateNumber, coordinate, direction, speed, color) {
         if (!vehicleItems[plateNumber]) {
-            var item = Qt.createComponent("VehicleMarker.qml").createObject(mapTarget)
+            var item = Qt.createComponent("VehicleMarker.qml").createObject(null)
             if (item) {
                 item.plateNumber = plateNumber
                 item.vehicleColor = color || ((typeof controller !== 'undefined' && controller)
@@ -78,27 +78,44 @@ Item {
     function addVehicleTrajectory(plateNumber, trajectoryPoints, vehicleColor) {
         clearTrajectory()
         currentVehicle = plateNumber
-        if (trajectoryPoints && trajectoryPoints.length > 0 && typeof controller !== 'undefined' && controller) {
-            var segments = controller.trajectoryPointSegments(trajectoryPoints)
-            for (var i = 0; i < segments.length; i++) {
-                var segmentPoints = segments[i]
-                if (!segmentPoints || segmentPoints.length < 2)
-                    continue
-                var line = _createMapLineOnMap(segmentPoints, currentVehicleColor, 3)
-                if (line) {
-                    mapTarget.addMapItem(line)
-                    trajectoryItems.push(line)
+        if (vehicleColor)
+            currentVehicleColor = vehicleColor
+        if (typeof controller === 'undefined' || !controller)
+            return
+
+        var segmentCount = controller.trajectoryDisplaySegmentCount()
+        var drawnLines = 0
+        for (var i = 0; i < segmentCount; i++) {
+            var pathCoords = controller.trajectoryDisplaySegmentPath(i)
+            if (!pathCoords || pathCoords.length < 2)
+                continue
+            var line = _createMapLineFromPath(pathCoords, currentVehicleColor, 3)
+            if (line) {
+                mapTarget.addMapItem(line)
+                trajectoryItems.push(line)
+                drawnLines++
+            }
+        }
+
+        if (drawnLines === 0 && trajectoryPoints && trajectoryPoints.length >= 2) {
+            var fallbackCoords = controller.trajectoryPolylinePath(trajectoryPoints)
+            if (fallbackCoords && fallbackCoords.length >= 2) {
+                var fallbackLine = _createMapLineFromPath(fallbackCoords, currentVehicleColor, 3)
+                if (fallbackLine) {
+                    mapTarget.addMapItem(fallbackLine)
+                    trajectoryItems.push(fallbackLine)
+                    drawnLines++
                 }
             }
         }
+
         if (trajectoryPoints && trajectoryPoints.length > 0) {
             var first = trajectoryPoints[0]
-            var fc = (typeof controller !== 'undefined' && controller)
-                ? controller.trajectoryPointToCoordinate(first)
-                : null
+            var fc = controller.trajectoryPointToCoordinate(first)
             if (fc && fc.isValid) {
                 addVehicle(plateNumber, fc, first.direction || 0, first.speed || 0, currentVehicleColor)
-                if (autoFitEnabled && !userHasInteracted) _fitViewport(trajectoryPoints)
+                if (autoFitEnabled && !userHasInteracted)
+                    _fitViewport(trajectoryPoints)
             }
         }
     }
@@ -247,23 +264,32 @@ Item {
 
     // ── 私有辅助 ─────────────────────────────────────────────────
 
-    /// 传入 opacity 时覆盖 MapLine 默认透明度；省略则保留组件默认
-    function _createMapLineOnMap(points, lineColor, lineWidth, opacity) {
+    /// MapItem 须 parent 为 null，仅通过 addMapItem 加入地图
+    function _createMapLineFromPath(pathCoords, lineColor, lineWidth, opacity) {
         var comp = Qt.createComponent("MapLine.qml")
         if (comp.status !== Component.Ready) {
             if (comp.status === Component.Error)
                 console.warn("MapLine:", comp.errorString())
             return null
         }
-        var line = comp.createObject(mapTarget)
-        if (!line)
-            return null
-        line.lineColor = lineColor
-        line.lineWidth = lineWidth
+        var props = {
+            lineColor: lineColor,
+            lineWidth: lineWidth,
+            pathCoordinates: pathCoords
+        }
         if (opacity !== undefined)
-            line.opacity = opacity
-        line.coordinateSequence = points
-        return line
+            props.opacity = opacity
+        return comp.createObject(null, props)
+    }
+
+    function _createMapLineOnMap(points, lineColor, lineWidth, opacity) {
+        if (typeof controller !== 'undefined' && controller) {
+            var pathCoords = controller.trajectoryPolylinePath(points)
+            if (!pathCoords || pathCoords.length < 2)
+                return null
+            return _createMapLineFromPath(pathCoords, lineColor, lineWidth, opacity)
+        }
+        return null
     }
 
     function _updatePositionNow(plateNumber, coordinate, direction, speed) {

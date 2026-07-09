@@ -1,5 +1,6 @@
 #include "CoordinateConverter.h"
 #include "ErrorHandler.h"
+#include "AppLogger.h"
 #include <QtMath>
 
 CoordinateConverter::CoordinateConverter(QObject *parent)
@@ -10,7 +11,7 @@ CoordinateConverter::CoordinateConverter(QObject *parent)
 QGeoCoordinate CoordinateConverter::wgs84ToGcj02(const QGeoCoordinate& wgs84Coord)
 {
     if (!wgs84Coord.isValid()) {
-        qWarning() << "Invalid WGS84 coordinate provided for conversion";
+        AppLogger::warn(QStringLiteral("Invalid WGS84 coordinate provided for conversion"));
         return QGeoCoordinate();
     }
     
@@ -19,7 +20,7 @@ QGeoCoordinate CoordinateConverter::wgs84ToGcj02(const QGeoCoordinate& wgs84Coor
     
     // Validate coordinate ranges
     if (lng < -180.0 || lng > 180.0 || lat < -90.0 || lat > 90.0) {
-        qWarning() << "Coordinate out of valid range - Lng:" << lng << "Lat:" << lat;
+        AppLogger::warn(QStringLiteral("Coordinate out of valid range - Lng: %1 Lat: %2").arg(lng).arg(lat));
         return QGeoCoordinate();
     }
     
@@ -44,18 +45,21 @@ QGeoCoordinate CoordinateConverter::wgs84ToGcj02(const QGeoCoordinate& wgs84Coor
         
         // Validate result
         if (mgLng < -180.0 || mgLng > 180.0 || mgLat < -90.0 || mgLat > 90.0) {
-            qWarning() << "Coordinate conversion resulted in invalid coordinates - Original:" 
-                       << lng << lat << "Converted:" << mgLng << mgLat;
+            AppLogger::warn(QStringLiteral("Coordinate conversion resulted in invalid coordinates - Original: %1 %2 Converted: %3 %4")
+                                .arg(lng)
+                                .arg(lat)
+                                .arg(mgLng)
+                                .arg(mgLat));
             return wgs84Coord; // Return original if conversion failed
         }
         
         return QGeoCoordinate(mgLat, mgLng, wgs84Coord.altitude());
         
     } catch (const std::exception& e) {
-        qWarning() << "Exception during WGS84 to GCJ02 conversion:" << e.what();
+        AppLogger::warn(QStringLiteral("Exception during WGS84 to GCJ02 conversion: %1").arg(e.what()));
         return wgs84Coord;
     } catch (...) {
-        qWarning() << "Unknown exception during WGS84 to GCJ02 conversion";
+        AppLogger::warn(QStringLiteral("Unknown exception during WGS84 to GCJ02 conversion"));
         return wgs84Coord;
     }
 }
@@ -63,7 +67,7 @@ QGeoCoordinate CoordinateConverter::wgs84ToGcj02(const QGeoCoordinate& wgs84Coor
 QGeoCoordinate CoordinateConverter::gcj02ToWgs84(const QGeoCoordinate& gcj02Coord)
 {
     if (!gcj02Coord.isValid()) {
-        qWarning() << "Invalid GCJ02 coordinate provided for conversion";
+        AppLogger::warn(QStringLiteral("Invalid GCJ02 coordinate provided for conversion"));
         return QGeoCoordinate();
     }
     
@@ -72,7 +76,7 @@ QGeoCoordinate CoordinateConverter::gcj02ToWgs84(const QGeoCoordinate& gcj02Coor
     
     // Validate coordinate ranges
     if (lng < -180.0 || lng > 180.0 || lat < -90.0 || lat > 90.0) {
-        qWarning() << "Coordinate out of valid range - Lng:" << lng << "Lat:" << lat;
+        AppLogger::warn(QStringLiteral("Coordinate out of valid range - Lng: %1 Lat: %2").arg(lng).arg(lat));
         return QGeoCoordinate();
     }
     
@@ -97,18 +101,21 @@ QGeoCoordinate CoordinateConverter::gcj02ToWgs84(const QGeoCoordinate& gcj02Coor
         
         // Validate result
         if (mgLng < -180.0 || mgLng > 180.0 || mgLat < -90.0 || mgLat > 90.0) {
-            qWarning() << "Coordinate conversion resulted in invalid coordinates - Original:" 
-                       << lng << lat << "Converted:" << mgLng << mgLat;
+            AppLogger::warn(QStringLiteral("Coordinate conversion resulted in invalid coordinates - Original: %1 %2 Converted: %3 %4")
+                                .arg(lng)
+                                .arg(lat)
+                                .arg(mgLng)
+                                .arg(mgLat));
             return gcj02Coord; // Return original if conversion failed
         }
         
         return QGeoCoordinate(mgLat, mgLng, gcj02Coord.altitude());
         
     } catch (const std::exception& e) {
-        qWarning() << "Exception during GCJ02 to WGS84 conversion:" << e.what();
+        AppLogger::warn(QStringLiteral("Exception during GCJ02 to WGS84 conversion: %1").arg(e.what()));
         return gcj02Coord;
     } catch (...) {
-        qWarning() << "Unknown exception during GCJ02 to WGS84 conversion";
+        AppLogger::warn(QStringLiteral("Unknown exception during GCJ02 to WGS84 conversion"));
         return gcj02Coord;
     }
 }
@@ -148,7 +155,7 @@ QList<QGeoCoordinate> CoordinateConverter::convertTrajectory(const QList<QGeoCoo
                 convertedCoord = gcj02ToWgs84(coord);
             } else {
                 convertedCoord = coord; // 未知转换类型，保持原坐标
-                qWarning() << "Unknown coordinate conversion type requested";
+                AppLogger::warn(QStringLiteral("Unknown coordinate conversion type requested"));
             }
             
             // Check if conversion was successful
@@ -164,21 +171,22 @@ QList<QGeoCoordinate> CoordinateConverter::convertTrajectory(const QList<QGeoCoo
         
         // Log conversion statistics
         if (conversionErrors > 0) {
-            qWarning() << QString("Coordinate conversion completed with %1 errors out of %2 coordinates")
-                         .arg(conversionErrors).arg(coords.size());
+            AppLogger::warn(QStringLiteral("Coordinate conversion completed with %1 errors out of %2 coordinates")
+                                .arg(conversionErrors)
+                                .arg(coords.size()));
         } else {
         }
         
         // If too many conversion errors, warn user
         if (conversionErrors > coords.size() * 0.1) { // More than 10% failed
-            qWarning() << "High number of coordinate conversion failures detected";
+            AppLogger::warn(QStringLiteral("High number of coordinate conversion failures detected"));
         }
         
     } catch (const std::exception& e) {
-        qWarning() << "Exception during trajectory conversion:" << e.what();
+        AppLogger::warn(QStringLiteral("Exception during trajectory conversion: %1").arg(e.what()));
         return coords; // Return original coordinates on error
     } catch (...) {
-        qWarning() << "Unknown exception during trajectory conversion";
+        AppLogger::warn(QStringLiteral("Unknown exception during trajectory conversion"));
         return coords; // Return original coordinates on error
     }
     

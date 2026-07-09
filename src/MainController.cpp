@@ -1,4 +1,5 @@
 ﻿#include "MainController.h"
+#include "AppLogger.h"
 #include "FolderScanner.h"
 #include "VehicleManager.h"
 #include "VehicleAnimationEngine.h"
@@ -288,38 +289,39 @@ void MainController::selectVehicle(const QString& plateNumber)
         return;
     }
 
-    if (m_selectedVehicle != plateNumber) {
+    const bool selectionChanged = (m_selectedVehicle != plateNumber);
+    if (selectionChanged) {
         m_selectedVehicle = plateNumber;
         emit selectedVehicleChanged();
+    }
 
-        try {
-            if (m_playbackControl) {
-                m_playbackControl->stopPlayback();
-            }
-        } catch (const std::exception& e) {
-            qWarning() << "Error stopping playback:" << e.what();
-            emit errorOccurred(QString(QStringLiteral("停止播放时发生错误: %1")).arg(e.what()));
-        } catch (...) {
-            qWarning() << "Unknown error stopping playback";
-            emit errorOccurred(QStringLiteral("停止播放时发生未知错误"));
+    try {
+        if (m_playbackControl) {
+            m_playbackControl->stopPlayback();
         }
+    } catch (const std::exception& e) {
+        AppLogger::warn(QStringLiteral("停止播放时发生错误: %1").arg(e.what()));
+        emit errorOccurred(QString(QStringLiteral("停止播放时发生错误: %1")).arg(e.what()));
+    } catch (...) {
+        AppLogger::warn(QStringLiteral("停止播放时发生未知错误"));
+        emit errorOccurred(QStringLiteral("停止播放时发生未知错误"));
+    }
 
-        m_isLoading = true;
-        m_loadingMessage = QString(QStringLiteral("正在加载车辆 %1 的轨迹数据...")).arg(plateNumber);
+    m_isLoading = true;
+    m_loadingMessage = QString(QStringLiteral("正在加载车辆 %1 的轨迹数据...")).arg(plateNumber);
+    emit loadingChanged();
+    emit loadingMessageChanged();
+
+    try {
+        m_vehicleManager->selectVehicle(plateNumber);
+    } catch (const std::exception& e) {
+        m_isLoading = false;
         emit loadingChanged();
-        emit loadingMessageChanged();
-
-        try {
-            m_vehicleManager->selectVehicle(plateNumber);
-        } catch (const std::exception& e) {
-            m_isLoading = false;
-            emit loadingChanged();
-            emit errorOccurred(HANDLE_SYSTEM_ERROR("加载车辆轨迹", e.what()));
-        } catch (...) {
-            m_isLoading = false;
-            emit loadingChanged();
-            emit errorOccurred(HANDLE_SYSTEM_ERROR("加载车辆轨迹", "未知异常"));
-        }
+        emit errorOccurred(HANDLE_SYSTEM_ERROR("加载车辆轨迹", e.what()));
+    } catch (...) {
+        m_isLoading = false;
+        emit loadingChanged();
+        emit errorOccurred(HANDLE_SYSTEM_ERROR("加载车辆轨迹", "未知异常"));
     }
 }
 
@@ -419,10 +421,10 @@ QVariantList MainController::getConvertedTrajectory()
             }
         }
     } catch (const std::exception& e) {
-        qWarning() << "Error getting converted trajectory:" << e.what();
+        AppLogger::warn(QStringLiteral("获取转换后轨迹失败: %1").arg(e.what()));
         emit errorOccurred(HANDLE_COORD_ERROR(QString("获取转换后轨迹失败: %1").arg(e.what())));
     } catch (...) {
-        qWarning() << "Unknown error getting converted trajectory";
+        AppLogger::warn(QStringLiteral("获取转换后轨迹时发生未知错误"));
         emit errorOccurred(HANDLE_COORD_ERROR("获取转换后轨迹时发生未知错误"));
     }
     

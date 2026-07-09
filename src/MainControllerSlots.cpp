@@ -4,7 +4,6 @@
 #include "VehicleManager.h"
 #include "VehicleDataModel.h"
 #include "VehicleAnimationEngine.h"
-#include <QDebug>
 
 void MainController::onFolderScanCompleted(const QList<FolderScanner::VehicleInfo>& vehicles)
 {
@@ -73,7 +72,7 @@ void MainController::onVehicleTrajectoryLoaded(const QString& plateNumber,
                                   QString("成功加载 %1 个轨迹点，%2").arg(trajectory.size()).arg(spanInfo));
         }
     } else if (!captureMode) {
-        emit trajectoryLoaded(true, "成功加载轨迹数据");
+        emit trajectoryLoaded(false, QStringLiteral("未找到有效轨迹点"));
     }
 
     if (!captureMode) {

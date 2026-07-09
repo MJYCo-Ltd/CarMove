@@ -1,6 +1,7 @@
 #include "PostGisTrajectoryLoader.h"
 #include "PostGisConnection.h"
 #include "PostGisSqlHelpers.h"
+#include "AppLogger.h"
 
 #include <QDateTime>
 #include <QSqlError>
@@ -39,6 +40,7 @@ bool PostGisTrajectoryLoader::connectDatabase(const PostGisDatabaseConfig& confi
     m_config = config;
     if (!m_config.isValid()) {
         errorMessage = QStringLiteral("PostGIS 数据库配置不完整");
+        AppLogger::error(errorMessage);
         return false;
     }
 
@@ -173,6 +175,7 @@ QList<ExcelDataReader::VehicleRecord> PostGisTrajectoryLoader::loadTrajectory(co
 
     if (!query.exec()) {
         errorMessage = QStringLiteral("查询轨迹失败: %1").arg(query.lastError().text());
+        AppLogger::error(QStringLiteral("查询轨迹失败: 车牌=%1 | %2").arg(plateNumber, errorMessage));
         return records;
     }
 
@@ -195,6 +198,12 @@ QList<ExcelDataReader::VehicleRecord> PostGisTrajectoryLoader::loadTrajectory(co
 
     if (records.isEmpty()) {
         errorMessage = QStringLiteral("未找到车辆 %1 的轨迹数据").arg(plateNumber);
+        const QString periodHint = (startDate.isValid() && endDate.isValid())
+                                       ? QStringLiteral(" | 时段=%1~%2")
+                                             .arg(startDate.toString(Qt::ISODate),
+                                                  endDate.toString(Qt::ISODate))
+                                       : QString();
+        AppLogger::warn(QStringLiteral("加载轨迹为空: 车牌=%1%2").arg(plateNumber, periodHint));
     }
 
     return records;

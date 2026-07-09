@@ -318,15 +318,25 @@ ApplicationWindow {
             else errorDialog.showError(message)
         }
 
+        function onSelectedVehicleChanged() {
+            if (batchScreenshotController.running)
+                return
+            mapDisplay.closeSimulationPanel()
+        }
+
         function onTrajectoryLoaded(success, message) {
             if (batchScreenshotController.running)
                 return
             if (!success) { errorDialog.showError(message); return }
-            if (controller && controller.selectedVehicle) {
-                var traj = controller.getConvertedTrajectory()
-                if (traj && traj.length > 0)
-                    mapDisplay.addVehicleTrajectory(controller.selectedVehicle, traj, "#3498db")
+            if (!controller || !controller.selectedVehicle)
+                return
+            var traj = controller.getConvertedTrajectory()
+            if (!traj || traj.length === 0) {
+                errorDialog.showError("未加载到有效轨迹点")
+                return
             }
+            mapDisplay.clearTrajectory()
+            mapDisplay.addVehicleTrajectory(controller.selectedVehicle, traj, "#3498db")
         }
 
         function onTrajectoryConverted() {
@@ -339,13 +349,6 @@ ApplicationWindow {
 
         function onVehiclePositionUpdated(plateNumber, position, direction, speed) {
             mapDisplay.updateVehiclePosition(plateNumber, position, direction, speed)
-        }
-
-        function onSelectedVehicleChanged() {
-            if (batchScreenshotController.running)
-                return
-            mapDisplay.closeSimulationPanel()
-            if (!controller || !controller.selectedVehicle) mapDisplay.clearTrajectory()
         }
     }
 }

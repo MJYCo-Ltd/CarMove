@@ -30,6 +30,7 @@ endif()
 
 find_package(QXlsxQt6 REQUIRED)
 find_package(xlsxio CONFIG REQUIRED)
+find_package(spdlog CONFIG REQUIRED)
 
 find_package(Qt6 REQUIRED COMPONENTS
     Core
@@ -80,6 +81,7 @@ set(SOURCES
     src/VehicleDataModel.cpp
     src/VehicleAnimationEngine.cpp
     src/ErrorHandler.cpp
+    src/AppLogger.cpp
     src/ConfigManager.cpp
     src/FuelUnloadingDataLoader.cpp
     src/PostGisDatabaseConfig.cpp
@@ -118,6 +120,7 @@ set(HEADERS
     src/VehicleDataModel.h
     src/VehicleAnimationEngine.h
     src/ErrorHandler.h
+    src/AppLogger.h
     src/ConfigManager.h
     src/FuelUnloadingDataLoader.h
     src/PostGisDatabaseConfig.h
@@ -149,9 +152,12 @@ target_link_libraries(${PROJECT_NAME}
     Qt6::Sql
     QXlsx::QXlsx
     xlsxio::xlsxio_read_SHARED
+    spdlog::spdlog
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE "${QXLSX_HEADER_DIR}")
+
+target_compile_definitions(${PROJECT_NAME} PRIVATE QT_MESSAGELOGCONTEXT)
 
 set_target_properties(CarMoveTracker PROPERTIES
     WIN32_EXECUTABLE TRUE

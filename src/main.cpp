@@ -10,6 +10,7 @@
 #include "TianDiTu/TiandituGeocoder.h"
 #include "TianDiTu/TiandituRoutePlanner.h"
 #include "ParseData/ExcelPreviewModel.h"
+#include "AppLogger.h"
 
 int main(int argc, char *argv[])
 {
@@ -19,6 +20,11 @@ int main(int argc, char *argv[])
     app.setApplicationName("CarMove Tracker");
     app.setApplicationVersion("1.0.0");
     app.setOrganizationName("CarMove");
+
+    AppLogger::initialize();
+    QObject::connect(&app, &QGuiApplication::aboutToQuit, []() {
+        AppLogger::shutdown();
+    });
     
     // Set Qt Quick style to Basic for better customization support
     QQuickStyle::setStyle("Material");

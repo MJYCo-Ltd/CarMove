@@ -1,6 +1,7 @@
 #include "VehicleManager.h"
 #include "CoordinateConverter.h"
 #include "PostGisTrajectoryLoader.h"
+#include "AppLogger.h"
 
 #include <QDate>
 
@@ -44,37 +45,22 @@ void VehicleManager::setVehicleList(const QList<FolderScanner::VehicleInfo>& veh
 
 void VehicleManager::selectVehicle(const QString& plateNumber)
 {
-    if (m_selectedVehicle != plateNumber) {
-        m_selectedVehicle = plateNumber;
-        
-        // Clear previous trajectory data
-        m_currentTrajectory.clear();
-        m_convertedTrajectory.clear();
-        
-        emit vehicleSelected(plateNumber);
-        
-        // Find file paths for this vehicle
-        QStringList filePaths;
-        for (const auto& vehicleInfo : m_vehicleList) {
-            if (vehicleInfo.plateNumber == plateNumber) {
-                filePaths = vehicleInfo.filePaths;
-                break;
-            }
-        }
-        
-        // Check if column mapping is required for these files
-        // Note: Column mapping is now handled automatically in MainController
-        // No need to emit signal or wait for user input
-        
-        // Load trajectory data for the selected vehicle
-        loadVehicleTrajectory(plateNumber);
-    }
+    m_selectedVehicle = plateNumber;
+
+    // Clear previous trajectory data
+    m_currentTrajectory.clear();
+    m_convertedTrajectory.clear();
+
+    emit vehicleSelected(plateNumber);
+
+    // Load trajectory data for the selected vehicle
+    loadVehicleTrajectory(plateNumber);
 }
 
 void VehicleManager::loadVehicleTrajectory(const QString& plateNumber)
 {
     if (plateNumber.isEmpty()) {
-        qWarning() << "Cannot load trajectory: plate number is empty";
+        AppLogger::warn(QStringLiteral("无法加载轨迹: 车牌号为空"));
         return;
     }
 
@@ -93,7 +79,7 @@ void VehicleManager::loadVehicleTrajectory(const QString& plateNumber)
     }
     
     if (filePaths.isEmpty()) {
-        qWarning() << "Cannot find file paths for vehicle:" << plateNumber;
+        AppLogger::warn(QStringLiteral("无法找到车辆文件: %1").arg(plateNumber));
         emit trajectoryLoaded(plateNumber, QList<ExcelDataReader::VehicleRecord>());
         return;
     }
@@ -140,11 +126,11 @@ void VehicleManager::loadVehicleTrajectory(const QString& plateNumber)
         } catch (const std::exception& e) {
             errorMessage = QString("文件读取异常: %1").arg(e.what());
             loadSuccess = false;
-            qWarning() << "Exception loading file" << filePath << ":" << e.what();
+            AppLogger::warn(QStringLiteral("读取文件异常: %1 | %2").arg(filePath, e.what()));
         } catch (...) {
             errorMessage = "文件读取时发生未知异常";
             loadSuccess = false;
-            qWarning() << "Unknown exception loading file" << filePath;
+            AppLogger::warn(QStringLiteral("读取文件发生未知异常: %1").arg(filePath));
         }
         
         if (loadSuccess && errorMessage.isEmpty()) {
@@ -158,7 +144,7 @@ void VehicleManager::loadVehicleTrajectory(const QString& plateNumber)
             }
             
         } else {
-            qWarning() << "Failed to load file" << filePath << ":" << errorMessage;
+            AppLogger::warn(QStringLiteral("读取文件失败: %1 | %2").arg(filePath, errorMessage));
             // Continue with other files even if one fails
         }
         
@@ -167,7 +153,7 @@ void VehicleManager::loadVehicleTrajectory(const QString& plateNumber)
     }
     
     if (allRecords.isEmpty()) {
-        qWarning() << "No records found for vehicle:" << plateNumber;
+        AppLogger::warn(QStringLiteral("未找到车辆轨迹记录: %1").arg(plateNumber));
         emit trajectoryLoaded(plateNumber, QList<ExcelDataReader::VehicleRecord>());
         return;
     }
@@ -188,7 +174,7 @@ void VehicleManager::loadTrajectoryFromDatabase(const QString& plateNumber,
     m_currentTrajectory.clear();
 
     if (!m_postGisLoader || !m_postGisLoader->isConnected()) {
-        qWarning() << "PostGIS loader is not connected";
+        AppLogger::warn(QStringLiteral("加载轨迹失败: PostGIS 未连接 | 车牌=%1").arg(plateNumber));
         emit trajectoryLoaded(plateNumber, QList<ExcelDataReader::VehicleRecord>());
         return;
     }
@@ -200,7 +186,7 @@ void VehicleManager::loadTrajectoryFromDatabase(const QString& plateNumber,
     emit loadingProgress(80);
 
     if (allRecords.isEmpty()) {
-        qWarning() << "Failed to load trajectory from database:" << errorMessage;
+        AppLogger::warn(QStringLiteral("加载轨迹失败: 车牌=%1 | %2").arg(plateNumber, errorMessage));
         emit trajectoryLoaded(plateNumber, QList<ExcelDataReader::VehicleRecord>());
         return;
     }
