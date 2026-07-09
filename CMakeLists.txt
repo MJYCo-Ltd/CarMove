@@ -51,84 +51,102 @@ set(CMAKE_AUTOUIC ON)
 include_directories(src)
 
 set(SOURCES
-    src/main.cpp
-    src/MainController.cpp
-    src/MainControllerSlots.cpp
-    src/MainControllerHelpers.cpp
-    src/PlaybackControl.cpp
-    src/FolderScanner.cpp
-    src/ParseData/ExcelDataReader.cpp
-    src/ParseData/ExcelRowParser.cpp
-    src/ParseData/ExcelPreviewLoader.cpp
-    src/ParseData/ExcelCellFormatter.cpp
-    src/ParseData/ExcelSheetGridUtils.cpp
-    src/ParseData/ExcelLoadUtils.cpp
-    src/ParseData/ExcelPreviewModel.cpp
-    src/ParseData/ExcelFilePath.cpp
-    src/ParseData/LicensePlateDetector.cpp
-    src/ParseData/DateColumnDetector.cpp
-    src/ParseData/BusinessExcelExporter.cpp
-    src/ParseData/BusinessWorkbookResolver.cpp
-    src/ParseData/BusinessCsvWriter.cpp
-    src/ParseData/TrajectoryFileNaming.cpp
-    src/ParseData/OoxmlSaxExcelLoader.cpp
+    # Core
+    src/Core/main.cpp
+    src/Core/AppLogger.cpp
+    src/Core/ErrorHandler.cpp
+    src/Core/ConfigManager.cpp
+    # UI
+    src/UI/MainController.cpp
+    src/UI/MainControllerSlots.cpp
+    src/UI/MainControllerHelpers.cpp
+    src/UI/PlaybackControl.cpp
+    # Map
+    src/Map/VehicleAnimationEngine.cpp
+    src/Map/CoordinateConverter.cpp
+    src/Map/TianDiTu/TiandituGeocoder.cpp
+    src/Map/TianDiTu/TiandituRoutePlanner.cpp
+    # DataManagement
+    src/DataManagement/FolderScanner.cpp
+    src/DataManagement/VehicleManager.cpp
+    src/DataManagement/VehicleDataModel.cpp
+    src/DataManagement/PostGisDatabaseConfig.cpp
+    src/DataManagement/PostGisConnection.cpp
+    src/DataManagement/PostGisTrajectoryLoader.cpp
+    src/DataManagement/PostGisTrajectoryImporter.cpp
+    src/DataManagement/FuelUnloadingDataLoader.cpp
+    # DataParsing
+    src/DataParsing/ExcelDataReader.cpp
+    src/DataParsing/ExcelRowParser.cpp
+    src/DataParsing/ExcelLoadUtils.cpp
+    src/DataParsing/TrajectoryFileNaming.cpp
+    # ExcelDriver
+    src/ExcelDriver/ExcelPreviewLoader.cpp
+    src/ExcelDriver/ExcelCellFormatter.cpp
+    src/ExcelDriver/ExcelSheetGridUtils.cpp
+    src/ExcelDriver/ExcelFilePath.cpp
+    src/ExcelDriver/OoxmlSaxExcelLoader.cpp
+    src/ExcelDriver/QXlsxExcelLoader.cpp
+    src/ExcelDriver/XlsxioExcelLoader.cpp
     ${QXLSX_SOURCE_DIR}/source/xlsxreadsax.cpp
     ${QXLSX_SOURCE_DIR}/source/xlsxzipreader.cpp
-    src/ParseData/QXlsxExcelLoader.cpp
-    src/ParseData/XlsxioExcelLoader.cpp
-    src/CoordinateConverter.cpp
-    src/VehicleManager.cpp
-    src/VehicleDataModel.cpp
-    src/VehicleAnimationEngine.cpp
-    src/ErrorHandler.cpp
-    src/AppLogger.cpp
-    src/ConfigManager.cpp
-    src/FuelUnloadingDataLoader.cpp
-    src/PostGisDatabaseConfig.cpp
-    src/PostGisConnection.cpp
-    src/PostGisTrajectoryLoader.cpp
-    src/PostGisTrajectoryImporter.cpp
-    src/TianDiTu/TiandituGeocoder.cpp
-    src/TianDiTu/TiandituRoutePlanner.cpp
+    # Business
+    src/Business/BusinessColumnIdentifier.cpp
+    src/Business/LicensePlateDetector.cpp
+    src/Business/DateColumnDetector.cpp
+    src/Business/BusinessExcelExporter.cpp
+    src/Business/BusinessWorkbookResolver.cpp
+    src/Business/BusinessCsvWriter.cpp
+    src/Business/ExcelPreviewModel.cpp
 )
 
 set(HEADERS
-    src/MainController.h
-    src/PlaybackControl.h
-    src/FolderScanner.h
-    src/ParseData/ExcelDataReader.h
-    src/ParseData/ExcelBackend.h
-    src/ParseData/ExcelRowParser.h
-    src/ParseData/ExcelPreviewLoader.h
-    src/ParseData/ExcelCellFormatter.h
-    src/ParseData/ExcelSheetGridUtils.h
-    src/ParseData/ExcelLoadUtils.h
-    src/ParseData/ExcelPreviewModel.h
-    src/ParseData/ExcelFilePath.h
-    src/ParseData/LicensePlateDetector.h
-    src/ParseData/DateColumnDetector.h
-    src/ParseData/BusinessExcelExporter.h
-    src/ParseData/BusinessWorkbookTypes.h
-    src/ParseData/BusinessWorkbookResolver.h
-    src/ParseData/BusinessCsvWriter.h
-    src/ParseData/TrajectoryFileNaming.h
-    src/ParseData/OoxmlSaxExcelLoader.h
-    src/ParseData/QXlsxExcelLoader.h
-    src/ParseData/XlsxioExcelLoader.h
-    src/CoordinateConverter.h
-    src/VehicleManager.h
-    src/VehicleDataModel.h
-    src/VehicleAnimationEngine.h
-    src/ErrorHandler.h
-    src/AppLogger.h
-    src/ConfigManager.h
-    src/FuelUnloadingDataLoader.h
-    src/PostGisDatabaseConfig.h
-    src/PostGisConnection.h
-    src/PostGisTrajectoryLoader.h
-    src/PostGisTrajectoryImporter.h
-    src/TianDiTu/TiandituGeocoder.h
-    src/TianDiTu/TiandituRoutePlanner.h
+    # Core
+    src/Core/AppLogger.h
+    src/Core/ErrorHandler.h
+    src/Core/ConfigManager.h
+    # UI
+    src/UI/MainController.h
+    src/UI/PlaybackControl.h
+    # Map
+    src/Map/VehicleAnimationEngine.h
+    src/Map/CoordinateConverter.h
+    src/Map/TianDiTu/TiandituGeocoder.h
+    src/Map/TianDiTu/TiandituRoutePlanner.h
+    # DataManagement
+    src/DataManagement/FolderScanner.h
+    src/DataManagement/VehicleManager.h
+    src/DataManagement/VehicleDataModel.h
+    src/DataManagement/PostGisDatabaseConfig.h
+    src/DataManagement/PostGisConnection.h
+    src/DataManagement/PostGisSqlHelpers.h
+    src/DataManagement/PostGisTrajectoryLoader.h
+    src/DataManagement/PostGisTrajectoryImporter.h
+    src/DataManagement/FuelUnloadingDataLoader.h
+    # DataParsing
+    src/DataParsing/ExcelDataReader.h
+    src/DataParsing/ExcelRowParser.h
+    src/DataParsing/ExcelLoadUtils.h
+    src/DataParsing/TrajectoryFileNaming.h
+    # ExcelDriver
+    src/ExcelDriver/ExcelBackend.h
+    src/ExcelDriver/ExcelPreviewLoader.h
+    src/ExcelDriver/ExcelCellFormatter.h
+    src/ExcelDriver/ExcelSheetGridUtils.h
+    src/ExcelDriver/ExcelFilePath.h
+    src/ExcelDriver/ExcelPreviewColumnUtils.h
+    src/ExcelDriver/OoxmlSaxExcelLoader.h
+    src/ExcelDriver/QXlsxExcelLoader.h
+    src/ExcelDriver/XlsxioExcelLoader.h
+    # Business
+    src/Business/BusinessColumnIdentifier.h
+    src/Business/BusinessWorkbookTypes.h
+    src/Business/LicensePlateDetector.h
+    src/Business/DateColumnDetector.h
+    src/Business/BusinessWorkbookResolver.h
+    src/Business/BusinessExcelExporter.h
+    src/Business/BusinessCsvWriter.h
+    src/Business/ExcelPreviewModel.h
 )
 
 qt6_add_resources(QML_RESOURCES qml/qml.qrc)

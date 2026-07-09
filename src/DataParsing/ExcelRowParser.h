@@ -1,0 +1,23 @@
+#ifndef EXCELROWPARSER_H
+#define EXCELROWPARSER_H
+
+#include "DataParsing/ExcelDataReader.h"
+#include <QHash>
+#include <QVariant>
+
+class ExcelRowParser
+{
+public:
+    static bool parseRow(const QHash<int, QVariant>& cells,
+                         ExcelDataReader::VehicleRecord& record,
+                         QString& errorMessage);
+
+    static QVariant parseAndValidateField(const QVariant& cellValue,
+                                          const QString& dataType,
+                                          const QString& fieldName,
+                                          QString& errorMessage);
+
+    static QDateTime parseTimestamp(const QVariant& value);
+};
+
+#endif // EXCELROWPARSER_H

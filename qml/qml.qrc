@@ -1,44 +1,44 @@
 <RCC>
     <qresource prefix="/">
         <file alias="AdminCode.csv">../AdminCode.csv</file>
-        <file>MainWindow.qml</file>
-        <file>MapDisplay.qml</file>
-        <file>PlaybackControls.qml</file>
-        <file>SegmentTimeline.qml</file>
-        <file>StatusButton.qml</file>
-        <file>NotificationDialog.qml</file>
-        <file>VehicleInfoCard.qml</file>
-        <file>TimeDisplay.qml</file>
-        <file>VehicleMarker.qml</file>
-        <file>MapTypeSelector.qml</file>
-        <file>MapNotifications.qml</file>
-        <file>MapAnimations.qml</file>
-        <file>FuelUnloadingDisplay.qml</file>
-        <file>SidebarPanel.qml</file>
-        <file>SidePanelContainer.qml</file>
-        <file>PanelHeader.qml</file>
-        <file>FormErrorStrip.qml</file>
-        <file>GeocodeResultCard.qml</file>
-        <file>MapLine.qml</file>
-        <file>MapPlateBadge.qml</file>
-        <file>MapGeoNameLabel.qml</file>
-        <file>MapPlacemark.qml</file>
-        <file>MapMarkerLayout.js</file>
-        <file>NavEndpointNameSideColumn.qml</file>
-        <file>FuelRecordsPanel.qml</file>
-        <file>TrajectoryPanel.qml</file>
-        <file>BusinessPanel.qml</file>
-        <file>BusinessExportDialog.qml</file>
-        <file>BusinessClassifyDialog.qml</file>
-        <file>BusinessImportDatabaseDialog.qml</file>
-        <file>BusinessScreenshotDialog.qml</file>
-        <file>BusinessDateColumnSection.qml</file>
-        <file>BusinessPlateColumnHint.qml</file>
-        <file>BusinessFolderPickerRow.qml</file>
-        <file>TargetNameEditDialog.qml</file>
-        <file>GeoSearchPanel.qml</file>
-        <file>GeoPickSearch.qml</file>
-        <file>NavigationPanel.qml</file>
-        <file>MapVehicleLayer.qml</file>
+        <file alias="MainWindow.qml">UI/MainWindow.qml</file>
+        <file alias="SidebarPanel.qml">UI/SidebarPanel.qml</file>
+        <file alias="SidePanelContainer.qml">UI/SidePanelContainer.qml</file>
+        <file alias="PanelHeader.qml">UI/PanelHeader.qml</file>
+        <file alias="FormErrorStrip.qml">UI/FormErrorStrip.qml</file>
+        <file alias="NotificationDialog.qml">UI/NotificationDialog.qml</file>
+        <file alias="StatusButton.qml">UI/StatusButton.qml</file>
+        <file alias="PlaybackControls.qml">UI/PlaybackControls.qml</file>
+        <file alias="SegmentTimeline.qml">UI/SegmentTimeline.qml</file>
+        <file alias="TimeDisplay.qml">UI/TimeDisplay.qml</file>
+        <file alias="VehicleInfoCard.qml">UI/VehicleInfoCard.qml</file>
+        <file alias="TargetNameEditDialog.qml">UI/TargetNameEditDialog.qml</file>
+        <file alias="TrajectoryPanel.qml">UI/TrajectoryPanel.qml</file>
+        <file alias="FuelRecordsPanel.qml">UI/FuelRecordsPanel.qml</file>
+        <file alias="GeoSearchPanel.qml">UI/GeoSearchPanel.qml</file>
+        <file alias="GeoPickSearch.qml">UI/GeoPickSearch.qml</file>
+        <file alias="GeocodeResultCard.qml">UI/GeocodeResultCard.qml</file>
+        <file alias="NavigationPanel.qml">UI/NavigationPanel.qml</file>
+        <file alias="MapDisplay.qml">Map/MapDisplay.qml</file>
+        <file alias="MapVehicleLayer.qml">Map/MapVehicleLayer.qml</file>
+        <file alias="MapPlacemark.qml">Map/MapPlacemark.qml</file>
+        <file alias="MapLine.qml">Map/MapLine.qml</file>
+        <file alias="MapMarkerLayout.js">Map/MapMarkerLayout.js</file>
+        <file alias="MapPlateBadge.qml">Map/MapPlateBadge.qml</file>
+        <file alias="MapGeoNameLabel.qml">Map/MapGeoNameLabel.qml</file>
+        <file alias="NavEndpointNameSideColumn.qml">Map/NavEndpointNameSideColumn.qml</file>
+        <file alias="MapTypeSelector.qml">Map/MapTypeSelector.qml</file>
+        <file alias="MapAnimations.qml">Map/MapAnimations.qml</file>
+        <file alias="MapNotifications.qml">Map/MapNotifications.qml</file>
+        <file alias="VehicleMarker.qml">Map/VehicleMarker.qml</file>
+        <file alias="FuelUnloadingDisplay.qml">Map/FuelUnloadingDisplay.qml</file>
+        <file alias="BusinessPanel.qml">Business/BusinessPanel.qml</file>
+        <file alias="BusinessExportDialog.qml">Business/BusinessExportDialog.qml</file>
+        <file alias="BusinessClassifyDialog.qml">Business/BusinessClassifyDialog.qml</file>
+        <file alias="BusinessImportDatabaseDialog.qml">Business/BusinessImportDatabaseDialog.qml</file>
+        <file alias="BusinessScreenshotDialog.qml">Business/BusinessScreenshotDialog.qml</file>
+        <file alias="BusinessDateColumnSection.qml">Business/BusinessDateColumnSection.qml</file>
+        <file alias="BusinessPlateColumnHint.qml">Business/BusinessPlateColumnHint.qml</file>
+        <file alias="BusinessFolderPickerRow.qml">Business/BusinessFolderPickerRow.qml</file>
     </qresource>
 </RCC>
