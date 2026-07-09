@@ -23,6 +23,7 @@ class PlaybackControl : public QObject
     Q_PROPERTY(QDateTime currentTime READ currentTime NOTIFY currentTimeChanged)
     Q_PROPERTY(bool hasValidPlaybackTimeRange READ hasValidPlaybackTimeRange NOTIFY timeRangeChanged)
     Q_PROPERTY(bool playbackIsLongTerm READ playbackIsLongTerm NOTIFY timeRangeChanged)
+    Q_PROPERTY(bool playbackSpansMultipleDays READ playbackSpansMultipleDays NOTIFY timeRangeChanged)
     Q_PROPERTY(QStringList playbackSpeedLabels READ playbackSpeedLabels NOTIFY timeRangeChanged)
     Q_PROPERTY(int playbackSpeedDefaultIndex READ playbackSpeedDefaultIndex NOTIFY timeRangeChanged)
     Q_PROPERTY(QString playbackTimeRangeSummary READ playbackTimeRangeSummary NOTIFY timeRangeChanged)
@@ -37,6 +38,7 @@ public:
     QDateTime currentTime() const { return m_currentTime; }
     bool hasValidPlaybackTimeRange() const;
     bool playbackIsLongTerm() const;
+    bool playbackSpansMultipleDays() const;
     QStringList playbackSpeedLabels() const;
     int playbackSpeedDefaultIndex() const;
     QString playbackTimeRangeSummary() const;

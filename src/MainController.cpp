@@ -292,6 +292,10 @@ void MainController::selectVehicle(const QString& plateNumber)
     const bool selectionChanged = (m_selectedVehicle != plateNumber);
     if (selectionChanged) {
         m_selectedVehicle = plateNumber;
+        m_trajectoryDisplaySegments.clear();
+        m_playbackSegmentMeta.clear();
+        m_segmentsNeedRebuild = true;
+        emit playbackSegmentsChanged();
         emit selectedVehicleChanged();
     }
 

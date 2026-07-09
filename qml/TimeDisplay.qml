@@ -10,6 +10,8 @@ Column {
     property string dateFormat: "yyyy/MM/dd"
     property bool showDate: false
     property bool showTime: true
+    /// 为 true 时日期显示在时间上方（时间轴跨天场景）
+    property bool dateAboveTime: false
     property color timeColor: "white"
     property color dateColor: "#bdc3c7"
     property int timeFontSize: 12
@@ -20,6 +22,13 @@ Column {
     
     spacing: 2
     
+    Text {
+        text: formatDate(timeDisplay.dateTime)
+        color: timeDisplay.dateColor
+        font.pixelSize: timeDisplay.dateFontSize
+        visible: timeDisplay.showDate && timeDisplay.dateAboveTime
+    }
+    
     // Time display
     Text {
         text: formatTime(timeDisplay.dateTime)
@@ -29,12 +38,12 @@ Column {
         visible: timeDisplay.showTime
     }
     
-    // Date display
+    // Date display (below time)
     Text {
         text: formatDate(timeDisplay.dateTime)
         color: timeDisplay.dateColor
         font.pixelSize: timeDisplay.dateFontSize
-        visible: timeDisplay.showDate
+        visible: timeDisplay.showDate && !timeDisplay.dateAboveTime
     }
     
     // Time formatting function

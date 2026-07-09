@@ -106,6 +106,15 @@ public:
     Q_INVOKABLE int trajectoryDisplaySegmentCount();
     /// 当前已加载轨迹的第 index 段坐标列表（MapPolyline.path）
     Q_INVOKABLE QVariantList trajectoryDisplaySegmentPath(int segmentIndex) const;
+    /// 重建回放分段（与地图航线分段一致）
+    Q_INVOKABLE void refreshPlaybackSegments();
+    Q_INVOKABLE int playbackSegmentCount() const;
+    Q_INVOKABLE QDateTime playbackSegmentStartTime(int segmentIndex) const;
+    Q_INVOKABLE QDateTime playbackSegmentEndTime(int segmentIndex) const;
+    Q_INVOKABLE qint64 playbackSegmentDurationMs(int segmentIndex) const;
+    Q_INVOKABLE int playbackActiveSegmentIndex() const;
+    Q_INVOKABLE double playbackSegmentLocalProgress(int segmentIndex) const;
+    Q_INVOKABLE void seekPlaybackSegment(int segmentIndex, double localProgress);
     /// 轨迹点序列 → QGeoPath（用于 fitViewportToGeoShape）
     Q_INVOKABLE QVariant geoPathFromTrajectory(const QVariant& trajectoryPoints) const;
     /// 轨迹 + 目标区域 → QGeoPath（用于 fitViewportToGeoShape）
@@ -142,6 +151,7 @@ signals:
     void loadingChanged();
     void loadingMessageChanged();
     void targetAreaChanged();
+    void playbackSegmentsChanged();
 
 private slots:
     void onFolderScanCompleted(const QList<FolderScanner::VehicleInfo>& vehicles);
@@ -165,7 +175,12 @@ private:
     void applyTrajectorySourceMode();
     void clearVehicleDataState();
     void finishVehicleListLoad(const QList<FolderScanner::VehicleInfo>& vehicles);
-    QVariantList buildTrajectoryDisplaySegments() const;
+    void rebuildTrajectorySegments();
+
+    struct PlaybackSegmentMeta {
+        QDateTime startTime;
+        QDateTime endTime;
+    };
 
     QString m_currentFolder;
     QStringList m_vehicleList;
@@ -191,6 +206,9 @@ private:
 
     QList<FolderScanner::VehicleInfo> m_vehicleInfoList;
     mutable QVariantList m_trajectoryDisplaySegments;
+    QList<PlaybackSegmentMeta> m_playbackSegmentMeta;
+    bool m_isRebuildingTrajectorySegments = false;
+    bool m_segmentsNeedRebuild = true;
 };
 
 #endif // MAINCONTROLLER_H

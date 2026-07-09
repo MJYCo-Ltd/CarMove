@@ -46,6 +46,7 @@ void MainController::onVehicleTrajectoryLoaded(const QString& plateNumber,
     }
 
     setupVehicleDataModel();
+    rebuildTrajectorySegments();
     updateTimeRange();
 
     if (!trajectory.isEmpty()) {
@@ -85,7 +86,11 @@ void MainController::onVehicleTrajectoryLoaded(const QString& plateNumber,
     if (m_animationEngine && !trajectory.isEmpty()) {
         m_animationEngine->setVehicleModel(m_vehicleDataModel);
         m_animationEngine->stop();
-        m_animationEngine->seekToProgress(0.0);
+        if (!m_playbackSegmentMeta.isEmpty()) {
+            m_animationEngine->seekToTime(m_playbackSegmentMeta.first().startTime);
+        } else {
+            m_animationEngine->seekToProgress(0.0);
+        }
     }
 }
 
@@ -95,11 +100,16 @@ void MainController::onTrajectoryConverted(const QString& plateNumber,
     if (plateNumber != m_selectedVehicle) return;
 
     setupVehicleDataModel();
+    rebuildTrajectorySegments();
     updateTimeRange();
     emit trajectoryConverted();
 
-    if (m_animationEngine)
+    if (m_animationEngine) {
+        if (!m_playbackSegmentMeta.isEmpty()) {
+            m_animationEngine->seekToTime(m_playbackSegmentMeta.first().startTime);
+        }
         m_animationEngine->updateVehiclePositions();
+    }
 }
 
 void MainController::onVehicleLoadingProgress(int percentage)

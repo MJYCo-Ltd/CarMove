@@ -2,22 +2,20 @@ import QtQuick
 import QtLocation
 import QtPositioning
 
-// 车辆标记组件 - 从MapDisplay.qml提取
+// 车辆标记组件（独立使用）；地图层请用 MapPlacemark placemarkKind: "vehicle"
 MapQuickItem {
     id: marker
     
-    // 公共属性
     property string plateNumber: ""
     property int direction: 0
     property double speed: 0
     property string vehicleColor: "yellow"
-    property int visitDays: 0  // 角标：经过目标区域次数（与 MapDisplay 目标点半径 1km 一致）
+    property int visitDays: 0
     property color plateBackgroundColor: "yellow"
     property color plateBorderColor: "white"
     property color plateTextColor: "black"
     property color plateTextStyleColor: "white"
 
-    // 信号
     signal vehicleClicked(string plateNumber, double speed, int direction)
     
     coordinate: QtPositioning.coordinate(0, 0)
@@ -40,7 +38,6 @@ MapQuickItem {
             border.color: "white"
             border.width: 2
             
-            // 车头指示箭头
             Rectangle {
                 width: 8
                 height: 2
@@ -50,7 +47,6 @@ MapQuickItem {
                 radius: 1
             }
             
-            // 速度指示器
             Rectangle {
                 width: 4
                 height: 4
@@ -63,9 +59,7 @@ MapQuickItem {
             }
         }
         
-        // 到达天数标识（右上角）
         Rectangle {
-            id: visitDaysIndicator
             width: visitDaysText.width + 6
             height: visitDaysText.height + 4
             color: "#e74c3c"
@@ -103,20 +97,11 @@ MapQuickItem {
         }
     }
     
-    // 点击事件
     MouseArea {
         anchors.fill: parent
-        onClicked: {
-            marker.vehicleClicked(marker.plateNumber, marker.speed, marker.direction)
-        }
-        
-        // 悬停效果
+        onClicked: marker.vehicleClicked(marker.plateNumber, marker.speed, marker.direction)
         hoverEnabled: true
-        onEntered: {
-            vehicleIcon.scale = 1.2
-        }
-        onExited: {
-            vehicleIcon.scale = 1.0
-        }
+        onEntered: { vehicleIcon.scale = 1.2 }
+        onExited: { vehicleIcon.scale = 1.0 }
     }
 }

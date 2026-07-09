@@ -9,6 +9,7 @@ Item {
     id: vehicleLayer
 
     property var mapTarget          // 地图对象 (mapView.map)
+    property var layoutMapView      // MapView，用于视口自适应布局
     property var animationsRef      // MapAnimations 实例
     property bool animationsEnabled: true
     property int  updateThrottleMs: 16
@@ -31,16 +32,6 @@ Item {
 
     signal vehicleClicked(string plateNumber, double speed, int direction)
 
-    function _createPlacemark(initialProps) {
-        var comp = Qt.createComponent("MapPlacemark.qml")
-        if (comp.status !== Component.Ready) {
-            if (comp.status === Component.Error)
-                console.warn("MapPlacemark:", comp.errorString())
-            return null
-        }
-        return comp.createObject(mapTarget, initialProps || {})
-    }
-
     // ── 节流更新定时器 ────────────────────────────────────────────
     Timer {
         id: throttleTimer
@@ -57,13 +48,27 @@ Item {
 
     // ── 公共接口 ─────────────────────────────────────────────────
 
+    function _createPlacemark(initialProps) {
+        var props = initialProps || {}
+        props.layoutMapView = vehicleLayer.layoutMapView
+        var comp = Qt.createComponent("MapPlacemark.qml")
+        if (comp.status !== Component.Ready) {
+            if (comp.status === Component.Error)
+                console.warn("MapPlacemark:", comp.errorString())
+            return null
+        }
+        return comp.createObject(null, props)
+    }
+
     function addVehicle(plateNumber, coordinate, direction, speed, color) {
         if (!vehicleItems[plateNumber]) {
-            var item = Qt.createComponent("VehicleMarker.qml").createObject(null)
-            if (item) {
-                item.plateNumber = plateNumber
-                item.vehicleColor = color || ((typeof controller !== 'undefined' && controller)
+            var item = _createPlacemark({
+                placemarkKind: "vehicle",
+                plateNumber: plateNumber,
+                vehicleColor: color || ((typeof controller !== 'undefined' && controller)
                     ? controller.colorHexForPlate(plateNumber) : "#3498db")
+            })
+            if (item) {
                 if (typeof controller !== 'undefined' && controller)
                     item.visitDays = controller.calculateTargetAreaVisitCount(plateNumber, targetLat, targetLon, 1000)
                 item.vehicleClicked.connect(function(pn, spd, dir) { vehicleLayer.vehicleClicked(pn, spd, dir) })
@@ -80,27 +85,35 @@ Item {
         currentVehicle = plateNumber
         if (vehicleColor)
             currentVehicleColor = vehicleColor
-        if (typeof controller === 'undefined' || !controller)
+        if (typeof controller === 'undefined' || !controller || !mapTarget)
             return
 
-        var segmentCount = controller.trajectoryDisplaySegmentCount()
         var drawnLines = 0
-        for (var i = 0; i < segmentCount; i++) {
-            var pathCoords = controller.trajectoryDisplaySegmentPath(i)
-            if (!pathCoords || pathCoords.length < 2)
-                continue
-            var line = _createMapLineFromPath(pathCoords, currentVehicleColor, 3)
-            if (line) {
-                mapTarget.addMapItem(line)
-                trajectoryItems.push(line)
-                drawnLines++
+        if (trajectoryPoints && trajectoryPoints.length >= 2) {
+            var sourcePaths = controller.trajectorySegmentPolylinePaths(trajectoryPoints)
+            for (var i = 0; sourcePaths && i < sourcePaths.length; ++i) {
+                var pathCoords = sourcePaths[i]
+                if (!pathCoords || pathCoords.length < 2)
+                    continue
+                var line = _createMapLineFromPath(pathCoords, currentVehicleColor, 3)
+                if (line) {
+                    mapTarget.addMapItem(line)
+                    trajectoryItems.push(line)
+                    drawnLines++
+                }
             }
         }
 
-        if (drawnLines === 0 && trajectoryPoints && trajectoryPoints.length >= 2) {
-            var fallbackCoords = controller.trajectoryPolylinePath(trajectoryPoints)
-            if (fallbackCoords && fallbackCoords.length >= 2) {
-                var fallbackLine = _createMapLineFromPath(fallbackCoords, currentVehicleColor, 3)
+        if (drawnLines === 0) {
+            var segmentCount = controller.trajectoryDisplaySegmentCount()
+            var pathsSnapshot = []
+            for (var j = 0; j < segmentCount; j++)
+                pathsSnapshot.push(controller.trajectoryDisplaySegmentPath(j))
+            for (var k = 0; k < pathsSnapshot.length; k++) {
+                var fallbackPath = pathsSnapshot[k]
+                if (!fallbackPath || fallbackPath.length < 2)
+                    continue
+                var fallbackLine = _createMapLineFromPath(fallbackPath, currentVehicleColor, 3)
                 if (fallbackLine) {
                     mapTarget.addMapItem(fallbackLine)
                     trajectoryItems.push(fallbackLine)
@@ -128,9 +141,16 @@ Item {
     }
 
     function clearTrajectory() {
-        for (var i = 0; i < trajectoryItems.length; i++) mapTarget.removeMapItem(trajectoryItems[i])
+        for (var i = 0; i < trajectoryItems.length; i++)
+            mapTarget.removeMapItem(trajectoryItems[i])
         trajectoryItems = []
-        for (var p in vehicleItems) mapTarget.removeMapItem(vehicleItems[p])
+        for (var p in vehicleItems) {
+            var item = vehicleItems[p]
+            if (item) {
+                item.layoutMapView = null
+                mapTarget.removeMapItem(item)
+            }
+        }
         vehicleItems = {}
         resetInteraction()
     }
@@ -298,14 +318,9 @@ Item {
         if (v.coordinate && coordinate && typeof controller !== 'undefined' && controller
             && controller.isVehicleMoveBelowDistanceThreshold(v.coordinate, coordinate, 1.0))
             return
-        var realtime = (typeof controller !== 'undefined') && controller && controller.playback && controller.playback.isPlaying === false
-        if (realtime || !animationsEnabled) {
-            v.coordinate = coordinate; v.direction = direction; v.speed = speed
-        } else if (animationsRef) {
-            animationsRef.animateVehiclePosition(v, coordinate)
-            animationsRef.animateVehicleRotation(v, direction)
-            v.speed = speed
-        }
+        v.coordinate = coordinate
+        v.direction = direction
+        v.speed = speed
     }
 
     function _fitViewport(trajectoryPoints) {

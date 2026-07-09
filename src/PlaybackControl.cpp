@@ -124,6 +124,13 @@ bool PlaybackControl::playbackIsLongTerm() const
     return ms > qint64(7) * 24 * 3600 * 1000;
 }
 
+bool PlaybackControl::playbackSpansMultipleDays() const
+{
+    if (!hasValidPlaybackTimeRange())
+        return false;
+    return startTime().date() != endTime().date();
+}
+
 QStringList PlaybackControl::playbackSpeedLabels() const
 {
     if (playbackIsLongTerm())
@@ -196,7 +203,7 @@ QString PlaybackControl::formatSeekTooltip(double progress) const
     if (!t.isValid())
         return {};
     const int pct = qRound(qBound(0.0, progress, 1.0) * 100.0);
-    if (playbackIsLongTerm())
+    if (playbackSpansMultipleDays())
         return QStringLiteral("%1\n进度: %2%").arg(t.toString(QStringLiteral("yyyy-MM-dd hh:mm:ss"))).arg(pct);
     return QStringLiteral("%1\n进度: %2%").arg(t.toString(QStringLiteral("hh:mm:ss"))).arg(pct);
 }

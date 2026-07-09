@@ -4,6 +4,7 @@
         <file>MainWindow.qml</file>
         <file>MapDisplay.qml</file>
         <file>PlaybackControls.qml</file>
+        <file>SegmentTimeline.qml</file>
         <file>StatusButton.qml</file>
         <file>NotificationDialog.qml</file>
         <file>VehicleInfoCard.qml</file>
@@ -22,6 +23,7 @@
         <file>MapPlateBadge.qml</file>
         <file>MapGeoNameLabel.qml</file>
         <file>MapPlacemark.qml</file>
+        <file>MapMarkerLayout.js</file>
         <file>NavEndpointNameSideColumn.qml</file>
         <file>FuelRecordsPanel.qml</file>
         <file>TrajectoryPanel.qml</file>

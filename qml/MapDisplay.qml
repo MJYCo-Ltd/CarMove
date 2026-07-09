@@ -26,26 +26,7 @@ Item {
 
     /// 轨迹模式下允许双击地图目标区域编辑名称
     property bool trajectoryModeActive: false
-    /// 用户点击「仿真」后才显示回放控制栏
-    property bool simulationPanelActive: false
     property int captureFitMargin: 80
-
-    function openSimulationPanel() {
-        simulationPanelActive = true
-    }
-
-    function closeSimulationPanel() {
-        if (!simulationPanelActive)
-            return
-        simulationPanelActive = false
-        if (controller && controller.playback)
-            controller.playback.stopPlayback()
-    }
-
-    onTrajectoryModeActiveChanged: {
-        if (!trajectoryModeActive)
-            closeSimulationPanel()
-    }
 
     function waitForMapSettled(callback, minimumMs, stableMs, timeoutMs) {
         mapSettleHelper.callback = callback || null
@@ -171,9 +152,8 @@ Item {
         onTriggered: mapDisplay.tryFillTargetAreaNameFromReverseGeocode()
     }
 
-    /// 目标区域：两个 MapPlacemark（targetPin + geoName），由 MapDisplay 管理（不在 MapVehicleLayer）
-    property var targetAreaNameMapItem: null
-    property var targetAreaPinMapItem: null
+    /// 目标区域：统一 MapPlacemark（图钉 + 名称，视口自适应）
+    property var targetAreaMapItem: null
 
     function ensureTargetAreaMapMarkers() {
         if (!mapView || !mapView.map)
@@ -184,24 +164,15 @@ Item {
                 console.warn("MapPlacemark:", comp.errorString())
             return
         }
-        if (!targetAreaPinMapItem) {
-            targetAreaPinMapItem = comp.createObject(mapView.map, { placemarkKind: "targetPin" })
-            if (targetAreaPinMapItem)
-                mapView.map.addMapItem(targetAreaPinMapItem)
-        }
-        if (!targetAreaNameMapItem) {
-            targetAreaNameMapItem = comp.createObject(mapView.map, {
-                placemarkKind: "geoName",
-                alignEnd: false,
-                geoNameOffsetX: 18,
-                nameFontPixelSize: 13,
-                nameTextColor: "#fdebd0",
-                nameStrokeColor: "#1a1a1a"
+        if (!targetAreaMapItem) {
+            targetAreaMapItem = comp.createObject(null, {
+                placemarkKind: "target",
+                layoutMapView: mapView
             })
-            if (targetAreaNameMapItem) {
-                mapView.map.addMapItem(targetAreaNameMapItem)
-                targetAreaNameMapItem.nameDoubleClicked.connect(mapDisplay.openTargetNameEditor)
-                targetAreaNameMapItem.text = Qt.binding(function() {
+            if (targetAreaMapItem) {
+                mapView.map.addMapItem(targetAreaMapItem)
+                targetAreaMapItem.nameDoubleClicked.connect(mapDisplay.openTargetNameEditor)
+                targetAreaMapItem.text = Qt.binding(function() {
                     if (!controller)
                         return qsTr("目标区域")
                     var name = controller.targetAreaName
@@ -216,10 +187,8 @@ Item {
         if (!controller)
             return
         var c = QtPositioning.coordinate(controller.targetAreaLatitude, controller.targetAreaLongitude)
-        if (targetAreaPinMapItem)
-            targetAreaPinMapItem.coordinate = c
-        if (targetAreaNameMapItem)
-            targetAreaNameMapItem.coordinate = c
+        if (targetAreaMapItem)
+            targetAreaMapItem.coordinate = c
     }
 
     // 地图视图
@@ -339,24 +308,10 @@ Item {
         }
     }
 
-    // 轨迹仿真（点击后才显示底部回放栏）
-    StatusButton {
-        id: simulationButton
-        anchors.right: parent.right; anchors.top: coordinateMapButton.bottom
-        anchors.rightMargin: 20; anchors.topMargin: 10
-        buttonSize: mapDisplay.buttonSize
-        iconText: "⏯"
-        buttonColor: mapDisplay.simulationPanelActive ? "#8e44ad" : "#9b59b6"
-        hoverColor: "#7d3c98"
-        tooltipText: mapDisplay.simulationPanelActive ? "仿真面板已打开" : "打开轨迹仿真"
-        visible: mapDisplay.mapVehicleContextActive && mapDisplay.trajectoryModeActive
-        onClicked: mapDisplay.openSimulationPanel()
-    }
-
     // 截屏按钮
     StatusButton {
         id: screenshotButton
-        anchors.right: parent.right; anchors.top: simulationButton.bottom
+        anchors.right: parent.right; anchors.top: coordinateMapButton.bottom
         anchors.rightMargin: 20; anchors.topMargin: 10
         buttonSize: mapDisplay.buttonSize
         iconText: "📷"; buttonColor: "#27ae60"; hoverColor: "#229954"
@@ -409,6 +364,7 @@ Item {
     MapVehicleLayer {
         id: vehicleLayer
         mapTarget:     mapView.map
+        layoutMapView: mapView
         animationsRef: mapAnimations
         targetLat:     controller ? controller.targetAreaLatitude : 0
         targetLon:     controller ? controller.targetAreaLongitude : 0

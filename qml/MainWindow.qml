@@ -20,23 +20,14 @@ ApplicationWindow {
         }
     }
     Shortcut {
-        sequence: "Space"
-        onActivated: {
-            if (!controller || !controller.playback || !mapDisplay.mapVehicleContextActive) return
-            if (!mapDisplay.simulationPanelActive) return
-            if (controller.playback.isPlaying) controller.playback.pausePlayback()
-            else controller.playback.startPlayback()
-        }
-    }
-    Shortcut {
         sequence: "Escape"
         onActivated: {
-            if (mapDisplay.simulationPanelActive) {
-                mapDisplay.closeSimulationPanel()
+            if (!controller)
                 return
-            }
-            if (controller && controller.playback)
-                controller.playback.stopPlayback()
+            if (controller.playbackSegmentCount() > 0)
+                controller.seekPlaybackSegment(0, 0)
+            else if (controller.playback)
+                controller.playback.seekToProgress(0)
         }
     }
 
@@ -67,13 +58,6 @@ ApplicationWindow {
                 text: (controller && controller.vehicleList)
                       ? ("车辆数量: " + controller.vehicleList.length)
                       : "无车辆数据"
-            }
-            Label {
-                visible: mapDisplay.mapVehicleContextActive
-                         && mapDisplay.trajectoryModeActive
-                         && mapDisplay.simulationPanelActive
-                text: (controller && controller.playback && controller.playback.isPlaying) ? "播放中" : "已暂停"
-                color: (controller && controller.playback && controller.playback.isPlaying) ? "#27ae60" : "#7f8c8d"
             }
         }
     }
@@ -165,11 +149,9 @@ ApplicationWindow {
             PlaybackControls {
                 id: playbackControls
                 Layout.fillWidth: true
-                Layout.preferredHeight: 80
+                Layout.preferredHeight: 62
                 mapVehicleContextActive: mapDisplay.mapVehicleContextActive
                                          && mapDisplay.trajectoryModeActive
-                                         && mapDisplay.simulationPanelActive
-                onCloseRequested: mapDisplay.closeSimulationPanel()
             }
         }
 
@@ -321,7 +303,6 @@ ApplicationWindow {
         function onSelectedVehicleChanged() {
             if (batchScreenshotController.running)
                 return
-            mapDisplay.closeSimulationPanel()
         }
 
         function onTrajectoryLoaded(success, message) {
