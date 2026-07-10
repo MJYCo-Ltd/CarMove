@@ -2,7 +2,7 @@ import QtQuick
 import QtLocation
 import QtPositioning
 import QtQuick.Controls
-import CarMove 1.0
+import QGroundControl 1.0
 
 Item {
     id: mapDisplay
@@ -12,6 +12,11 @@ Item {
                                                      && controller.selectedVehicle.length > 0
 
     property alias map: mapView.map
+    readonly property int pendingTileCount: tileMonitor.pendingTileCount
+    readonly property bool tilesReadyState: tileMonitor.tilesReady
+
+    signal tilesReady()
+
     /// 地图右键菜单：更新目标区域所用坐标（WGS/GCJ 与当前地图一致）
     property real contextMenuLat: 0
     property real contextMenuLon: 0
@@ -26,24 +31,40 @@ Item {
 
     /// 轨迹模式下允许双击地图目标区域编辑名称
     property bool trajectoryModeActive: false
+    /// 批量截图进行中：隐藏地图工具按钮，避免进入截图
+    property bool batchScreenshotActive: false
     property int captureFitMargin: 80
     property bool _suppressMapInteractionFlag: false
     property var _targetPlacemarkComponent: null
     property bool _targetPlacemarkComponentHooked: false
 
-    function waitForMapSettled(callback, minimumMs, stableMs, timeoutMs) {
-        mapSettleHelper.callback = callback || null
-        mapSettleHelper.minimumMs = minimumMs !== undefined ? minimumMs : 1000
-        mapSettleHelper.stableMsRequired = stableMs !== undefined ? stableMs : 1800
-        mapSettleHelper.timeoutMs = timeoutMs !== undefined ? timeoutMs : 10000
-        mapSettleHelper.elapsedMs = 0
-        mapSettleHelper.stableMs = 0
-        mapSettleTimer.restart()
+    function cancelTileWait() {
+        tileWaitTimer.stop()
+        tileWaitHelper.callback = null
     }
 
-    function cancelMapSettleWait() {
-        mapSettleTimer.stop()
-        mapSettleHelper.callback = null
+    readonly property int captureTileTimeoutMs: 12000
+
+    function waitForTilesReady(callback, timeoutMs) {
+        cancelTileWait()
+        if (!callback)
+            return
+        if (tileMonitor.tilesReady) {
+            callback()
+            return
+        }
+        tileWaitHelper.callback = callback
+        tileWaitTimer.interval = timeoutMs !== undefined ? timeoutMs : captureTileTimeoutMs
+        tileWaitTimer.restart()
+    }
+
+    /// 批量截图：准备视口 → 等可见瓦片就绪 → 保存截图
+    function prepareAndCaptureWhenReady(prepareFn, filePath, callback) {
+        if (prepareFn)
+            prepareFn()
+        waitForTilesReady(function() {
+            captureScreenshotTo(filePath, callback)
+        }, captureTileTimeoutMs)
     }
 
     function prepareTrajectoryForCapture(plateNumber, trajectoryPoints, vehicleColor) {
@@ -52,6 +73,10 @@ Item {
         vehicleLayer.fitViewportMargin = captureFitMargin
         clearTrajectory()
         addVehicleTrajectory(plateNumber, trajectoryPoints, vehicleColor || "#3498db")
+        if (trajectoryPoints && trajectoryPoints.length > 0)
+            vehicleLayer.fitTrajectoryViewportNow(trajectoryPoints)
+        syncTargetAreaMapMarkers()
+        refreshTargetAreaMarkerLayout()
     }
 
     function resetCaptureViewportMargin() {
@@ -59,43 +84,19 @@ Item {
     }
 
     QtObject {
-        id: mapSettleHelper
+        id: tileWaitHelper
         property var callback: null
-        property int minimumMs: 1000
-        property int stableMsRequired: 1800
-        property int timeoutMs: 10000
-        property int elapsedMs: 0
-        property int stableMs: 0
     }
 
     Timer {
-        id: mapSettleTimer
-        interval: 200
-        repeat: true
+        id: tileWaitTimer
+        repeat: false
         onTriggered: {
-            mapSettleHelper.elapsedMs += interval
-            mapSettleHelper.stableMs += interval
-
-            const ready = mapSettleHelper.elapsedMs >= mapSettleHelper.minimumMs
-                          && mapSettleHelper.stableMs >= mapSettleHelper.stableMsRequired
-            const timedOut = mapSettleHelper.elapsedMs >= mapSettleHelper.timeoutMs
-
-            if (ready || timedOut) {
-                stop()
-                const cb = mapSettleHelper.callback
-                mapSettleHelper.callback = null
-                if (cb)
-                    cb()
-            }
+            const cb = tileWaitHelper.callback
+            tileWaitHelper.callback = null
+            if (cb)
+                cb()
         }
-    }
-
-    Connections {
-        target: mapView.map
-        function onCenterChanged() { mapSettleHelper.stableMs = 0 }
-        function onZoomLevelChanged() { mapSettleHelper.stableMs = 0 }
-        function onBearingChanged() { mapSettleHelper.stableMs = 0 }
-        function onTiltChanged() { mapSettleHelper.stableMs = 0 }
     }
 
     function scheduleMaybeFillTargetAreaName() {
@@ -215,7 +216,7 @@ Item {
         if (targetAreaMapItem)
             return
         if (!_targetPlacemarkComponent)
-            _targetPlacemarkComponent = Qt.createComponent("MapPlacemark.qml")
+            _targetPlacemarkComponent = Qt.createComponent("qrc:/MapPlacemark.qml")
         var comp = _targetPlacemarkComponent
         if (comp.status === Component.Loading) {
             if (!_targetPlacemarkComponentHooked) {
@@ -328,6 +329,20 @@ Item {
         }
     }
 
+    MapTileMonitor {
+        id: tileMonitor
+        map: mapView.map
+        onTilesReady: {
+            mapDisplay.tilesReady()
+            if (tileWaitHelper.callback) {
+                tileWaitTimer.stop()
+                const cb = tileWaitHelper.callback
+                tileWaitHelper.callback = null
+                cb()
+            }
+        }
+    }
+
     Menu {
         id: mapContextMenu
         parent: mapView
@@ -354,6 +369,7 @@ Item {
         buttonSize: mapDisplay.buttonSize
         iconText: "📍"; buttonColor: "#3498db"; hoverColor: "#2980b9"
         tooltipText: "定位到目标区域"
+        visible: !mapDisplay.batchScreenshotActive
         onClicked: centerToLocation()
     }
 
@@ -369,7 +385,7 @@ Item {
         tooltipText: controller && controller.coordinateConversionEnabled
                      ? "当前：火星坐标(GCJ02)\n点击切换为 GPS(WGS84)"
                      : "当前：GPS(WGS84)\n点击切换为火星坐标(GCJ02)"
-        visible: mapDisplay.mapVehicleContextActive
+        visible: mapDisplay.mapVehicleContextActive && !mapDisplay.batchScreenshotActive
         onClicked: {
             if (controller)
                 controller.toggleCoordinateConversion()
@@ -384,6 +400,7 @@ Item {
         buttonSize: mapDisplay.buttonSize
         iconText: "📷"; buttonColor: "#27ae60"; hoverColor: "#229954"
         tooltipText: "截取地图画面"
+        visible: !mapDisplay.batchScreenshotActive
         onClicked: takeScreenshot()
     }
 
@@ -393,6 +410,7 @@ Item {
         anchors.right: parent.right; anchors.top: screenshotButton.bottom
         anchors.rightMargin: 20; anchors.topMargin: 10
         buttonSize: mapDisplay.buttonSize; expandedWidth: 180
+        visible: !mapDisplay.batchScreenshotActive
         onMapTypeSelected: function(index) { selectMapType(index) }
     }
 
@@ -480,7 +498,7 @@ Item {
     function clearNavigationEndpointMarkers()           { vehicleLayer.clearNavigationEndpointMarkers() }
 
     // 定位 & 截图
-    function focusTargetArea(zoomLevel) {
+    function focusTargetArea(zoomLevel, instant) {
         if (!controller)
             return
         syncTargetAreaMapMarkers()
@@ -491,20 +509,30 @@ Item {
         _suppressMapInteractionFlag = true
         vehicleLayer.suppressInteractionTracking = true
         suppressInteractionResetTimer.restart()
-        mapAnimations.animateToCenter(coord)
-        mapAnimations.animateToZoom(zoom)
+        if (instant) {
+            mapAnimations.jumpToView(coord, zoom)
+            refreshTargetAreaMarkerLayout()
+        } else {
+            mapAnimations.animateToCenter(coord)
+            mapAnimations.animateToZoom(zoom)
+            targetAreaRelayoutTimer.restart()
+            delayedTargetAreaRelayoutTimer.restart()
+        }
         vehicleLayer.resetInteraction()
-        targetAreaRelayoutTimer.restart()
-        delayedTargetAreaRelayoutTimer.restart()
     }
 
-    function centerToLocation() {
-        focusTargetArea(18)
+    function centerToLocation(instant, zoomLevel, forCapture) {
+        if (forCapture)
+            vehicleLayer.autoFitEnabled = false
+        var zoom = (zoomLevel !== undefined) ? zoomLevel : 18
+        focusTargetArea(zoom, instant === true)
         if (!controller)
             return
         var coord = controller.targetAreaMapCoordinate()
         if (coord && coord.isValid)
             snapVehicleToNearestTrajectoryPoint(coord.latitude, coord.longitude)
+        if (forCapture)
+            vehicleLayer.autoFitEnabled = false
     }
 
     function takeScreenshot() {

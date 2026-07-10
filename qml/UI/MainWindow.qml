@@ -11,6 +11,12 @@ ApplicationWindow {
     title: "CarMove 车辆轨迹追踪系统"
     visible: true
 
+    onClosing: function(close) {
+        batchScreenshotController.stopSilently()
+        mapDisplay.cancelTileWait()
+        close.accepted = true
+    }
+
     Shortcut {
         sequence: "Ctrl+O"
         onActivated: {
@@ -32,9 +38,10 @@ ApplicationWindow {
     }
 
     property bool isBusinessMode: sidebarPanel.currentMode === "business"
+    readonly property bool batchScreenshotActive: batchScreenshotController.running
 
     footer: ToolBar {
-        visible: !mainWindow.isBusinessMode
+        visible: !mainWindow.isBusinessMode && !mainWindow.batchScreenshotActive
         RowLayout {
             anchors.fill: parent
             anchors.margins: 5
@@ -93,7 +100,7 @@ ApplicationWindow {
             id: businessPanel
             Layout.fillWidth: true
             Layout.fillHeight: true
-            visible: mainWindow.isBusinessMode
+            visible: mainWindow.isBusinessMode || mainWindow.batchScreenshotActive
             configManager: controller ? controller.configManager : null
             batchScreenshotController: batchScreenshotController
         }
@@ -102,7 +109,7 @@ ApplicationWindow {
             id: trajectoryPanel
             Layout.preferredWidth: 300
             Layout.fillHeight: true
-            visible: sidebarPanel.currentMode === "trajectory"
+            visible: sidebarPanel.currentMode === "trajectory" && !mainWindow.batchScreenshotActive
             onOpenFolderDialogRequested: folderDialog.open()
         }
 
@@ -118,13 +125,15 @@ ApplicationWindow {
         ColumnLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            visible: !mainWindow.isBusinessMode
+            visible: !mainWindow.isBusinessMode || mainWindow.batchScreenshotActive
 
             MapDisplay {
                 id: mapDisplay
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 trajectoryModeActive: sidebarPanel.currentMode === "trajectory"
+                                      || batchScreenshotController.running
+                batchScreenshotActive: batchScreenshotController.running
             }
 
             TrajectoryTimelineBar {
@@ -133,6 +142,7 @@ ApplicationWindow {
                 Layout.preferredHeight: 62
                 mapVehicleContextActive: mapDisplay.mapVehicleContextActive
                                          && mapDisplay.trajectoryModeActive
+                                         && !batchScreenshotController.running
             }
         }
 
@@ -162,8 +172,8 @@ ApplicationWindow {
         property var currentTask: null
         property int processedCount: 0
         property string outputDir: ""
-        property string restoreMode: "business"
         property int capturedCount: 0
+        property int targetCapturedCount: 0
         property int skippedCount: 0
         property string currentLabel: ""
 
@@ -189,9 +199,9 @@ ApplicationWindow {
             processedCount = 0
             outputDir = folder
             capturedCount = 0
+            targetCapturedCount = 0
             skippedCount = 0
             running = true
-            restoreMode = sidebarPanel.currentMode
 
             if (!controller.useDatabaseTrajectorySource)
                 controller.setTrajectorySourceMode("database")
@@ -206,10 +216,7 @@ ApplicationWindow {
                 return
             }
 
-            sidebarPanel.activateMode("trajectory")
-            mapDisplay.waitForMapSettled(function() {
-                batchScreenshotController.processNext()
-            }, 800, 1200, 8000)
+            processNext()
         }
 
         function processNext() {
@@ -217,6 +224,8 @@ ApplicationWindow {
                 finish()
                 return
             }
+
+            mapDisplay.cancelTileWait()
 
             const task = excelModel.nextScreenshotTask()
             if (!task || !task.plate) {
@@ -229,7 +238,7 @@ ApplicationWindow {
 
             if (controller.screenshotFileExists(outputDir, task.plate, task.startDate, task.endDate)) {
                 skippedCount++
-                Qt.callLater(processNext)
+                processNext()
                 return
             }
 
@@ -241,9 +250,11 @@ ApplicationWindow {
             if (!running)
                 return
 
+            mapDisplay.cancelTileWait()
+
             if (!success || pointCount < 2) {
                 skippedCount++
-                Qt.callLater(processNext)
+                processNext()
                 return
             }
 
@@ -251,25 +262,43 @@ ApplicationWindow {
                 return
 
             const traj = controller.getConvertedTrajectory()
-            mapDisplay.prepareTrajectoryForCapture(currentTask.plate, traj, "#3498db")
-            mapDisplay.waitForMapSettled(function() {
-                batchScreenshotController.takeShotAndContinue()
-            }, 1200, 2000, 12000)
+            mapDisplay.prepareAndCaptureWhenReady(
+                function() {
+                    mapDisplay.prepareTrajectoryForCapture(currentTask.plate, traj, "#3498db")
+                },
+                controller.screenshotFilePath(outputDir, currentTask.plate,
+                                            currentTask.startDate, currentTask.endDate),
+                function(ok) {
+                    if (!running || !currentTask)
+                        return
+                    if (!ok) {
+                        skippedCount++
+                        processNext()
+                        return
+                    }
+                    capturedCount++
+                    captureTargetAreaIfNeeded()
+                })
         }
 
-        function takeShotAndContinue() {
-            if (!running || !currentTask)
+        function captureTargetAreaIfNeeded() {
+            if (!running || !currentTask || !controller)
                 return
 
-            const path = controller.screenshotFilePath(outputDir, currentTask.plate,
-                                                      currentTask.startDate, currentTask.endDate)
-            mapDisplay.captureScreenshotTo(path, function(ok) {
-                if (ok)
-                    capturedCount++
-                else
-                    skippedCount++
+            if (controller.targetAreaVisitCountForPlate(currentTask.plate) <= 0) {
                 processNext()
-            })
+                return
+            }
+
+            mapDisplay.prepareAndCaptureWhenReady(
+                function() { mapDisplay.centerToLocation(true, 18, true) },
+                controller.targetAreaScreenshotFilePath(outputDir, currentTask.plate,
+                                                      currentTask.startDate, currentTask.endDate),
+                function(ok) {
+                    if (ok)
+                        targetCapturedCount++
+                    processNext()
+                })
         }
 
         function finish() {
@@ -280,11 +309,23 @@ ApplicationWindow {
             currentLabel = ""
             if (excelModel)
                 excelModel.cancelScreenshotTasks()
-            mapDisplay.cancelMapSettleWait()
+            mapDisplay.cancelTileWait()
             mapDisplay.resetCaptureViewportMargin()
-            sidebarPanel.activateMode(restoreMode)
-            successDialog.showSuccess("截图完成：共处理 " + processedCount + " 条，成功 "
-                                    + capturedCount + " 张，跳过 " + skippedCount + " 条")
+            successDialog.showSuccess("截图完成：共处理 " + processedCount + " 条，大图 "
+                                    + capturedCount + " 张，目标区小图 " + targetCapturedCount
+                                    + " 张，跳过 " + skippedCount + " 条")
+        }
+
+        function stopSilently() {
+            if (!running)
+                return
+            running = false
+            currentTask = null
+            currentLabel = ""
+            if (excelModel)
+                excelModel.cancelScreenshotTasks()
+            mapDisplay.cancelTileWait()
+            mapDisplay.resetCaptureViewportMargin()
         }
     }
 

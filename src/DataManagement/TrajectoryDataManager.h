@@ -53,6 +53,9 @@ public:
 
     TrajectoryLoadResult loadTrajectory(const TrajectoryLoadRequest& request);
 
+    /// 应用退出前释放 PostGIS 连接，避免进程析构阶段卡住
+    void releaseDatabaseConnection();
+
 signals:
     void sourceModeChanged();
     void readyChanged();

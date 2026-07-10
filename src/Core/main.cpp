@@ -2,6 +2,7 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
+#include <QtLocation/QGeoServiceProvider>
 
 #include "UI/MainController.h"
 #include "Core/ConfigManager.h"
@@ -18,9 +19,6 @@ int main(int argc, char *argv[])
     app.setOrganizationName("CarMove");
 
     AppLogger::initialize();
-    QObject::connect(&app, &QGuiApplication::aboutToQuit, []() {
-        AppLogger::shutdown();
-    });
     
     // Set Qt Quick style to Basic for better customization support
     QQuickStyle::setStyle("Material");
@@ -32,10 +30,24 @@ int main(int argc, char *argv[])
 
     // Create QML engine
     QQmlApplicationEngine engine;
-    
+
+    // QGroundControl 1.0 (MapTileMonitor) 由 QGCLocation geoservice 插件在 setQmlEngine 时注册。
+    // 须在加载 QML 前触发，否则 import QGroundControl 1.0 会报 module is not installed。
+    QGeoServiceProvider qgcGeoService(QStringLiteral("QGroundControl"));
+    qgcGeoService.setQmlEngine(&engine);
+    if (!qgcGeoService.mappingManager()) {
+        qWarning() << "QGroundControl geoservice unavailable:"
+                   << qgcGeoService.mappingErrorString();
+    }
+
     // Create and register main controller
     MainController controller;
     engine.rootContext()->setContextProperty("controller", &controller);
+
+    QObject::connect(&app, &QGuiApplication::aboutToQuit, [&controller]() {
+        controller.prepareForApplicationShutdown();
+        AppLogger::shutdown();
+    });
 
     // 地图服务：经 MapServiceManager 统一管理，保留 geocoder/routePlanner 别名以兼容现有 QML
     if (controller.mapService()) {

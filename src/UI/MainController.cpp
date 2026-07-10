@@ -8,6 +8,7 @@
 #include <QFile>
 #include <QVariantMap>
 #include <QUrl>
+#include <QTimer>
 MainController::MainController(QObject *parent)
     : QObject(parent)
     , m_coordinateConversionEnabled(false)
@@ -353,6 +354,17 @@ void MainController::loadTrajectoryForCapture(const QString& plateNumber,
     emit loadingMessageChanged();
 
     m_vehicleManager->loadTrajectory(plateNumber.trimmed(), startDate, endDate, true);
+
+    if (m_captureTrajectoryPending) {
+        m_captureTrajectoryPending = false;
+        m_isLoading = false;
+        m_loadingMessage.clear();
+        emit loadingChanged();
+        emit loadingMessageChanged();
+        QTimer::singleShot(0, this, [this]() {
+            emit captureTrajectoryReady(false, 0);
+        });
+    }
 }
 
 QString MainController::normalizeLocalPath(const QString& path) const
@@ -373,6 +385,16 @@ QString MainController::screenshotFilePath(const QString& folderPath,
     return m_filePathManager
                ? m_filePathManager->screenshotFilePath(folderPath, plateNumber, startDateIso, endDateIso)
                : QString();
+}
+
+QString MainController::targetAreaScreenshotFilePath(const QString& folderPath,
+                                                     const QString& plateNumber,
+                                                     const QString& startDateIso,
+                                                     const QString& endDateIso) const
+{
+    return m_filePathManager ? m_filePathManager->targetAreaScreenshotFilePath(folderPath, plateNumber,
+                                                                               startDateIso, endDateIso)
+                             : QString();
 }
 
 bool MainController::screenshotFileExists(const QString& folderPath,
@@ -469,6 +491,13 @@ void MainController::setTargetAreaCenter(double latitude, double longitude, cons
     m_targetAreaName = name;
     emit targetAreaChanged();
     persistTargetAreaConfig();
+}
+
+void MainController::prepareForApplicationShutdown()
+{
+    if (m_trajectoryDataManager) {
+        m_trajectoryDataManager->releaseDatabaseConnection();
+    }
 }
 
 // Private slots implementation → see MainControllerSlots.cpp

@@ -65,6 +65,7 @@ void VehicleManager::loadTrajectory(const QString& plateNumber,
 {
     if (plateNumber.isEmpty()) {
         AppLogger::warn(QStringLiteral("无法加载轨迹: 车牌号为空"));
+        emit trajectoryLoaded(plateNumber, {});
         return;
     }
 

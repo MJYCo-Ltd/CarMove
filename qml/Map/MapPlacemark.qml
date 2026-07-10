@@ -1,7 +1,7 @@
 import QtQuick
 import QtLocation
 import QtPositioning
-import "MapMarkerLayout.js" as MapMarkerLayout
+import "qrc:/MapMarkerLayout.js" as MapMarkerLayout
 
 /// 统一地图锚点标记：图标 + 视口自适应文字（vehicle / target / navEndpoint / searchPin / geoName）
 MapQuickItem {

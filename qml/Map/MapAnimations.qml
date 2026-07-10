@@ -24,6 +24,17 @@ Item {
             zoomAnimation.start()
         }
     }
+
+    function jumpToView(coordinate, zoomLevel) {
+        centerAnimation.stop()
+        zoomAnimation.stop()
+        if (!mapTarget)
+            return
+        if (coordinate)
+            mapTarget.center = coordinate
+        if (zoomLevel !== undefined)
+            mapTarget.zoomLevel = zoomLevel
+    }
     
     function animateVehicleToLocation(vehicle, coordinate) {
         vehicleLocationAnimation.target = vehicle

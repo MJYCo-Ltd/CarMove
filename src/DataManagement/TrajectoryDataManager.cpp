@@ -110,6 +110,11 @@ void TrajectoryDataManager::disconnectDatabaseSource()
     }
 }
 
+void TrajectoryDataManager::releaseDatabaseConnection()
+{
+    disconnectDatabaseSource();
+}
+
 bool TrajectoryDataManager::connectDatabaseSource(QString& errorMessage)
 {
     disconnectDatabaseSource();

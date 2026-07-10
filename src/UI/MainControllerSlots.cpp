@@ -2,6 +2,7 @@
 // Separated from MainController.cpp for maintainability
 #include "UI/MainController.h"
 #include "DataManagement/VehicleManager.h"
+#include <QTimer>
 
 void MainController::onDataSourceScanCompleted(const QList<TrajectoryDataManager::VehicleInfo>& vehicles)
 {
@@ -54,7 +55,14 @@ void MainController::onVehicleTrajectoryLoaded(const QString& plateNumber,
         m_loadingMessage.clear();
         emit loadingChanged();
         emit loadingMessageChanged();
-        emit captureTrajectoryReady(!trajectory.isEmpty(), trajectory.size());
+        const bool success = trajectory.size() >= 2;
+        const int pointCount = trajectory.size();
+        // 推迟到事件循环，避免 QML processNext 重入 loadTrajectoryForCapture
+        QTimer::singleShot(0, this, [this, success, pointCount]() {
+            emit captureTrajectoryReady(success, pointCount);
+        });
+        // 批量截图只需原始轨迹绘制，跳过时间轴分段/GPS 跳点日志（会阻塞 UI 线程）
+        return;
     }
 
     if (plateNumber != m_selectedVehicle) {

@@ -94,6 +94,10 @@ public:
                                              const QString& plateNumber,
                                              const QString& startDateIso,
                                              const QString& endDateIso) const;
+    Q_INVOKABLE QString targetAreaScreenshotFilePath(const QString& folderPath,
+                                                     const QString& plateNumber,
+                                                     const QString& startDateIso,
+                                                     const QString& endDateIso) const;
     Q_INVOKABLE bool screenshotFileExists(const QString& folderPath,
                                             const QString& plateNumber,
                                             const QString& startDateIso,
@@ -102,6 +106,7 @@ public:
     Q_INVOKABLE QVariantList getConvertedTrajectory();
     Q_INVOKABLE void setTargetAreaCenter(double latitude, double longitude, const QString& name);
     Q_INVOKABLE int calculateTargetAreaVisitCount(const QString& plateNumber, double targetLat, double targetLon, double radiusMeters) const;
+    Q_INVOKABLE int targetAreaVisitCountForPlate(const QString& plateNumber) const;
     Q_INVOKABLE QGeoCoordinate trajectoryPointToCoordinate(const QVariant& point) const;
     Q_INVOKABLE QGeoCoordinate targetAreaMapCoordinate() const;
     Q_INVOKABLE QString colorHexForPlate(const QString& plateNumber) const;
@@ -124,6 +129,8 @@ public:
     Q_INVOKABLE bool seekVehicleToNearestTrajectoryPoint(double latitude, double longitude);
     Q_INVOKABLE QString getDocumentsPath();
     Q_INVOKABLE void clearSearch();
+
+    void prepareForApplicationShutdown();
 
 signals:
     void folderScanned(bool success, const QString& message);

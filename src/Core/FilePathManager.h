@@ -20,10 +20,21 @@ public:
                                            const QString& plateNumber,
                                            const QString& startDateIso,
                                            const QString& endDateIso) const;
+    Q_INVOKABLE QString targetAreaScreenshotFilePath(const QString& folderPath,
+                                                     const QString& plateNumber,
+                                                     const QString& startDateIso,
+                                                     const QString& endDateIso) const;
     Q_INVOKABLE bool screenshotFileExists(const QString& folderPath,
                                           const QString& plateNumber,
                                           const QString& startDateIso,
                                           const QString& endDateIso) const;
+
+private:
+    QString buildScreenshotFilePath(const QString& folderPath,
+                                    const QString& plateNumber,
+                                    const QString& startDateIso,
+                                    const QString& endDateIso,
+                                    const QString& nameSuffix) const;
 };
 
 #endif // FILEPATHMANAGER_H

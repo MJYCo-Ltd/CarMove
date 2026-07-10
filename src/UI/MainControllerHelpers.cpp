@@ -114,6 +114,13 @@ int MainController::calculateTargetAreaVisitCount(const QString& plateNumber, do
     return visitCount;
 }
 
+int MainController::targetAreaVisitCountForPlate(const QString& plateNumber) const
+{
+    constexpr double kTargetAreaRadiusMeters = 1000.0;
+    return calculateTargetAreaVisitCount(plateNumber, m_targetAreaLatitude, m_targetAreaLongitude,
+                                         kTargetAreaRadiusMeters);
+}
+
 QGeoCoordinate MainController::targetAreaMapCoordinate() const
 {
     QGeoCoordinate coord(m_targetAreaLatitude, m_targetAreaLongitude);

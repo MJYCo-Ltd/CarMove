@@ -61,7 +61,7 @@ Item {
     function _createPlacemark(initialProps) {
         var props = initialProps || {}
         props.layoutMapView = vehicleLayer.layoutMapView
-        var comp = Qt.createComponent("MapPlacemark.qml")
+        var comp = Qt.createComponent("qrc:/MapPlacemark.qml")
         if (comp.status !== Component.Ready) {
             if (comp.status === Component.Error)
                 console.warn("MapPlacemark:", comp.errorString())
@@ -296,7 +296,7 @@ Item {
 
     /// MapItem 须 parent 为 null，仅通过 addMapItem 加入地图
     function _createMapLineFromPath(pathCoords, lineColor, lineWidth, opacity) {
-        var comp = Qt.createComponent("MapLine.qml")
+        var comp = Qt.createComponent("qrc:/MapLine.qml")
         if (comp.status !== Component.Ready) {
             if (comp.status === Component.Error)
                 console.warn("MapLine:", comp.errorString())
@@ -369,6 +369,14 @@ Item {
         suppressInteractionTracking = true
         mapTarget.fitViewportToGeoShape(shape, Qt.size(fitViewportMargin, fitViewportMargin))
         Qt.callLater(function() { suppressInteractionTracking = false })
+    }
+
+    /// 批量截图：立即 fit 轨迹视口，不经过 pendingFit 重试等待
+    function fitTrajectoryViewportNow(trajectoryPoints) {
+        pendingFitTimer.stop()
+        _pendingFitPoints = null
+        _pendingFitAttempts = 0
+        _doFitViewport(trajectoryPoints)
     }
 
     Connections {
