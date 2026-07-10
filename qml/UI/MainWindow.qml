@@ -177,6 +177,31 @@ ApplicationWindow {
         property int skippedCount: 0
         property string currentLabel: ""
 
+        property real _perfBatchStartMs: 0
+        property real _perfTaskStartMs: 0
+        property real _perfLastMs: 0
+
+        function _perfLog(step, detail) {
+            const now = Date.now()
+            const stepMs = _perfLastMs > 0 ? (now - _perfLastMs) : 0
+            const taskMs = _perfTaskStartMs > 0 ? (now - _perfTaskStartMs) : 0
+            const batchMs = _perfBatchStartMs > 0 ? (now - _perfBatchStartMs) : 0
+            const detailText = (detail !== undefined && detail !== null && detail !== "") ? detail : ""
+            console.log("[BatchShot]",
+                        Qt.formatDateTime(new Date(now), "hh:mm:ss.zzz"),
+                        step,
+                        detailText,
+                        "| step +" + stepMs + "ms",
+                        "| task " + taskMs + "ms",
+                        "| batch " + batchMs + "ms")
+            _perfLastMs = now
+        }
+
+        function _perfResetTask() {
+            _perfTaskStartMs = Date.now()
+            _perfLastMs = _perfTaskStartMs
+        }
+
         function normalizeFolderPath(path) {
             if (!path || !controller)
                 return ""
@@ -202,6 +227,9 @@ ApplicationWindow {
             targetCapturedCount = 0
             skippedCount = 0
             running = true
+            _perfBatchStartMs = Date.now()
+            _perfLastMs = _perfBatchStartMs
+            _perfLog("batch.start", "outputDir=" + folder)
 
             if (!controller.useDatabaseTrajectorySource)
                 controller.setTrajectorySourceMode("database")
@@ -212,6 +240,7 @@ ApplicationWindow {
             if (!controller.databaseConnected) {
                 running = false
                 excelModel.cancelScreenshotTasks()
+                _perfLog("batch.failed", "PostGIS 未连接")
                 errorDialog.showError("PostGIS 数据库未连接，请检查 CarMoveTracker.ini")
                 return
             }
@@ -226,23 +255,29 @@ ApplicationWindow {
             }
 
             mapDisplay.cancelTileWait()
+            _perfLog("task.loop", "processed=" + processedCount)
 
             const task = excelModel.nextScreenshotTask()
             if (!task || !task.plate) {
+                _perfLog("task.queue.empty", "")
                 finish()
                 return
             }
 
             currentTask = task
             processedCount++
+            _perfResetTask()
+            _perfLog("task.begin", "#" + processedCount + " " + task.plate + " " + task.startDate + "~" + task.endDate)
 
             if (controller.screenshotFileExists(outputDir, task.plate, task.startDate, task.endDate)) {
                 skippedCount++
+                _perfLog("task.skip.exists", task.plate)
                 processNext()
                 return
             }
 
             currentLabel = task.plate + "  " + task.startDate + " ~ " + task.endDate
+            _perfLog("trajectory.load.request", currentLabel)
             controller.loadTrajectoryForCapture(task.plate, task.startDate, task.endDate)
         }
 
@@ -251,9 +286,11 @@ ApplicationWindow {
                 return
 
             mapDisplay.cancelTileWait()
+            _perfLog("trajectory.load.ready", "success=" + success + " points=" + pointCount)
 
             if (!success || pointCount < 2) {
                 skippedCount++
+                _perfLog("task.skip.noTrajectory", currentLabel)
                 processNext()
                 return
             }
@@ -261,10 +298,10 @@ ApplicationWindow {
             if (!currentTask)
                 return
 
-            const traj = controller.getConvertedTrajectory()
+            _perfLog("trajectory.capture.request", "points=" + pointCount)
             mapDisplay.prepareAndCaptureWhenReady(
                 function() {
-                    mapDisplay.prepareTrajectoryForCapture(currentTask.plate, traj, "#3498db")
+                    mapDisplay.prepareCaptureTrajectory(currentTask.plate, "#3498db")
                 },
                 controller.screenshotFilePath(outputDir, currentTask.plate,
                                             currentTask.startDate, currentTask.endDate),
@@ -273,37 +310,53 @@ ApplicationWindow {
                         return
                     if (!ok) {
                         skippedCount++
+                        batchScreenshotController._perfLog("trajectory.capture.failed", currentTask.plate)
                         processNext()
                         return
                     }
                     capturedCount++
+                    batchScreenshotController._perfLog("trajectory.capture.done", currentTask.plate)
                     captureTargetAreaIfNeeded()
-                })
+                },
+                "trajectory")
         }
 
         function captureTargetAreaIfNeeded() {
             if (!running || !currentTask || !controller)
                 return
 
-            if (controller.targetAreaVisitCountForPlate(currentTask.plate) <= 0) {
+            const visitCount = controller.targetAreaVisitCountForPlate(currentTask.plate)
+            if (visitCount <= 0) {
+                _perfLog("targetArea.skip", "visitCount=0")
                 processNext()
                 return
             }
 
+            _perfLog("targetArea.capture.request", "visitCount=" + visitCount)
             mapDisplay.prepareAndCaptureWhenReady(
                 function() { mapDisplay.centerToLocation(true, 18, true) },
                 controller.targetAreaScreenshotFilePath(outputDir, currentTask.plate,
                                                       currentTask.startDate, currentTask.endDate),
                 function(ok) {
-                    if (ok)
+                    if (ok) {
                         targetCapturedCount++
+                        batchScreenshotController._perfLog("targetArea.capture.done", currentTask.plate)
+                    } else {
+                        batchScreenshotController._perfLog("targetArea.capture.failed", currentTask.plate)
+                    }
                     processNext()
-                })
+                },
+                "targetArea")
         }
 
         function finish() {
             if (!running)
                 return
+            _perfLog("batch.finish",
+                     "processed=" + processedCount
+                     + " captured=" + capturedCount
+                     + " target=" + targetCapturedCount
+                     + " skipped=" + skippedCount)
             running = false
             currentTask = null
             currentLabel = ""
@@ -319,6 +372,7 @@ ApplicationWindow {
         function stopSilently() {
             if (!running)
                 return
+            _perfLog("batch.stop", "")
             running = false
             currentTask = null
             currentLabel = ""
@@ -352,19 +406,19 @@ ApplicationWindow {
             if (!success) { errorDialog.showError(message); return }
             if (!controller || !controller.selectedVehicle)
                 return
-            var traj = controller.getConvertedTrajectory()
-            if (!traj || traj.length === 0) {
+            if (controller.activeTrajectoryPointCount() < 1) {
                 errorDialog.showError("未加载到有效轨迹点")
                 return
             }
             mapDisplay.clearTrajectory()
-            mapDisplay.addVehicleTrajectory(controller.selectedVehicle, traj, "#3498db")
+            mapDisplay.showSelectedVehicleTrajectory(controller.selectedVehicle, "#3498db")
         }
 
         function onTrajectoryConverted() {
-            var traj = controller.getConvertedTrajectory()
-            if (traj && traj.length > 0)
-                mapDisplay.updateTrajectoryCoordinates(traj)
+            if (batchScreenshotController.running)
+                return
+            if (controller && controller.activeTrajectoryPointCount() > 0)
+                mapDisplay.refreshSelectedVehicleTrajectory()
         }
 
         function onErrorOccurred(error) { errorDialog.showError(error) }

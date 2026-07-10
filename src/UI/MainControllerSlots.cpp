@@ -2,6 +2,7 @@
 // Separated from MainController.cpp for maintainability
 #include "UI/MainController.h"
 #include "DataManagement/VehicleManager.h"
+#include "Core/AppLogger.h"
 #include <QTimer>
 
 void MainController::onDataSourceScanCompleted(const QList<TrajectoryDataManager::VehicleInfo>& vehicles)
@@ -57,6 +58,11 @@ void MainController::onVehicleTrajectoryLoaded(const QString& plateNumber,
         emit loadingMessageChanged();
         const bool success = trajectory.size() >= 2;
         const int pointCount = trajectory.size();
+        AppLogger::info(QStringLiteral("[BatchShot] trajectory.load.done plate=%1 points=%2 elapsed=%3ms success=%4")
+                            .arg(plateNumber)
+                            .arg(pointCount)
+                            .arg(m_captureLoadTimer.elapsed())
+                            .arg(success ? QStringLiteral("yes") : QStringLiteral("no")));
         // 推迟到事件循环，避免 QML processNext 重入 loadTrajectoryForCapture
         QTimer::singleShot(0, this, [this, success, pointCount]() {
             emit captureTrajectoryReady(success, pointCount);

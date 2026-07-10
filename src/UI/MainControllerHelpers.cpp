@@ -15,6 +15,7 @@
 #include <QMetaType>
 #include <QtGlobal>
 #include <limits>
+#include <utility>
 
 namespace {
 
@@ -37,7 +38,181 @@ QVariantList nestedSegmentToList(const QVariant& segmentVariant)
     return {};
 }
 
+QList<QList<TrajectoryPoint>> segmentTrajectoryRecords(const QList<TrajectoryPoint>& records,
+                                                       const QString& plateNumber,
+                                                       bool logJumpAnomalies)
+{
+    QList<QList<TrajectoryPoint>> segments;
+    QList<TrajectoryPoint> currentSegment;
+
+    QGeoCoordinate previousCoordinate;
+    QDateTime previousTimestamp;
+    bool hasPrevious = false;
+
+    auto flushSegment = [&]() {
+        if (currentSegment.size() >= 2) {
+            segments.append(std::move(currentSegment));
+        }
+        currentSegment = QList<TrajectoryPoint>();
+    };
+
+    for (const TrajectoryPoint& record : records) {
+        if (!TrajectorySegmentBreak::isDrawableCoordinate(record)) {
+            continue;
+        }
+
+        const QGeoCoordinate coordinate = record.coordinate();
+        if (!coordinate.isValid()) {
+            continue;
+        }
+
+        const TrajectorySegmentBreak::Evaluation breakEvaluation =
+            hasPrevious ? TrajectorySegmentBreak::evaluate(previousCoordinate,
+                                                           previousTimestamp,
+                                                           coordinate,
+                                                           record.timestamp)
+                        : TrajectorySegmentBreak::Evaluation{};
+
+        if (breakEvaluation.shouldBreak) {
+            if (logJumpAnomalies) {
+                const QString resolvedPlate =
+                    record.plateNumber.trimmed().isEmpty() ? plateNumber : record.plateNumber.trimmed();
+                TrajectorySegmentBreak::logGpsJumpAnomaly(resolvedPlate,
+                                                          breakEvaluation,
+                                                          previousCoordinate,
+                                                          coordinate,
+                                                          previousTimestamp,
+                                                          record.timestamp);
+            }
+            flushSegment();
+        }
+
+        currentSegment.append(record);
+        previousCoordinate = coordinate;
+        previousTimestamp = record.timestamp;
+        hasPrevious = true;
+    }
+
+    flushSegment();
+    return segments;
+}
+
+QVariantList polylinePathFromRecords(const QList<TrajectoryPoint>& records)
+{
+    QVariantList out;
+    out.reserve(records.size());
+    for (const TrajectoryPoint& record : records) {
+        const QGeoCoordinate coordinate = record.coordinate();
+        if (coordinate.isValid()) {
+            out.append(TrajectorySegmentBreak::coordinateToVariantMap(coordinate));
+        }
+    }
+    return out;
+}
+
+QVariantList segmentPolylinePathsFromRecords(const QList<TrajectoryPoint>& records,
+                                             const QString& plateNumber,
+                                             bool logJumpAnomalies)
+{
+    QVariantList paths;
+    const QList<QList<TrajectoryPoint>> segments =
+        segmentTrajectoryRecords(records, plateNumber, logJumpAnomalies);
+    paths.reserve(segments.size());
+    for (const QList<TrajectoryPoint>& segment : segments) {
+        const QVariantList polyline = polylinePathFromRecords(segment);
+        if (polyline.size() >= 2) {
+            appendNestedSegment(paths, polyline);
+        }
+    }
+    return paths;
+}
+
+QGeoPath geoPathFromRecords(const QList<TrajectoryPoint>& records, const QGeoCoordinate& targetArea)
+{
+    QGeoPath path;
+    for (const TrajectoryPoint& record : records) {
+        const QGeoCoordinate coordinate = record.coordinate();
+        if (coordinate.isValid()) {
+            path.addCoordinate(coordinate);
+        }
+    }
+    if (targetArea.isValid()) {
+        path.addCoordinate(targetArea);
+    }
+    return path;
+}
+
 } // namespace
+
+const QList<TrajectoryPoint>& MainController::activeTrajectoryRecords() const
+{
+    static const QList<TrajectoryPoint> kEmpty;
+    if (!m_vehicleManager) {
+        return kEmpty;
+    }
+    return m_coordinateConversionEnabled ? m_vehicleManager->convertedTrajectoryRef()
+                                         : m_vehicleManager->currentTrajectoryRef();
+}
+
+int MainController::activeTrajectoryPointCount() const
+{
+    return activeTrajectoryRecords().size();
+}
+
+QVariantList MainController::trajectoryDisplayPolylinePaths() const
+{
+    if (m_timelineManager) {
+        const int segmentCount = m_timelineManager->displaySegmentCount();
+        if (segmentCount > 0) {
+            QVariantList paths;
+            paths.reserve(segmentCount);
+            for (int i = 0; i < segmentCount; ++i) {
+                const QVariantList polyline = m_timelineManager->displaySegmentPath(i);
+                if (polyline.size() >= 2) {
+                    appendNestedSegment(paths, polyline);
+                }
+            }
+            if (!paths.isEmpty()) {
+                return paths;
+            }
+        }
+    }
+
+    const QList<TrajectoryPoint>& records = activeTrajectoryRecords();
+    if (records.isEmpty()) {
+        return {};
+    }
+    return segmentPolylinePathsFromRecords(records, m_selectedVehicle, true);
+}
+
+QVariant MainController::trajectoryDisplayViewportShape() const
+{
+    const QList<TrajectoryPoint>& records = activeTrajectoryRecords();
+    if (records.isEmpty()) {
+        return {};
+    }
+    return QVariant::fromValue(geoPathFromRecords(records, targetAreaMapCoordinate()));
+}
+
+QVariantMap MainController::trajectoryDisplayStartMarker() const
+{
+    const QList<TrajectoryPoint>& records = activeTrajectoryRecords();
+    if (records.isEmpty()) {
+        return {};
+    }
+
+    const TrajectoryPoint& first = records.first();
+    const QGeoCoordinate coordinate = first.coordinate();
+    if (!coordinate.isValid()) {
+        return {};
+    }
+
+    QVariantMap result;
+    result.insert(QStringLiteral("coordinate"), QVariant::fromValue(coordinate));
+    result.insert(QStringLiteral("direction"), first.direction);
+    result.insert(QStringLiteral("speed"), first.speed);
+    return result;
+}
 
 void MainController::updateFilteredVehicleList()
 {
@@ -189,80 +364,6 @@ QVariantList MainController::trajectoryPolylinePath(const QVariant& trajectoryPo
             out.append(TrajectorySegmentBreak::coordinateToVariantMap(c));
     }
     return out;
-}
-
-QVariantList MainController::trajectoryPointSegments(const QVariant& trajectoryPoints) const
-{
-    const QVariantList trajectoryPointList = trajectoryPoints.toList();
-    QVariantList segments;
-    QVariantList currentSegment;
-
-    QGeoCoordinate previousCoordinate;
-    QDateTime previousTimestamp;
-    bool hasPrevious = false;
-
-    auto flushSegment = [&]() {
-        if (currentSegment.size() >= 2) {
-            appendNestedSegment(segments, currentSegment);
-        }
-        currentSegment = QVariantList();
-    };
-
-    for (const QVariant& point : trajectoryPointList) {
-        const QGeoCoordinate coordinate = trajectoryPointToCoordinate(point);
-        if (!coordinate.isValid()) {
-            continue;
-        }
-
-        const QDateTime timestamp = TrajectorySegmentBreak::pointTimestamp(point);
-        const TrajectorySegmentBreak::Evaluation breakEvaluation =
-            hasPrevious ? TrajectorySegmentBreak::evaluate(previousCoordinate, previousTimestamp, coordinate, timestamp)
-                        : TrajectorySegmentBreak::Evaluation{};
-        const bool shouldBreak = breakEvaluation.shouldBreak;
-
-        if (shouldBreak) {
-            const QString plateNumber = TrajectorySegmentBreak::pointPlateNumber(point);
-            TrajectorySegmentBreak::logGpsJumpAnomaly(plateNumber.isEmpty() ? m_selectedVehicle : plateNumber,
-                                                      breakEvaluation,
-                                                      previousCoordinate,
-                                                      coordinate,
-                                                      previousTimestamp,
-                                                      timestamp);
-            flushSegment();
-        }
-
-        currentSegment.append(point);
-        previousCoordinate = coordinate;
-        previousTimestamp = timestamp;
-        hasPrevious = true;
-    }
-
-    flushSegment();
-
-    return segments;
-}
-
-QVariantList MainController::trajectorySegmentPolylinePaths(const QVariant& trajectoryPoints) const
-{
-    QVariantList paths;
-    const QVariantList segments = trajectoryPointSegments(trajectoryPoints);
-    for (const QVariant& segment : segments) {
-        const QVariantList polyline = trajectoryPolylinePath(segment);
-        if (polyline.size() >= 2) {
-            appendNestedSegment(paths, polyline);
-        }
-    }
-    return paths;
-}
-
-int MainController::trajectoryDisplaySegmentCount()
-{
-    return m_timelineManager ? m_timelineManager->displaySegmentCount() : 0;
-}
-
-QVariantList MainController::trajectoryDisplaySegmentPath(int segmentIndex) const
-{
-    return m_timelineManager ? m_timelineManager->displaySegmentPath(segmentIndex) : QVariantList{};
 }
 
 int MainController::trajectorySegmentCount() const

@@ -9,6 +9,7 @@
 #include <QVariantMap>
 #include <QVariant>
 #include <QGeoCoordinate>
+#include <QElapsedTimer>
 #include "Domain/TrajectoryTypes.h"
 #include "Core/ConfigManager.h"
 #include "DataManagement/TrajectoryDataManager.h"
@@ -103,7 +104,12 @@ public:
                                             const QString& startDateIso,
                                             const QString& endDateIso) const;
     Q_INVOKABLE void toggleCoordinateConversion();
-    Q_INVOKABLE QVariantList getConvertedTrajectory();
+    /// 当前选中车辆轨迹点数（不 marshal 全量点给 QML）
+    Q_INVOKABLE int activeTrajectoryPointCount() const;
+    /// 地图展示：C++ 内跳点分段 + 折线路径（优先时间轴分段，否则用内存轨迹）
+    Q_INVOKABLE QVariantList trajectoryDisplayPolylinePaths() const;
+    Q_INVOKABLE QVariant trajectoryDisplayViewportShape() const;
+    Q_INVOKABLE QVariantMap trajectoryDisplayStartMarker() const;
     Q_INVOKABLE void setTargetAreaCenter(double latitude, double longitude, const QString& name);
     Q_INVOKABLE int calculateTargetAreaVisitCount(const QString& plateNumber, double targetLat, double targetLon, double radiusMeters) const;
     Q_INVOKABLE int targetAreaVisitCountForPlate(const QString& plateNumber) const;
@@ -111,10 +117,6 @@ public:
     Q_INVOKABLE QGeoCoordinate targetAreaMapCoordinate() const;
     Q_INVOKABLE QString colorHexForPlate(const QString& plateNumber) const;
     Q_INVOKABLE QVariantList trajectoryPolylinePath(const QVariant& trajectoryPoints) const;
-    Q_INVOKABLE QVariantList trajectoryPointSegments(const QVariant& trajectoryPoints) const;
-    Q_INVOKABLE QVariantList trajectorySegmentPolylinePaths(const QVariant& trajectoryPoints) const;
-    Q_INVOKABLE int trajectoryDisplaySegmentCount();
-    Q_INVOKABLE QVariantList trajectoryDisplaySegmentPath(int segmentIndex) const;
     Q_INVOKABLE void seekTrajectoryToProgress(double progress);
     Q_INVOKABLE int trajectorySegmentCount() const;
     Q_INVOKABLE QDateTime trajectorySegmentStartTime(int segmentIndex) const;
@@ -171,6 +173,7 @@ private slots:
 private:
     void syncTimelineFromVehicleManager();
     void resetTrajectoryTimeline();
+    const QList<TrajectoryPoint>& activeTrajectoryRecords() const;
     QVariantMap vehicleRecordToVariant(const TrajectoryPoint& record) const;
     void updateFilteredVehicleList();
     void persistTargetAreaConfig();
@@ -196,6 +199,7 @@ private:
     TrajectoryTimelineManager* m_timelineManager = nullptr;
     QString m_databaseStatus;
     bool m_captureTrajectoryPending = false;
+    QElapsedTimer m_captureLoadTimer;
 
     QList<TrajectoryDataManager::VehicleInfo> m_vehicleInfoList;
 };

@@ -25,6 +25,8 @@ public:
     void applyCoordinateConversion(bool enabled);
     QList<TrajectoryPoint> getCurrentTrajectory() const;
     QList<TrajectoryPoint> getConvertedTrajectory() const;
+    const QList<TrajectoryPoint>& currentTrajectoryRef() const { return m_currentTrajectory; }
+    const QList<TrajectoryPoint>& convertedTrajectoryRef() const { return m_convertedTrajectory; }
     QString getSelectedVehicle() const;
     
 signals:

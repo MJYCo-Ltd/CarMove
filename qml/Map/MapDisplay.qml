@@ -12,10 +12,6 @@ Item {
                                                      && controller.selectedVehicle.length > 0
 
     property alias map: mapView.map
-    readonly property int pendingTileCount: tileMonitor.pendingTileCount
-    readonly property bool tilesReadyState: tileMonitor.tilesReady
-
-    signal tilesReady()
 
     /// 地图右键菜单：更新目标区域所用坐标（WGS/GCJ 与当前地图一致）
     property real contextMenuLat: 0
@@ -38,65 +34,111 @@ Item {
     property var _targetPlacemarkComponent: null
     property bool _targetPlacemarkComponentHooked: false
 
+    property var _tileWaitCallback: null
+    property string _tileWaitLabel: ""
+
     function cancelTileWait() {
         tileWaitTimer.stop()
-        tileWaitHelper.callback = null
+        _tileWaitCallback = null
+        _tileWaitLabel = ""
     }
 
-    readonly property int captureTileTimeoutMs: 12000
+    function _completeTileWait() {
+        if (!_tileWaitCallback)
+            return
+        tileWaitTimer.stop()
+        const cb = _tileWaitCallback
+        const label = _tileWaitLabel
+        _tileWaitCallback = null
+        _tileWaitLabel = ""
+        _batchPerfLog("tiles.ready", label || "")
+        if (cb)
+            cb()
+    }
 
-    function waitForTilesReady(callback, timeoutMs) {
+    /// 等待 MapTileMonitor 下一次 onTilesReady（pending 归零时上报）
+    function waitForNextTilesReady(callback, timeoutMs, waitLabel) {
         cancelTileWait()
         if (!callback)
             return
-        if (tileMonitor.tilesReady) {
-            callback()
-            return
-        }
-        tileWaitHelper.callback = callback
+        _tileWaitLabel = waitLabel || ""
+        _tileWaitCallback = callback
         tileWaitTimer.interval = timeoutMs !== undefined ? timeoutMs : captureTileTimeoutMs
         tileWaitTimer.restart()
+        _batchPerfLog("tiles.wait", (waitLabel || "") + " await onTilesReady")
     }
 
-    /// 批量截图：准备视口 → 等可见瓦片就绪 → 保存截图
-    function prepareAndCaptureWhenReady(prepareFn, filePath, callback) {
-        if (prepareFn)
+    /// 批量截图：准备视口 → 等 onTilesReady → 保存截图
+    function prepareAndCaptureWhenReady(prepareFn, filePath, callback, captureLabel) {
+        _batchPerfLog("capture.begin", captureLabel || filePath)
+        waitForNextTilesReady(function() {
+            _batchPerfLog("capture.tiles.ready", captureLabel || "")
+            _batchPerfLog("capture.grab.begin", captureLabel || "")
+            captureScreenshotTo(filePath, function(ok, savedPath) {
+                _batchPerfLog("capture.grab.done", (captureLabel || "") + " ok=" + ok)
+                if (callback)
+                    callback(ok, savedPath)
+            })
+        }, captureTileTimeoutMs, captureLabel || "")
+        if (prepareFn) {
             prepareFn()
-        waitForTilesReady(function() {
-            captureScreenshotTo(filePath, callback)
-        }, captureTileTimeoutMs)
+            _batchPerfLog("capture.viewport.ready", captureLabel || "")
+        }
     }
 
-    function prepareTrajectoryForCapture(plateNumber, trajectoryPoints, vehicleColor) {
+    /// 批量截图：轨迹绘制与视口计算均在 C++ 完成
+    function prepareCaptureTrajectory(plateNumber, vehicleColor) {
         vehicleLayer.userHasInteracted = false
         vehicleLayer.autoFitEnabled = true
         vehicleLayer.fitViewportMargin = captureFitMargin
         clearTrajectory()
-        addVehicleTrajectory(plateNumber, trajectoryPoints, vehicleColor || "#3498db")
-        if (trajectoryPoints && trajectoryPoints.length > 0)
-            vehicleLayer.fitTrajectoryViewportNow(trajectoryPoints)
+        vehicleLayer.showVehicleTrajectory(plateNumber, vehicleColor || "#3498db", "now")
         syncTargetAreaMapMarkers()
         refreshTargetAreaMarkerLayout()
+    }
+
+    function showSelectedVehicleTrajectory(plateNumber, vehicleColor) {
+        syncTargetAreaMapMarkers()
+        vehicleLayer.showVehicleTrajectory(plateNumber, vehicleColor || "#3498db", "auto")
+        Qt.callLater(refreshTargetAreaMarkerLayout)
+        targetAreaRelayoutTimer.restart()
+    }
+
+    function refreshSelectedVehicleTrajectory() {
+        vehicleLayer.refreshVehicleTrajectory()
+        Qt.callLater(refreshTargetAreaMarkerLayout)
+        targetAreaRelayoutTimer.restart()
     }
 
     function resetCaptureViewportMargin() {
         vehicleLayer.fitViewportMargin = 80
     }
 
-    QtObject {
-        id: tileWaitHelper
-        property var callback: null
-    }
-
     Timer {
         id: tileWaitTimer
         repeat: false
         onTriggered: {
-            const cb = tileWaitHelper.callback
-            tileWaitHelper.callback = null
-            if (cb)
-                cb()
+            _batchPerfLog("tiles.timeout", _tileWaitLabel)
+            _completeTileWait()
         }
+    }
+
+    readonly property int captureTileTimeoutMs: 12000
+
+    property real _batchPerfLastMs: 0
+
+    function _batchPerfLog(step, detail) {
+        if (!batchScreenshotActive)
+            return
+        const now = Date.now()
+        const stepMs = _batchPerfLastMs > 0 ? (now - _batchPerfLastMs) : 0
+        const detailText = (detail !== undefined && detail !== null && detail !== "") ? detail : ""
+        console.log("[BatchShot][Map]",
+                    Qt.formatDateTime(new Date(now), "hh:mm:ss.zzz"),
+                    step,
+                    detailText,
+                    "| step +" + stepMs + "ms")
+        _batchPerfLastMs = now
     }
 
     function scheduleMaybeFillTargetAreaName() {
@@ -160,13 +202,6 @@ Item {
 
     Timer {
         id: targetAreaRelayoutTimer
-        interval: 0
-        repeat: false
-        onTriggered: mapDisplay.refreshTargetAreaMarkerLayout()
-    }
-
-    Timer {
-        id: delayedTargetAreaRelayoutTimer
         interval: 300
         repeat: false
         onTriggered: mapDisplay.refreshTargetAreaMarkerLayout()
@@ -333,13 +368,8 @@ Item {
         id: tileMonitor
         map: mapView.map
         onTilesReady: {
-            mapDisplay.tilesReady()
-            if (tileWaitHelper.callback) {
-                tileWaitTimer.stop()
-                const cb = tileWaitHelper.callback
-                tileWaitHelper.callback = null
-                cb()
-            }
+            _batchPerfLog("tiles.signal", _tileWaitLabel || "")
+            mapDisplay._completeTileWait()
         }
     }
 
@@ -461,13 +491,6 @@ Item {
 
     // 车辆/轨迹 代理函数
     function addVehicle(pn, coord, dir, spd, color)     { vehicleLayer.addVehicle(pn, coord, dir, spd, color) }
-    function addVehicleTrajectory(pn, pts, color) {
-        syncTargetAreaMapMarkers()
-        vehicleLayer.addVehicleTrajectory(pn, pts, color)
-        targetAreaRelayoutTimer.restart()
-        delayedTargetAreaRelayoutTimer.restart()
-    }
-    function updateTrajectoryCoordinates(pts)            { vehicleLayer.updateTrajectoryCoordinates(pts) }
     function clearTrajectory()                           { vehicleLayer.clearTrajectory() }
     function updateVehiclePosition(pn, coord, dir, spd) { vehicleLayer.updateVehiclePosition(pn, coord, dir, spd) }
     function showSearchResult(lat, lon)                 { vehicleLayer.showSearchResult(lat, lon) }
@@ -515,8 +538,8 @@ Item {
         } else {
             mapAnimations.animateToCenter(coord)
             mapAnimations.animateToZoom(zoom)
+            Qt.callLater(refreshTargetAreaMarkerLayout)
             targetAreaRelayoutTimer.restart()
-            delayedTargetAreaRelayoutTimer.restart()
         }
         vehicleLayer.resetInteraction()
     }

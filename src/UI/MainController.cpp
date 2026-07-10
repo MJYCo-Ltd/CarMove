@@ -342,6 +342,9 @@ void MainController::loadTrajectoryForCapture(const QString& plateNumber,
     }
 
     m_captureTrajectoryPending = true;
+    m_captureLoadTimer.start();
+    AppLogger::info(QStringLiteral("[BatchShot] trajectory.load.start plate=%1 %2~%3")
+                        .arg(plateNumber.trimmed(), startDateIso, endDateIso));
     m_selectedVehicle = plateNumber.trimmed();
     emit selectedVehicleChanged();
 
@@ -419,31 +422,6 @@ void MainController::toggleCoordinateConversion()
     } catch (...) {
         emit errorOccurred(HANDLE_COORD_ERROR("坐标转换切换时发生未知错误"));
     }
-}
-
-QVariantList MainController::getConvertedTrajectory()
-{
-    QVariantList result;
-    
-    try {
-        if (m_vehicleManager) {
-            auto trajectory = m_coordinateConversionEnabled ? 
-                             m_vehicleManager->getConvertedTrajectory() : 
-                             m_vehicleManager->getCurrentTrajectory();
-            
-            for (const auto& record : trajectory) {
-                result.append(vehicleRecordToVariant(record));
-            }
-        }
-    } catch (const std::exception& e) {
-        AppLogger::warn(QStringLiteral("获取转换后轨迹失败: %1").arg(e.what()));
-        emit errorOccurred(HANDLE_COORD_ERROR(QString("获取转换后轨迹失败: %1").arg(e.what())));
-    } catch (...) {
-        AppLogger::warn(QStringLiteral("获取转换后轨迹时发生未知错误"));
-        emit errorOccurred(HANDLE_COORD_ERROR("获取转换后轨迹时发生未知错误"));
-    }
-    
-    return result;
 }
 
 void MainController::persistTargetAreaConfig()

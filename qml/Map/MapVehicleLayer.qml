@@ -26,7 +26,7 @@ Item {
     property bool   userHasInteracted:  false
     property bool   suppressInteractionTracking: false
     property int    fitViewportMargin:  80
-    property var    _pendingFitPoints:   null
+    property var    _pendingFitShape:   null
     property int    _pendingFitAttempts: 0
     property var    searchResultPin:    null
     property var    navigationPolyline:  null
@@ -35,7 +35,6 @@ Item {
 
     signal vehicleClicked(string plateNumber, double speed, int direction)
 
-    // ── 节流更新定时器 ────────────────────────────────────────────
     Timer {
         id: throttleTimer
         interval: vehicleLayer.updateThrottleMs; repeat: false
@@ -55,8 +54,6 @@ Item {
         repeat: true
         onTriggered: vehicleLayer._retryPendingFit()
     }
-
-    // ── 公共接口 ─────────────────────────────────────────────────
 
     function _createPlacemark(initialProps) {
         var props = initialProps || {}
@@ -90,7 +87,23 @@ Item {
         if (v) { v.coordinate = coordinate; v.direction = direction; v.speed = speed }
     }
 
-    function addVehicleTrajectory(plateNumber, trajectoryPoints, vehicleColor) {
+    function _mountTrajectoryPolylines(sourcePaths) {
+        if (!sourcePaths || !mapTarget)
+            return
+        for (var i = 0; i < sourcePaths.length; ++i) {
+            var pathCoords = sourcePaths[i]
+            if (!pathCoords || pathCoords.length < 2)
+                continue
+            var line = _createMapLineFromPath(pathCoords, currentVehicleColor, 3)
+            if (line) {
+                mapTarget.addMapItem(line)
+                trajectoryItems.push(line)
+            }
+        }
+    }
+
+    /// fitMode: "auto" 交互模式自适应；"now" 批量截图立即 fit；"none" 不 fit
+    function showVehicleTrajectory(plateNumber, vehicleColor, fitMode) {
         clearTrajectory()
         currentVehicle = plateNumber
         if (vehicleColor)
@@ -98,56 +111,27 @@ Item {
         if (typeof controller === 'undefined' || !controller || !mapTarget)
             return
 
-        var drawnLines = 0
-        if (trajectoryPoints && trajectoryPoints.length >= 2) {
-            var sourcePaths = controller.trajectorySegmentPolylinePaths(trajectoryPoints)
-            for (var i = 0; sourcePaths && i < sourcePaths.length; ++i) {
-                var pathCoords = sourcePaths[i]
-                if (!pathCoords || pathCoords.length < 2)
-                    continue
-                var line = _createMapLineFromPath(pathCoords, currentVehicleColor, 3)
-                if (line) {
-                    mapTarget.addMapItem(line)
-                    trajectoryItems.push(line)
-                    drawnLines++
-                }
-            }
-        }
+        _mountTrajectoryPolylines(controller.trajectoryDisplayPolylinePaths())
 
-        if (drawnLines === 0) {
-            var segmentCount = controller.trajectoryDisplaySegmentCount()
-            var pathsSnapshot = []
-            for (var j = 0; j < segmentCount; j++)
-                pathsSnapshot.push(controller.trajectoryDisplaySegmentPath(j))
-            for (var k = 0; k < pathsSnapshot.length; k++) {
-                var fallbackPath = pathsSnapshot[k]
-                if (!fallbackPath || fallbackPath.length < 2)
-                    continue
-                var fallbackLine = _createMapLineFromPath(fallbackPath, currentVehicleColor, 3)
-                if (fallbackLine) {
-                    mapTarget.addMapItem(fallbackLine)
-                    trajectoryItems.push(fallbackLine)
-                    drawnLines++
-                }
-            }
-        }
-
-        if (trajectoryPoints && trajectoryPoints.length > 0) {
-            var first = trajectoryPoints[0]
-            var fc = controller.trajectoryPointToCoordinate(first)
-            if (fc && fc.isValid) {
-                addVehicle(plateNumber, fc, first.direction || 0, first.speed || 0, currentVehicleColor)
-                if (autoFitEnabled)
-                    _fitViewport(trajectoryPoints)
-            }
+        var startMarker = controller.trajectoryDisplayStartMarker()
+        if (startMarker && startMarker.coordinate && startMarker.coordinate.isValid) {
+            addVehicle(plateNumber,
+                       startMarker.coordinate,
+                       startMarker.direction || 0,
+                       startMarker.speed || 0,
+                       currentVehicleColor)
+            if (fitMode === "auto" && autoFitEnabled)
+                scheduleTrajectoryDisplayViewportFit()
+            else if (fitMode === "now")
+                fitTrajectoryDisplayViewportNow()
         }
     }
 
-    function updateTrajectoryCoordinates(newPoints) {
-        if (currentVehicle && newPoints && newPoints.length > 0) {
-            resetInteraction()
-            addVehicleTrajectory(currentVehicle, newPoints, currentVehicleColor)
-        }
+    function refreshVehicleTrajectory() {
+        if (!currentVehicle)
+            return
+        resetInteraction()
+        showVehicleTrajectory(currentVehicle, currentVehicleColor, autoFitEnabled ? "auto" : "none")
     }
 
     function clearTrajectory() {
@@ -165,7 +149,6 @@ Item {
         resetInteraction()
     }
 
-    /// 目标区域中心变更后，刷新地图上已有车辆标记角标（经过次数）
     function recalculateTargetAreaVisitCounts(lat, lon) {
         if (typeof controller === 'undefined' || !controller)
             return
@@ -221,7 +204,11 @@ Item {
             return
         mapTarget.addMapItem(line)
         navigationPolyline = line
-        _fitViewport(points)
+        if (typeof controller !== 'undefined' && controller) {
+            var navShape = controller.geoPathForViewport(points)
+            if (navShape)
+                _doFitViewportShape(navShape)
+        }
     }
 
     function clearNavigationRoute() {
@@ -292,9 +279,6 @@ Item {
 
     function resetInteraction() { userHasInteracted = false; autoFitEnabled = true }
 
-    // ── 私有辅助 ─────────────────────────────────────────────────
-
-    /// MapItem 须 parent 为 null，仅通过 addMapItem 加入地图
     function _createMapLineFromPath(pathCoords, lineColor, lineWidth, opacity) {
         var comp = Qt.createComponent("qrc:/MapLine.qml")
         if (comp.status !== Component.Ready) {
@@ -333,20 +317,20 @@ Item {
         v.speed = speed
     }
 
-    function _fitViewport(trajectoryPoints) {
-        if (typeof controller === 'undefined' || !controller || !mapTarget || !trajectoryPoints)
+    function scheduleTrajectoryDisplayViewportFit() {
+        if (typeof controller === 'undefined' || !controller || !mapTarget)
             return
-        _pendingFitPoints = trajectoryPoints
+        _pendingFitShape = controller.trajectoryDisplayViewportShape()
         _pendingFitAttempts = 0
         _retryPendingFit()
     }
 
     function _retryPendingFit() {
-        if (!_pendingFitPoints)
+        if (!_pendingFitShape)
             return
         if (layoutMapView && layoutMapView.width > 10 && layoutMapView.height > 10) {
-            _doFitViewport(_pendingFitPoints)
-            _pendingFitPoints = null
+            _doFitViewportShape(_pendingFitShape)
+            _pendingFitShape = null
             _pendingFitAttempts = 0
             pendingFitTimer.stop()
             return
@@ -355,28 +339,30 @@ Item {
         if (_pendingFitAttempts === 1)
             pendingFitTimer.start()
         else if (_pendingFitAttempts > 40) {
-            _doFitViewport(_pendingFitPoints)
-            _pendingFitPoints = null
+            _doFitViewportShape(_pendingFitShape)
+            _pendingFitShape = null
             _pendingFitAttempts = 0
             pendingFitTimer.stop()
         }
     }
 
-    function _doFitViewport(trajectoryPoints) {
-        var shape = controller.geoPathForViewport(trajectoryPoints)
-        if (!shape)
+    function _doFitViewportShape(shape) {
+        if (!shape || !mapTarget)
             return
         suppressInteractionTracking = true
         mapTarget.fitViewportToGeoShape(shape, Qt.size(fitViewportMargin, fitViewportMargin))
         Qt.callLater(function() { suppressInteractionTracking = false })
     }
 
-    /// 批量截图：立即 fit 轨迹视口，不经过 pendingFit 重试等待
-    function fitTrajectoryViewportNow(trajectoryPoints) {
+    function fitTrajectoryDisplayViewportNow() {
+        if (typeof controller === 'undefined' || !controller || !mapTarget)
+            return
         pendingFitTimer.stop()
-        _pendingFitPoints = null
+        _pendingFitShape = null
         _pendingFitAttempts = 0
-        _doFitViewport(trajectoryPoints)
+        var shape = controller.trajectoryDisplayViewportShape()
+        if (shape)
+            _doFitViewportShape(shape)
     }
 
     Connections {
