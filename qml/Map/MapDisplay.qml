@@ -35,14 +35,14 @@ Item {
     property bool _targetPlacemarkComponentHooked: false
 
     property var pendingCapture: null
-    /// fit / 定位后由 onTilesReady 置 true，用于批量截图等待瓦片
-    property bool tilesReady: false
+    /// 当前视口已稳定且可见瓦片齐全，可以截图
+    readonly property bool viewportReadyState: tileMonitor.viewportReadyState
 
     signal batchCaptureFinished(bool success, string captureLabel)
 
-    function markTilesPending() {
-        tilesReady = false
-        _batchPerfLog("tiles.pending", "")
+    function markViewportPending() {
+        tileMonitor.beginViewportChange()
+        _batchPerfLog("viewport.pending", "")
     }
 
     function cancelTileWait() {
@@ -59,14 +59,15 @@ Item {
             stage: "waitTiles"
         }
         _batchPerfLog("capture.begin", label)
+        markViewportPending()
         if (kind === "trajectory")
             prepareCaptureTrajectory(plateNumber, vehicleColor || "#3498db")
         else if (kind === "targetArea")
             centerToLocation(true, 18, true)
-        _batchPerfLog("capture.viewport.ready", label)
+        _batchPerfLog("capture.viewport.requested", label)
         tileWaitTimer.interval = captureTileTimeoutMs
         tileWaitTimer.restart()
-        _batchPerfLog("tiles.wait", label + " await tilesReady=" + tilesReady)
+        _batchPerfLog("viewport.wait", label + " ready=" + viewportReadyState)
         tryFinishPendingCapture(false)
     }
 
@@ -81,12 +82,12 @@ Item {
     function tryFinishPendingCapture(viaTimeout) {
         if (!pendingCapture || pendingCapture.stage !== "waitTiles")
             return
-        if (!viaTimeout && !tilesReady)
+        if (!viaTimeout && !viewportReadyState)
             return
 
         tileWaitTimer.stop()
-        _batchPerfLog("tiles.ready", pendingCapture.label + (viaTimeout ? " timeout" : " ready"))
-        _batchPerfLog("capture.tiles.ready", pendingCapture.label)
+        _batchPerfLog("viewport.ready", pendingCapture.label + (viaTimeout ? " timeout" : " ready"))
+        _batchPerfLog("capture.viewport.ready", pendingCapture.label)
         pendingCapture.stage = "grab"
         _executePendingGrab()
     }
@@ -147,7 +148,7 @@ Item {
         repeat: false
         onTriggered: {
             const label = pendingCapture ? pendingCapture.label : ""
-            _batchPerfLog("tiles.timeout", label + " tilesReady=" + tilesReady)
+            _batchPerfLog("viewport.timeout", label + " ready=" + viewportReadyState)
             tryFinishPendingCapture(true)
         }
     }
@@ -396,10 +397,11 @@ Item {
     MapTileMonitor {
         id: tileMonitor
         map: mapView.map
-        onTilesReady: {
-            mapDisplay.tilesReady = true
-            _batchPerfLog("tiles.signal", mapDisplay.pendingCapture ? mapDisplay.pendingCapture.label : "")
-            mapDisplay.tryFinishPendingCapture(false)
+        onViewportReadyStateChanged: {
+            if (viewportReadyState) {
+                _batchPerfLog("viewport.signal", mapDisplay.pendingCapture ? mapDisplay.pendingCapture.label : "")
+                mapDisplay.tryFinishPendingCapture(false)
+            }
         }
     }
 
@@ -556,7 +558,7 @@ Item {
     function focusTargetArea(zoomLevel, instant) {
         if (!controller)
             return
-        markTilesPending()
+        markViewportPending()
         syncTargetAreaMapMarkers()
         var coord = controller.targetAreaMapCoordinate()
         if (!coord || !coord.isValid)

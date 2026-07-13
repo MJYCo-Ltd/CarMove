@@ -406,15 +406,15 @@ Item {
         }
     }
 
-    function _markMapTilesPending() {
-        if (parent && parent.markTilesPending)
-            parent.markTilesPending()
+    function _markViewportPending() {
+        if (parent && parent.markViewportPending)
+            parent.markViewportPending()
     }
 
     function _doFitViewportShape(shape) {
         if (!shape || !mapTarget)
             return
-        _markMapTilesPending()
+        _markViewportPending()
         suppressInteractionTracking = true
         mapTarget.fitViewportToGeoShape(shape, Qt.size(fitViewportMargin, fitViewportMargin))
         Qt.callLater(function() {
