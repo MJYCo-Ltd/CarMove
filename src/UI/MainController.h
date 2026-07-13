@@ -110,6 +110,7 @@ public:
     Q_INVOKABLE QVariantList trajectoryDisplayPolylinePaths() const;
     Q_INVOKABLE QVariant trajectoryDisplayViewportShape() const;
     Q_INVOKABLE QVariantMap trajectoryDisplayStartMarker() const;
+    Q_INVOKABLE QVariantMap trajectoryDisplayNearestMarker(double latitude, double longitude) const;
     Q_INVOKABLE void setTargetAreaCenter(double latitude, double longitude, const QString& name);
     Q_INVOKABLE int calculateTargetAreaVisitCount(const QString& plateNumber, double targetLat, double targetLon, double radiusMeters) const;
     Q_INVOKABLE int targetAreaVisitCountForPlate(const QString& plateNumber) const;
@@ -148,7 +149,8 @@ signals:
     void coordinateConversionChanged();
     void vehiclePositionUpdated(const QString& plateNumber,
                                const QGeoCoordinate& position,
-                               int direction, double speed);
+                               int direction, double speed,
+                               const QDateTime& timestamp);
     void errorOccurred(const QString& error);
     void captureTrajectoryReady(bool success, int pointCount);
     void loadingProgress(int percentage);

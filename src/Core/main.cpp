@@ -1,6 +1,7 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QQmlError>
 #include <QQuickStyle>
 #include <QtLocation/QGeoServiceProvider>
 
@@ -9,62 +10,125 @@
 #include "Business/ExcelPreviewModel.h"
 #include "Core/AppLogger.h"
 
-int main(int argc, char *argv[])
+namespace {
+
+void logStartupFailure(const QString& message)
+{
+    AppLogger::critical(message);
+    AppLogger::flush();
+}
+
+void installQmlWarningLogger(QQmlApplicationEngine& engine)
+{
+    QObject::connect(
+        &engine,
+        &QQmlEngine::warnings,
+        &engine,
+        [](const QList<QQmlError>& warnings) {
+            for (const QQmlError& error : warnings) {
+                AppLogger::error(QStringLiteral("QML 错误: %1").arg(error.toString()));
+            }
+            if (!warnings.isEmpty()) {
+                AppLogger::flush();
+            }
+        });
+}
+
+} // namespace
+
+int main(int argc, char* argv[])
 {
     QGuiApplication app(argc, argv);
-    
-    // Set application properties
+
     app.setApplicationName("CarMove Tracker");
     app.setApplicationVersion("1.0.0");
     app.setOrganizationName("CarMove");
 
     AppLogger::initialize();
-    
-    // Set Qt Quick style to Basic for better customization support
+    AppLogger::info(QStringLiteral("应用启动 | argc=%1").arg(argc));
+
     QQuickStyle::setStyle("Material");
-    
-    // Register QML types for all components
+
     qmlRegisterType<MainController>("CarMove", 1, 0, "MainController");
     qmlRegisterType<ConfigManager>("CarMove", 1, 0, "ConfigManager");
     qmlRegisterType<ExcelPreviewModel>("CarMove", 1, 0, "ExcelPreviewModel");
 
-    // Create QML engine
     QQmlApplicationEngine engine;
+    installQmlWarningLogger(engine);
 
-    // QGroundControl 1.0 (MapTileMonitor) 由 QGCLocation geoservice 插件在 setQmlEngine 时注册。
-    // 须在加载 QML 前触发，否则 import QGroundControl 1.0 会报 module is not installed。
     QGeoServiceProvider qgcGeoService(QStringLiteral("QGroundControl"));
     qgcGeoService.setQmlEngine(&engine);
     if (!qgcGeoService.mappingManager()) {
-        qWarning() << "QGroundControl geoservice unavailable:"
-                   << qgcGeoService.mappingErrorString();
+        AppLogger::warn(QStringLiteral("QGroundControl 地图服务不可用: %1")
+                            .arg(qgcGeoService.mappingErrorString()));
     }
 
-    // Create and register main controller
     MainController controller;
     engine.rootContext()->setContextProperty("controller", &controller);
 
     QObject::connect(&app, &QGuiApplication::aboutToQuit, [&controller]() {
         controller.prepareForApplicationShutdown();
+        AppLogger::info(QStringLiteral("应用即将退出"));
         AppLogger::shutdown();
     });
 
-    // 地图服务：经 MapServiceManager 统一管理，保留 geocoder/routePlanner 别名以兼容现有 QML
     if (controller.mapService()) {
         engine.rootContext()->setContextProperty("mapService", controller.mapService());
         engine.rootContext()->setContextProperty("geocoder", controller.mapService()->geocoder());
         engine.rootContext()->setContextProperty("routePlanner", controller.mapService()->routePlanner());
+    } else {
+        AppLogger::warn(QStringLiteral("MapService 未就绪，地图相关功能可能不可用"));
     }
 
-    // Load main QML file
     const QUrl url(QStringLiteral("qrc:/MainWindow.qml"));
-    QObject::connect(&engine, &QQmlApplicationEngine::objectCreated,
-                     &app, [url](QObject *obj, const QUrl &objUrl) {
-        if (!obj && url == objUrl)
-            QCoreApplication::exit(-1);
-    }, Qt::QueuedConnection);
-    
+
+    QObject::connect(
+        &engine,
+        &QQmlApplicationEngine::objectCreationFailed,
+        &app,
+        [](const QUrl& objUrl) {
+            logStartupFailure(QStringLiteral("QML 对象创建失败: %1").arg(objUrl.toString()));
+        });
+
+    QObject::connect(
+        &engine,
+        &QQmlApplicationEngine::objectCreated,
+        &app,
+        [url](QObject* obj, const QUrl& objUrl) {
+            if (url != objUrl) {
+                return;
+            }
+
+            if (!obj) {
+                logStartupFailure(QStringLiteral("主界面 QML 创建失败: %1").arg(objUrl.toString()));
+                QCoreApplication::exit(-1);
+                return;
+            }
+
+            AppLogger::info(QStringLiteral("主界面 QML 创建成功: %1").arg(objUrl.toString()));
+        },
+        Qt::QueuedConnection);
+
+    AppLogger::info(QStringLiteral("开始加载 QML: %1").arg(url.toString()));
     engine.load(url);
-    
-    return app.exec();
+    AppLogger::info(QStringLiteral("engine.load 已返回 | rootObjects=%1")
+                        .arg(engine.rootObjects().size()));
+    AppLogger::flush();
+
+    const QList<QObject*> rootObjects = engine.rootObjects();
+    if (rootObjects.isEmpty()) {
+        logStartupFailure(QStringLiteral("QML 加载后无根对象，界面无法显示 | url=%1").arg(url.toString()));
+        AppLogger::shutdown();
+        return -1;
+    }
+
+    AppLogger::info(QStringLiteral("QML 根对象数量=%1，进入事件循环").arg(rootObjects.size()));
+    const int exitCode = app.exec();
+
+    if (exitCode != 0) {
+        AppLogger::warn(QStringLiteral("应用退出 | exitCode=%1").arg(exitCode));
+        AppLogger::flush();
+    }
+
+    return exitCode;
 }

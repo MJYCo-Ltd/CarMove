@@ -26,6 +26,8 @@ MapQuickItem {
     property real _layoutContentHeight: 40
     property real _layoutAnchorX: 40
     property real _layoutAnchorY: 20
+    property real _layoutLabelX: 0
+    property string _layoutLabelAlignX: "center"
 
     // ── 文字 / 目标 ────────────────────────────────────────────
     property string text: ""
@@ -43,6 +45,7 @@ MapQuickItem {
     property double speed: 0
     property string vehicleColor: "#3498db"
     property int visitDays: 0
+    property string positionTimeText: ""
 
     // ── 导航起终点 ─────────────────────────────────────────────
     property bool isStartPin: true
@@ -97,22 +100,24 @@ MapQuickItem {
             return
 
         var measured = {
-            labelWidth: root._isVehicle ? vehiclePlateBadge.width
+            labelWidth: root._isVehicle ? vehicleLabelColumn.width
                         : (root._isGeo ? geoOnlyLabel.width : primaryGeoLabel.width),
-            labelHeight: root._isVehicle ? vehiclePlateBadge.height
+            labelHeight: root._isVehicle ? vehicleLabelColumn.height
                         : (root._isGeo ? geoOnlyLabel.height : primaryGeoLabel.height)
         }
         var kind = _isTarget ? "target" : placemarkKind
         var metrics = MapMarkerLayout.metricsForKind(kind, measured)
-        metrics.edgeMargin = edgeMargin
+        metrics.edgeMargin = _isVehicle ? Math.max(edgeMargin, 48) : edgeMargin
         var placement = MapMarkerLayout.computePlacement(layoutMapView, coordinate, metrics)
         labelHorizontal = placement.horizontal
         labelVertical = placement.vertical
-        var anchor = MapMarkerLayout.computeAnchor(placement, metrics)
+        var anchor = MapMarkerLayout.computeAnchor(placement, metrics, layoutMapView, coordinate)
         _layoutAnchorX = anchor.anchorX
         _layoutAnchorY = anchor.anchorY
         _layoutContentWidth = anchor.contentWidth
         _layoutContentHeight = anchor.contentHeight
+        _layoutLabelX = anchor.labelX !== undefined ? anchor.labelX : (anchor.anchorX - measured.labelWidth / 2)
+        _layoutLabelAlignX = anchor.labelAlignX !== undefined ? anchor.labelAlignX : "center"
     }
 
     Timer {
@@ -125,6 +130,7 @@ MapQuickItem {
     onCoordinateChanged: scheduleViewportLayout()
     onTextChanged: scheduleViewportLayout()
     onPlateNumberChanged: scheduleViewportLayout()
+    onPositionTimeTextChanged: scheduleViewportLayout()
     Component.onCompleted: scheduleViewportLayout()
 
     Connections {
@@ -144,6 +150,7 @@ MapQuickItem {
 
     sourceItem: Item {
         id: srcRoot
+        clip: false
         width: root._usesViewportLayout ? root._layoutContentWidth
              : root._isGeo ? legacyGeoHitArea.width
              : root._isSearch ? searchCol.width
@@ -165,9 +172,9 @@ MapQuickItem {
                 id: vehicleIconHost
                 width: 24
                 height: 24
-                x: (parent.width - width) / 2
+                x: root._layoutAnchorX - width / 2
                 y: root.labelVertical === "top"
-                   ? (vehiclePlateBadge.height + 2)
+                   ? (vehicleLabelColumn.height + 2)
                    : 0
 
                 Rectangle {
@@ -228,13 +235,41 @@ MapQuickItem {
                 }
             }
 
-            MapPlateBadge {
-                id: vehiclePlateBadge
-                x: (parent.width - width) / 2
+            Column {
+                id: vehicleLabelColumn
+                spacing: 2
+                x: root._layoutLabelX
                 y: root.labelVertical === "top" ? 0 : (vehicleIconHost.height + 2)
-                plateText: root.plateNumber
-                fontPixelSize: 11
-                fontBold: false
+
+                MapPlateBadge {
+                    id: vehiclePlateBadge
+                    plateText: root.plateNumber
+                    fontPixelSize: 12
+                    fontBold: true
+                    anchors.horizontalCenter: parent.horizontalCenter
+                }
+
+                Rectangle {
+                    id: timeBadge
+                    visible: root.positionTimeText.length > 0
+                    color: "#2c3e50"
+                    border.color: "white"
+                    border.width: 1
+                    radius: 3
+                    width: timeLabel.width + 10
+                    height: timeLabel.height + 6
+                    anchors.horizontalCenter: parent.horizontalCenter
+
+                    Text {
+                        id: timeLabel
+                        anchors.centerIn: parent
+                        text: root.positionTimeText
+                        font.pixelSize: 12
+                        font.bold: true
+                        color: "#ffffff"
+                    }
+                }
+
                 onWidthChanged: if (root.layoutMapView) root.scheduleViewportLayout()
                 onHeightChanged: if (root.layoutMapView) root.scheduleViewportLayout()
             }

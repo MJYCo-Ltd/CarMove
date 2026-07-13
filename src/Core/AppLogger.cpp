@@ -190,3 +190,10 @@ void AppLogger::critical(const QString& message)
 {
     writeSpdlogDirect(spdlog::level::critical, message);
 }
+
+void AppLogger::flush()
+{
+    if (s_initialized) {
+        spdlog::default_logger()->flush();
+    }
+}

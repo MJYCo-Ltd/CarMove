@@ -18,6 +18,7 @@ public:
     static void warn(const QString& message);
     static void error(const QString& message);
     static void critical(const QString& message);
+    static void flush();
 
 private:
     static bool s_initialized;

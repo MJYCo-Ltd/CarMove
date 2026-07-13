@@ -142,6 +142,56 @@ QGeoPath geoPathFromRecords(const QList<TrajectoryPoint>& records, const QGeoCoo
     return path;
 }
 
+QVariantMap markerMapFromTrajectoryPoint(const TrajectoryPoint& point)
+{
+    const QGeoCoordinate coordinate = point.coordinate();
+    if (!coordinate.isValid()) {
+        return {};
+    }
+
+    QVariantMap result;
+    result.insert(QStringLiteral("coordinate"), QVariant::fromValue(coordinate));
+    result.insert(QStringLiteral("direction"), point.direction);
+    result.insert(QStringLiteral("speed"), point.speed);
+    result.insert(QStringLiteral("timestamp"), point.timestamp);
+    if (point.timestamp.isValid()) {
+        result.insert(QStringLiteral("timestampText"),
+                      point.timestamp.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss")));
+    }
+    return result;
+}
+
+const TrajectoryPoint* nearestTrajectoryPointTo(const QList<TrajectoryPoint>& trajectory,
+                                                double latitude,
+                                                double longitude)
+{
+    const QGeoCoordinate target(latitude, longitude);
+    if (!target.isValid() || trajectory.isEmpty()) {
+        return nullptr;
+    }
+
+    int nearestIndex = -1;
+    double nearestDistance = std::numeric_limits<double>::max();
+    for (int i = 0; i < trajectory.size(); ++i) {
+        const TrajectoryPoint& record = trajectory.at(i);
+        const QGeoCoordinate point = record.coordinate();
+        if (!point.isValid()) {
+            continue;
+        }
+
+        const double distance = target.distanceTo(point);
+        if (distance < nearestDistance) {
+            nearestDistance = distance;
+            nearestIndex = i;
+        }
+    }
+
+    if (nearestIndex < 0) {
+        return nullptr;
+    }
+    return &trajectory.at(nearestIndex);
+}
+
 } // namespace
 
 const QList<TrajectoryPoint>& MainController::activeTrajectoryRecords() const
@@ -200,18 +250,17 @@ QVariantMap MainController::trajectoryDisplayStartMarker() const
     if (records.isEmpty()) {
         return {};
     }
+    return markerMapFromTrajectoryPoint(records.first());
+}
 
-    const TrajectoryPoint& first = records.first();
-    const QGeoCoordinate coordinate = first.coordinate();
-    if (!coordinate.isValid()) {
+QVariantMap MainController::trajectoryDisplayNearestMarker(double latitude, double longitude) const
+{
+    const QList<TrajectoryPoint>& records = activeTrajectoryRecords();
+    const TrajectoryPoint* nearest = nearestTrajectoryPointTo(records, latitude, longitude);
+    if (!nearest) {
         return {};
     }
-
-    QVariantMap result;
-    result.insert(QStringLiteral("coordinate"), QVariant::fromValue(coordinate));
-    result.insert(QStringLiteral("direction"), first.direction);
-    result.insert(QStringLiteral("speed"), first.speed);
-    return result;
+    return markerMapFromTrajectoryPoint(*nearest);
 }
 
 void MainController::updateFilteredVehicleList()
@@ -450,37 +499,12 @@ bool MainController::seekVehicleToNearestTrajectoryPoint(double latitude, double
     const QList<TrajectoryPoint> trajectory =
         m_coordinateConversionEnabled ? m_vehicleManager->getConvertedTrajectory()
                                       : m_vehicleManager->getCurrentTrajectory();
-    if (trajectory.isEmpty())
-        return false;
-
-    const QGeoCoordinate target(latitude, longitude);
-    if (!target.isValid())
-        return false;
-
-    int nearestIndex = -1;
-    double nearestDistance = std::numeric_limits<double>::max();
-    for (int i = 0; i < trajectory.size(); ++i) {
-        const TrajectoryPoint& record = trajectory.at(i);
-        const QGeoCoordinate point(record.latitude, record.longitude);
-        if (!point.isValid())
-            continue;
-
-        const double distance = target.distanceTo(point);
-        if (distance < nearestDistance) {
-            nearestDistance = distance;
-            nearestIndex = i;
-        }
-    }
-
-    if (nearestIndex < 0)
-        return false;
-
-    const TrajectoryPoint& nearest = trajectory.at(nearestIndex);
-    if (!nearest.timestamp.isValid())
+    const TrajectoryPoint* nearest = nearestTrajectoryPointTo(trajectory, latitude, longitude);
+    if (!nearest || !nearest->timestamp.isValid())
         return false;
 
     if (m_timelineManager) {
-        m_timelineManager->seekToTime(nearest.timestamp);
+        m_timelineManager->seekToTime(nearest->timestamp);
     }
     return true;
 }

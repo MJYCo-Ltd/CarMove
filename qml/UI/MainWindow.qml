@@ -78,10 +78,6 @@ ApplicationWindow {
             Layout.preferredWidth: 60
             Layout.fillHeight: true
             onModeChanged: function(mode) {
-                trajectoryPanel.visible = (mode === "trajectory")
-                businessPanel.visible = (mode === "business")
-                geoSearchPanel.visible   = (mode === "search")
-                navigationPanel.visible  = (mode === "nav")
                 if (mode === "trajectory") {
                     mapDisplay.clearSearchResult()
                     mapDisplay.clearNavigationRoute()
@@ -100,7 +96,7 @@ ApplicationWindow {
             id: businessPanel
             Layout.fillWidth: true
             Layout.fillHeight: true
-            visible: mainWindow.isBusinessMode || mainWindow.batchScreenshotActive
+            visible: mainWindow.isBusinessMode
             configManager: controller ? controller.configManager : null
             batchScreenshotController: batchScreenshotController
         }
@@ -117,15 +113,16 @@ ApplicationWindow {
             id: geoSearchPanel
             Layout.preferredWidth: 300
             Layout.fillHeight: true
-            visible: false
+            visible: sidebarPanel.currentMode === "search"
             onLocateRequested: function(lat, lon, name) { mapDisplay.locateToPlace(lat, lon) }
             onTargetAreaRequested: function(lat, lon, name) { mapDisplay.setTargetAreaFromSearch(lat, lon, name) }
         }
 
         ColumnLayout {
+            id: mapColumn
             Layout.fillWidth: true
             Layout.fillHeight: true
-            visible: !mainWindow.isBusinessMode || mainWindow.batchScreenshotActive
+            visible: !mainWindow.isBusinessMode
 
             MapDisplay {
                 id: mapDisplay
@@ -150,7 +147,7 @@ ApplicationWindow {
             id: navigationPanel
             Layout.preferredWidth: 300
             Layout.fillHeight: true
-            visible: false
+            visible: sidebarPanel.currentMode === "nav"
             mapRef: mapDisplay
         }
     }
@@ -176,6 +173,8 @@ ApplicationWindow {
         property int targetCapturedCount: 0
         property int skippedCount: 0
         property string currentLabel: ""
+        /// 当前批量截图阶段："" | "trajectory" | "targetArea"
+        property string capturePhase: ""
 
         property real _perfBatchStartMs: 0
         property real _perfTaskStartMs: 0
@@ -226,7 +225,9 @@ ApplicationWindow {
             capturedCount = 0
             targetCapturedCount = 0
             skippedCount = 0
+            capturePhase = ""
             running = true
+            businessPanel.mountMap(mapDisplay)
             _perfBatchStartMs = Date.now()
             _perfLastMs = _perfBatchStartMs
             _perfLog("batch.start", "outputDir=" + folder)
@@ -239,6 +240,7 @@ ApplicationWindow {
 
             if (!controller.databaseConnected) {
                 running = false
+                businessPanel.unmountMap(mapDisplay, mapColumn)
                 excelModel.cancelScreenshotTasks()
                 _perfLog("batch.failed", "PostGIS 未连接")
                 errorDialog.showError("PostGIS 数据库未连接，请检查 CarMoveTracker.ini")
@@ -299,53 +301,62 @@ ApplicationWindow {
                 return
 
             _perfLog("trajectory.capture.request", "points=" + pointCount)
-            mapDisplay.prepareAndCaptureWhenReady(
-                function() {
-                    mapDisplay.prepareCaptureTrajectory(currentTask.plate, "#3498db")
-                },
+            capturePhase = "trajectory"
+            mapDisplay.beginBatchCaptureTrajectory(
+                currentTask.plate,
+                "#3498db",
                 controller.screenshotFilePath(outputDir, currentTask.plate,
-                                            currentTask.startDate, currentTask.endDate),
-                function(ok) {
-                    if (!running || !currentTask)
-                        return
-                    if (!ok) {
-                        skippedCount++
-                        batchScreenshotController._perfLog("trajectory.capture.failed", currentTask.plate)
-                        processNext()
-                        return
-                    }
-                    capturedCount++
-                    batchScreenshotController._perfLog("trajectory.capture.done", currentTask.plate)
-                    captureTargetAreaIfNeeded()
-                },
+                                              currentTask.startDate, currentTask.endDate),
                 "trajectory")
         }
 
-        function captureTargetAreaIfNeeded() {
+        function onBatchCaptureFinished(success, captureLabel) {
+            if (!running || !currentTask)
+                return
+
+            if (capturePhase === "trajectory") {
+                if (!success) {
+                    skippedCount++
+                    _perfLog("trajectory.capture.failed", currentTask.plate)
+                    capturePhase = ""
+                    processNext()
+                    return
+                }
+                capturedCount++
+                _perfLog("trajectory.capture.done", currentTask.plate)
+                beginTargetAreaCaptureIfNeeded()
+                return
+            }
+
+            if (capturePhase === "targetArea") {
+                if (success) {
+                    targetCapturedCount++
+                    _perfLog("targetArea.capture.done", currentTask.plate)
+                } else {
+                    _perfLog("targetArea.capture.failed", currentTask.plate)
+                }
+                capturePhase = ""
+                processNext()
+            }
+        }
+
+        function beginTargetAreaCaptureIfNeeded() {
             if (!running || !currentTask || !controller)
                 return
 
             const visitCount = controller.targetAreaVisitCountForPlate(currentTask.plate)
             if (visitCount <= 0) {
                 _perfLog("targetArea.skip", "visitCount=0")
+                capturePhase = ""
                 processNext()
                 return
             }
 
             _perfLog("targetArea.capture.request", "visitCount=" + visitCount)
-            mapDisplay.prepareAndCaptureWhenReady(
-                function() { mapDisplay.centerToLocation(true, 18, true) },
+            capturePhase = "targetArea"
+            mapDisplay.beginBatchCaptureTargetArea(
                 controller.targetAreaScreenshotFilePath(outputDir, currentTask.plate,
-                                                      currentTask.startDate, currentTask.endDate),
-                function(ok) {
-                    if (ok) {
-                        targetCapturedCount++
-                        batchScreenshotController._perfLog("targetArea.capture.done", currentTask.plate)
-                    } else {
-                        batchScreenshotController._perfLog("targetArea.capture.failed", currentTask.plate)
-                    }
-                    processNext()
-                },
+                                                        currentTask.startDate, currentTask.endDate),
                 "targetArea")
         }
 
@@ -360,10 +371,12 @@ ApplicationWindow {
             running = false
             currentTask = null
             currentLabel = ""
+            capturePhase = ""
             if (excelModel)
                 excelModel.cancelScreenshotTasks()
             mapDisplay.cancelTileWait()
             mapDisplay.resetCaptureViewportMargin()
+            businessPanel.unmountMap(mapDisplay, mapColumn)
             successDialog.showSuccess("截图完成：共处理 " + processedCount + " 条，大图 "
                                     + capturedCount + " 张，目标区小图 " + targetCapturedCount
                                     + " 张，跳过 " + skippedCount + " 条")
@@ -376,10 +389,19 @@ ApplicationWindow {
             running = false
             currentTask = null
             currentLabel = ""
+            capturePhase = ""
             if (excelModel)
                 excelModel.cancelScreenshotTasks()
             mapDisplay.cancelTileWait()
             mapDisplay.resetCaptureViewportMargin()
+            businessPanel.unmountMap(mapDisplay, mapColumn)
+        }
+    }
+
+    Connections {
+        target: mapDisplay
+        function onBatchCaptureFinished(success, captureLabel) {
+            batchScreenshotController.onBatchCaptureFinished(success, captureLabel)
         }
     }
 
@@ -423,8 +445,8 @@ ApplicationWindow {
 
         function onErrorOccurred(error) { errorDialog.showError(error) }
 
-        function onVehiclePositionUpdated(plateNumber, position, direction, speed) {
-            mapDisplay.updateVehiclePosition(plateNumber, position, direction, speed)
+        function onVehiclePositionUpdated(plateNumber, position, direction, speed, timestamp) {
+            mapDisplay.updateVehiclePosition(plateNumber, position, direction, speed, timestamp)
         }
     }
 }

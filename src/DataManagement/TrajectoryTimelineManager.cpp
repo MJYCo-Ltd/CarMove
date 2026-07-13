@@ -220,14 +220,19 @@ void TrajectoryTimelineManager::publishVehiclePositionAtCurrentTime()
             emit vehiclePositionUpdated(state.plateNumber,
                                         state.position,
                                         state.direction,
-                                        state.speed);
+                                        state.speed,
+                                        state.timestamp);
             return;
         }
     }
 
     if (states.size() == 1) {
         const TrajectoryTimeIndex::VehicleSnapshot& state = states.first();
-        emit vehiclePositionUpdated(state.plateNumber, state.position, state.direction, state.speed);
+        emit vehiclePositionUpdated(state.plateNumber,
+                                    state.position,
+                                    state.direction,
+                                    state.speed,
+                                    state.timestamp);
     }
 }
 

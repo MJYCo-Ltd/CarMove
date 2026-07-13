@@ -29,61 +29,89 @@ Item {
     property bool trajectoryModeActive: false
     /// 批量截图进行中：隐藏地图工具按钮，避免进入截图
     property bool batchScreenshotActive: false
-    property int captureFitMargin: 80
+    property int captureFitMargin: 120
     property bool _suppressMapInteractionFlag: false
     property var _targetPlacemarkComponent: null
     property bool _targetPlacemarkComponentHooked: false
 
-    property var _tileWaitCallback: null
-    property string _tileWaitLabel: ""
+    property var pendingCapture: null
+    /// fit / 定位后由 onTilesReady 置 true，用于批量截图等待瓦片
+    property bool tilesReady: false
+
+    signal batchCaptureFinished(bool success, string captureLabel)
+
+    function markTilesPending() {
+        tilesReady = false
+        _batchPerfLog("tiles.pending", "")
+    }
 
     function cancelTileWait() {
         tileWaitTimer.stop()
-        _tileWaitCallback = null
-        _tileWaitLabel = ""
+        pendingCapture = null
     }
 
-    function _completeTileWait() {
-        if (!_tileWaitCallback)
-            return
-        tileWaitTimer.stop()
-        const cb = _tileWaitCallback
-        const label = _tileWaitLabel
-        _tileWaitCallback = null
-        _tileWaitLabel = ""
-        _batchPerfLog("tiles.ready", label || "")
-        if (cb)
-            cb()
-    }
-
-    /// 等待 MapTileMonitor 下一次 onTilesReady（pending 归零时上报）
-    function waitForNextTilesReady(callback, timeoutMs, waitLabel) {
+    function _beginBatchCaptureViewport(kind, filePath, captureLabel, plateNumber, vehicleColor) {
         cancelTileWait()
-        if (!callback)
-            return
-        _tileWaitLabel = waitLabel || ""
-        _tileWaitCallback = callback
-        tileWaitTimer.interval = timeoutMs !== undefined ? timeoutMs : captureTileTimeoutMs
+        const label = captureLabel || kind || ""
+        pendingCapture = {
+            filePath: filePath,
+            label: label,
+            stage: "waitTiles"
+        }
+        _batchPerfLog("capture.begin", label)
+        if (kind === "trajectory")
+            prepareCaptureTrajectory(plateNumber, vehicleColor || "#3498db")
+        else if (kind === "targetArea")
+            centerToLocation(true, 18, true)
+        _batchPerfLog("capture.viewport.ready", label)
+        tileWaitTimer.interval = captureTileTimeoutMs
         tileWaitTimer.restart()
-        _batchPerfLog("tiles.wait", (waitLabel || "") + " await onTilesReady")
+        _batchPerfLog("tiles.wait", label + " await tilesReady=" + tilesReady)
+        tryFinishPendingCapture(false)
     }
 
-    /// 批量截图：准备视口 → 等 onTilesReady → 保存截图
-    function prepareAndCaptureWhenReady(prepareFn, filePath, callback, captureLabel) {
-        _batchPerfLog("capture.begin", captureLabel || filePath)
-        waitForNextTilesReady(function() {
-            _batchPerfLog("capture.tiles.ready", captureLabel || "")
-            _batchPerfLog("capture.grab.begin", captureLabel || "")
-            captureScreenshotTo(filePath, function(ok, savedPath) {
-                _batchPerfLog("capture.grab.done", (captureLabel || "") + " ok=" + ok)
-                if (callback)
-                    callback(ok, savedPath)
-            })
-        }, captureTileTimeoutMs, captureLabel || "")
-        if (prepareFn) {
-            prepareFn()
-            _batchPerfLog("capture.viewport.ready", captureLabel || "")
-        }
+    function beginBatchCaptureTrajectory(plateNumber, vehicleColor, filePath, captureLabel) {
+        _beginBatchCaptureViewport("trajectory", filePath, captureLabel || "trajectory", plateNumber, vehicleColor)
+    }
+
+    function beginBatchCaptureTargetArea(filePath, captureLabel) {
+        _beginBatchCaptureViewport("targetArea", filePath, captureLabel || "targetArea", "", "")
+    }
+
+    function tryFinishPendingCapture(viaTimeout) {
+        if (!pendingCapture || pendingCapture.stage !== "waitTiles")
+            return
+        if (!viaTimeout && !tilesReady)
+            return
+
+        tileWaitTimer.stop()
+        _batchPerfLog("tiles.ready", pendingCapture.label + (viaTimeout ? " timeout" : " ready"))
+        _batchPerfLog("capture.tiles.ready", pendingCapture.label)
+        pendingCapture.stage = "grab"
+        _executePendingGrab()
+    }
+
+    function _executePendingGrab() {
+        if (!pendingCapture || pendingCapture.stage !== "grab")
+            return
+
+        const pending = pendingCapture
+        _batchPerfLog("capture.grab.begin", pending.label)
+        vehicleLayer.finalizeVehicleLabelsForCapture()
+
+        mapView.grabToImage(function(result) {
+            var success = result && result.saveToFile(pending.filePath)
+            mapDisplay._finishPendingGrab(success)
+        })
+    }
+
+    function _finishPendingGrab(success) {
+        if (!pendingCapture)
+            return
+        const captureLabel = pendingCapture.label
+        _batchPerfLog("capture.grab.done", captureLabel + " ok=" + success)
+        pendingCapture = null
+        batchCaptureFinished(success, captureLabel)
     }
 
     /// 批量截图：轨迹绘制与视口计算均在 C++ 完成
@@ -118,12 +146,13 @@ Item {
         id: tileWaitTimer
         repeat: false
         onTriggered: {
-            _batchPerfLog("tiles.timeout", _tileWaitLabel)
-            _completeTileWait()
+            const label = pendingCapture ? pendingCapture.label : ""
+            _batchPerfLog("tiles.timeout", label + " tilesReady=" + tilesReady)
+            tryFinishPendingCapture(true)
         }
     }
 
-    readonly property int captureTileTimeoutMs: 12000
+    readonly property int captureTileTimeoutMs: 5000
 
     property real _batchPerfLastMs: 0
 
@@ -368,8 +397,9 @@ Item {
         id: tileMonitor
         map: mapView.map
         onTilesReady: {
-            _batchPerfLog("tiles.signal", _tileWaitLabel || "")
-            mapDisplay._completeTileWait()
+            mapDisplay.tilesReady = true
+            _batchPerfLog("tiles.signal", mapDisplay.pendingCapture ? mapDisplay.pendingCapture.label : "")
+            mapDisplay.tryFinishPendingCapture(false)
         }
     }
 
@@ -492,7 +522,9 @@ Item {
     // 车辆/轨迹 代理函数
     function addVehicle(pn, coord, dir, spd, color)     { vehicleLayer.addVehicle(pn, coord, dir, spd, color) }
     function clearTrajectory()                           { vehicleLayer.clearTrajectory() }
-    function updateVehiclePosition(pn, coord, dir, spd) { vehicleLayer.updateVehiclePosition(pn, coord, dir, spd) }
+    function updateVehiclePosition(pn, coord, dir, spd, ts) {
+        vehicleLayer.updateVehiclePosition(pn, coord, dir, spd, ts)
+    }
     function showSearchResult(lat, lon)                 { vehicleLayer.showSearchResult(lat, lon) }
     function clearSearchResult()                         { vehicleLayer.clearSearchResult() }
     function snapVehicleToNearestTrajectoryPoint(lat, lon) {
@@ -524,6 +556,7 @@ Item {
     function focusTargetArea(zoomLevel, instant) {
         if (!controller)
             return
+        markTilesPending()
         syncTargetAreaMapMarkers()
         var coord = controller.targetAreaMapCoordinate()
         if (!coord || !coord.isValid)
@@ -552,8 +585,17 @@ Item {
         if (!controller)
             return
         var coord = controller.targetAreaMapCoordinate()
-        if (coord && coord.isValid)
-            snapVehicleToNearestTrajectoryPoint(coord.latitude, coord.longitude)
+        if (coord && coord.isValid) {
+            if (forCapture && vehicleLayer.currentVehicle) {
+                var marker = controller.trajectoryDisplayNearestMarker(coord.latitude, coord.longitude)
+                if (marker && marker.coordinate && marker.coordinate.isValid)
+                    vehicleLayer.applyVehicleMarker(vehicleLayer.currentVehicle, marker)
+                else
+                    snapVehicleToNearestTrajectoryPoint(coord.latitude, coord.longitude)
+            } else {
+                snapVehicleToNearestTrajectoryPoint(coord.latitude, coord.longitude)
+            }
+        }
         if (forCapture)
             vehicleLayer.autoFitEnabled = false
     }
@@ -562,7 +604,9 @@ Item {
         captureScreenshotTo("")
     }
 
-    function captureScreenshotTo(filePath, callback) {
+    /// 手动截图（非批量）；grabToImage 为 Qt 异步 API，结果在函数内处理
+    function captureScreenshotTo(filePath) {
+        vehicleLayer.finalizeVehicleLabelsForCapture()
         var targetPath = filePath
         if (!targetPath || targetPath.length === 0) {
             var name = vehicleLayer.currentVehicle
@@ -572,13 +616,11 @@ Item {
         }
 
         mapView.grabToImage(function(result) {
-            var ok = result.saveToFile(targetPath)
+            var ok = result && result.saveToFile(targetPath)
             if (ok && (!filePath || filePath.length === 0)) {
                 var fileName = targetPath.substring(targetPath.lastIndexOf("/") + 1)
                 mapNotifications.showScreenshotNotification(fileName)
             }
-            if (callback)
-                callback(ok, targetPath)
         })
     }
 

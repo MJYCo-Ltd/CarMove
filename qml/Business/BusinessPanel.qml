@@ -11,6 +11,25 @@ Rectangle {
     property var configManager: null
     property var batchScreenshotController: null
 
+    readonly property bool batchScreenshotRunning: batchScreenshotController
+                                                   && batchScreenshotController.running
+
+    function mountMap(mapItem) {
+        if (!mapItem)
+            return
+        mapItem.parent = mapPreviewHost
+        mapItem.anchors.fill = mapPreviewHost
+    }
+
+    function unmountMap(mapItem, mapColumn) {
+        if (!mapItem || !mapColumn)
+            return
+        mapItem.parent = mapColumn
+        mapItem.anchors.fill = undefined
+        mapItem.Layout.fillWidth = true
+        mapItem.Layout.fillHeight = true
+    }
+
     ExcelPreviewModel {
         id: excelModel
         onLoadFinished: function(success) {
@@ -269,7 +288,7 @@ Rectangle {
         ScrollView {
             Layout.fillWidth: true
             Layout.preferredHeight: 40
-            visible: excelModel.sheetCount > 0
+            visible: excelModel.sheetCount > 0 && !businessPanel.batchScreenshotRunning
             clip: true
             ScrollBar.horizontal.policy: ScrollBar.AsNeeded
             ScrollBar.vertical.policy: ScrollBar.AlwaysOff
@@ -298,13 +317,13 @@ Rectangle {
             text: excelModel.currentSheetStatus
             color: "#7f8c8d"
             font.pixelSize: 11
-            visible: excelModel.sheetCount > 0 && !excelModel.loading
+            visible: excelModel.sheetCount > 0 && !excelModel.loading && !businessPanel.batchScreenshotRunning
         }
 
         RowLayout {
             Layout.fillWidth: true
             spacing: 16
-            visible: excelModel.hasData && !excelModel.loading
+            visible: excelModel.hasData && !excelModel.loading && !businessPanel.batchScreenshotRunning
 
             Row {
                 spacing: 4
@@ -338,12 +357,20 @@ Rectangle {
             border.color: "#dcdde1"
             border.width: 1
             radius: 4
+            clip: true
+
+            Item {
+                id: mapPreviewHost
+                anchors.fill: parent
+                anchors.margins: 1
+            }
 
             ScrollView {
                 id: tableScroll
                 anchors.fill: parent
                 anchors.margins: 1
                 clip: true
+                visible: !businessPanel.batchScreenshotRunning
                 ScrollBar.horizontal.policy: ScrollBar.AsNeeded
                 ScrollBar.vertical.policy: ScrollBar.AsNeeded
 
@@ -421,7 +448,7 @@ Rectangle {
                       : "请点击「打开 Excel 文件」选择 .xlsx / .xls，将自动识别并标出车牌列与时间列"
                 color: "#7f8c8d"
                 font.pixelSize: 14
-                visible: !excelModel.hasData && !excelModel.loading
+                visible: !excelModel.hasData && !excelModel.loading && !businessPanel.batchScreenshotRunning
             }
         }
     }

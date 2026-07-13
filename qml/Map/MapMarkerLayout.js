@@ -70,15 +70,118 @@ function computePlacement(mapView, coordinate, opts) {
     return { horizontal: h, vertical: v }
 }
 
-function computeAnchor(placement, opts) {
+function computeColumnAnchor(mapView, coordinate, placement, opts) {
     opts = opts || {}
+    var pt = screenPosition(mapView, coordinate)
+    if (!pt)
+        return null
+
+    var margin = opts.edgeMargin !== undefined ? opts.edgeMargin : DEFAULT_EDGE_MARGIN
+    var spacing = opts.spacing !== undefined ? opts.spacing : DEFAULT_SPACING
+    var labelW = opts.labelWidth || 90
+    var labelH = opts.labelHeight || 42
+    var iconW = opts.iconWidth || 24
+    var iconH = opts.iconHeight || 24
+    var pinStem = opts.pinStem || 0
+    var totalIconH = iconH + pinStem
+    var contentH
+    var anchorY
+
+    if (placement.vertical === "top") {
+        contentH = labelH + spacing + totalIconH
+        anchorY = labelH + spacing + iconH / 2
+    } else {
+        contentH = totalIconH + spacing + labelH
+        anchorY = iconH / 2
+    }
+
+    var mw = mapView.width
+    var labelAlignX = "center"
+    var centerLeft = pt.x - labelW / 2
+    var centerRight = pt.x + labelW / 2
+    var leftAlignLabelLeft = pt.x - iconW / 2
+    var leftAlignLabelRight = leftAlignLabelLeft + labelW
+    var rightAlignLabelRight = pt.x + iconW / 2
+    var rightAlignLabelLeft = rightAlignLabelRight - labelW
+
+    if (centerLeft < margin || leftAlignLabelLeft < margin)
+        labelAlignX = "left"
+    else if (centerRight > mw - margin || rightAlignLabelRight > mw - margin)
+        labelAlignX = "right"
+
+    var contentW = Math.max(iconW, labelW)
+    var anchorX
+    var labelX
+
+    if (labelAlignX === "left") {
+        anchorX = iconW / 2
+        labelX = 0
+        contentW = Math.max(iconW, labelW)
+    } else if (labelAlignX === "right") {
+        contentW = Math.max(iconW, labelW)
+        anchorX = contentW - iconW / 2
+        labelX = contentW - labelW
+    } else {
+        anchorX = contentW / 2
+        labelX = anchorX - labelW / 2
+    }
+
+    var itemLeft = pt.x - anchorX
+    if (itemLeft < margin) {
+        anchorX = pt.x - margin
+        if (labelAlignX === "left")
+            labelX = anchorX - iconW / 2
+        else if (labelAlignX === "right")
+            labelX = anchorX + iconW / 2 - labelW
+        else
+            labelX = anchorX - labelW / 2
+        contentW = Math.max(contentW, labelX + labelW, anchorX + iconW / 2)
+        if (labelX < 0) {
+            contentW -= labelX
+            anchorX -= labelX
+            labelX = 0
+        }
+    } else if (itemLeft + contentW > mw - margin) {
+        var shift = itemLeft + contentW - (mw - margin)
+        anchorX += shift
+        if (labelAlignX === "left")
+            labelX = anchorX - iconW / 2
+        else if (labelAlignX === "right")
+            labelX = anchorX + iconW / 2 - labelW
+        else
+            labelX = anchorX - labelW / 2
+        contentW = Math.max(contentW, labelX + labelW, anchorX + iconW / 2)
+    }
+
+    anchorX = Math.max(iconW / 2, Math.min(contentW - iconW / 2, anchorX))
+    labelX = Math.max(0, Math.min(contentW - labelW, labelX))
+
+    return {
+        anchorX: anchorX,
+        anchorY: anchorY,
+        contentWidth: contentW,
+        contentHeight: contentH,
+        labelAlignX: labelAlignX,
+        labelX: labelX
+    }
+}
+
+function computeAnchor(placement, opts, mapView, coordinate) {
+    opts = opts || {}
+    var layoutStyle = opts.layoutStyle || "row"
+
+    if (layoutStyle === "column" && mapView && coordinate && coordinate.isValid) {
+        var columnAnchor = computeColumnAnchor(mapView, coordinate, placement, opts)
+        if (columnAnchor)
+            return columnAnchor
+    }
+
     var spacing = opts.spacing !== undefined ? opts.spacing : DEFAULT_SPACING
     var labelW = opts.labelWidth || 120
     var labelH = opts.labelHeight || 24
     var iconW = opts.iconWidth || 30
     var iconH = opts.iconHeight || 38
     var pinStem = opts.pinStem || 0
-    var layoutStyle = opts.layoutStyle || "row"
 
     if ((opts.iconWidth || 0) === 0 && (opts.iconHeight || 0) === 0) {
         return {
@@ -137,7 +240,8 @@ function metricsForKind(placemarkKind, measured) {
             iconHeight: 24,
             pinStem: 0,
             labelWidth: measured.labelWidth || 90,
-            labelHeight: measured.labelHeight || 20
+            labelHeight: measured.labelHeight || 42,
+            edgeMargin: measured.edgeMargin !== undefined ? measured.edgeMargin : 48
         }
     }
     if (placemarkKind === "target") {

@@ -42,7 +42,7 @@ Item {
         onTriggered: {
             for (var p in pending) {
                 var u = pending[p]
-                vehicleLayer._updatePositionNow(p, u.coordinate, u.direction, u.speed)
+                vehicleLayer._updatePositionNow(p, u.coordinate, u.direction, u.speed, u.positionTimeText)
             }
             pending = {}
         }
@@ -67,7 +67,52 @@ Item {
         return comp.createObject(null, props)
     }
 
-    function addVehicle(plateNumber, coordinate, direction, speed, color) {
+    function _formatTimestamp(ts) {
+        if (!ts)
+            return ""
+        if (typeof ts === "string")
+            return ts
+        if (ts.getTime && ts.getTime() > 0)
+            return Qt.formatDateTime(ts, "yyyy-MM-dd HH:mm:ss")
+        return ""
+    }
+
+    function _applyVehicleMarkerState(vehicle, marker) {
+        if (!vehicle || !marker || !marker.coordinate || !marker.coordinate.isValid)
+            return
+        vehicle.coordinate = marker.coordinate
+        vehicle.direction = marker.direction || 0
+        vehicle.speed = marker.speed || 0
+        if (marker.timestampText && marker.timestampText.length > 0)
+            vehicle.positionTimeText = marker.timestampText
+        else
+            vehicle.positionTimeText = _formatTimestamp(marker.timestamp)
+    }
+
+    function applyVehicleMarker(plateNumber, marker) {
+        if (!plateNumber || !marker)
+            return
+        if (!vehicleItems[plateNumber]) {
+            addVehicle(plateNumber,
+                       marker.coordinate,
+                       marker.direction || 0,
+                       marker.speed || 0,
+                       currentVehicleColor,
+                       marker.timestampText || _formatTimestamp(marker.timestamp))
+            return
+        }
+        _applyVehicleMarkerState(vehicleItems[plateNumber], marker)
+    }
+
+    function finalizeVehicleLabelsForCapture() {
+        for (var p in vehicleItems) {
+            var v = vehicleItems[p]
+            if (v && v.updateViewportLayout)
+                v.updateViewportLayout()
+        }
+    }
+
+    function addVehicle(plateNumber, coordinate, direction, speed, color, positionTimeText) {
         if (!vehicleItems[plateNumber]) {
             var item = _createPlacemark({
                 placemarkKind: "vehicle",
@@ -84,7 +129,13 @@ Item {
             }
         }
         var v = vehicleItems[plateNumber]
-        if (v) { v.coordinate = coordinate; v.direction = direction; v.speed = speed }
+        if (v) {
+            v.coordinate = coordinate
+            v.direction = direction
+            v.speed = speed
+            if (positionTimeText !== undefined)
+                v.positionTimeText = positionTimeText
+        }
     }
 
     function _mountTrajectoryPolylines(sourcePaths) {
@@ -119,7 +170,8 @@ Item {
                        startMarker.coordinate,
                        startMarker.direction || 0,
                        startMarker.speed || 0,
-                       currentVehicleColor)
+                       currentVehicleColor,
+                       startMarker.timestampText || _formatTimestamp(startMarker.timestamp))
             if (fitMode === "auto" && autoFitEnabled)
                 scheduleTrajectoryDisplayViewportFit()
             else if (fitMode === "now")
@@ -163,11 +215,17 @@ Item {
         }
     }
 
-    function updateVehiclePosition(plateNumber, coordinate, direction, speed) {
+    function updateVehiclePosition(plateNumber, coordinate, direction, speed, positionTimestamp) {
+        var timeText = _formatTimestamp(positionTimestamp)
         if (throttleTimer.running) {
-            throttleTimer.pending[plateNumber] = { coordinate: coordinate, direction: direction, speed: speed }
+            throttleTimer.pending[plateNumber] = {
+                coordinate: coordinate,
+                direction: direction,
+                speed: speed,
+                positionTimeText: timeText
+            }
         } else {
-            _updatePositionNow(plateNumber, coordinate, direction, speed)
+            _updatePositionNow(plateNumber, coordinate, direction, speed, timeText)
             throttleTimer.pending = {}
             throttleTimer.start()
         }
@@ -306,7 +364,7 @@ Item {
         return null
     }
 
-    function _updatePositionNow(plateNumber, coordinate, direction, speed) {
+    function _updatePositionNow(plateNumber, coordinate, direction, speed, positionTimeText) {
         if (!vehicleItems[plateNumber]) return
         var v = vehicleItems[plateNumber]
         if (v.coordinate && coordinate && typeof controller !== 'undefined' && controller
@@ -315,6 +373,8 @@ Item {
         v.coordinate = coordinate
         v.direction = direction
         v.speed = speed
+        if (positionTimeText !== undefined)
+            v.positionTimeText = positionTimeText
     }
 
     function scheduleTrajectoryDisplayViewportFit() {
@@ -346,12 +406,25 @@ Item {
         }
     }
 
+    function _markMapTilesPending() {
+        if (parent && parent.markTilesPending)
+            parent.markTilesPending()
+    }
+
     function _doFitViewportShape(shape) {
         if (!shape || !mapTarget)
             return
+        _markMapTilesPending()
         suppressInteractionTracking = true
         mapTarget.fitViewportToGeoShape(shape, Qt.size(fitViewportMargin, fitViewportMargin))
-        Qt.callLater(function() { suppressInteractionTracking = false })
+        Qt.callLater(function() {
+            suppressInteractionTracking = false
+            for (var p in vehicleItems) {
+                var v = vehicleItems[p]
+                if (v && v.scheduleViewportLayout)
+                    v.scheduleViewportLayout()
+            }
+        })
     }
 
     function fitTrajectoryDisplayViewportNow() {

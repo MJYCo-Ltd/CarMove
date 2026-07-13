@@ -54,7 +54,8 @@ signals:
     void vehiclePositionUpdated(const QString& plateNumber,
                                 const QGeoCoordinate& position,
                                 int direction,
-                                double speed);
+                                double speed,
+                                const QDateTime& timestamp);
 
 private:
     void syncTimeRangeFromIndex();
