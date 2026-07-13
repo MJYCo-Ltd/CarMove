@@ -4,6 +4,7 @@
 #include "Business/LicensePlateDetector.h"
 
 #include <QFileInfo>
+#include <QtConcurrent>
 
 namespace {
 
@@ -217,23 +218,63 @@ void ExcelPreviewModel::onImportProgress(int percentage)
 
 bool ExcelPreviewModel::loadFile(const QString& filePath)
 {
-    setLoading(true);
-    setErrorMessage(QString());
-
-    const BusinessDataManager::OperationResult result = m_dataManager->openWorkbook(filePath);
-    setLoading(false);
-
-    if (!result.success) {
-        applyOperationResult(result, false);
-        resetModelFromBusinessData();
-        emit loadFinished(false);
-        return false;
+    if (m_openWorkbookWatcher && m_openWorkbookWatcher->isRunning()) {
+        m_openWorkbookWatcher->cancel();
+        m_openWorkbookWatcher->waitForFinished();
+    }
+    if (m_sheetLoadWatcher && m_sheetLoadWatcher->isRunning()) {
+        m_sheetLoadWatcher->cancel();
+        m_sheetLoadWatcher->waitForFinished();
     }
 
-    applyOperationResult(result);
+    m_dataManager->clearWorkbook();
+    resetModelFromBusinessData();
+
+    setLoading(true);
+    setErrorMessage(QString());
+    setStatusMessage(QStringLiteral("正在打开 Excel 文件..."));
+
+    const int generation = ++m_loadGeneration;
+    if (!m_openWorkbookWatcher) {
+        m_openWorkbookWatcher = new QFutureWatcher<BusinessDataManager::OpenWorkbookResult>(this);
+    }
+
+    connect(m_openWorkbookWatcher,
+            &QFutureWatcher<BusinessDataManager::OpenWorkbookResult>::finished,
+            this,
+            [this, generation]() {
+                if (!m_openWorkbookWatcher) {
+                    return;
+                }
+                finishOpenWorkbookLoad(generation, m_openWorkbookWatcher->result());
+            },
+            Qt::SingleShotConnection);
+
+    m_openWorkbookWatcher->setFuture(QtConcurrent::run([filePath]() {
+        return BusinessDataManager::openWorkbookBlocking(filePath);
+    }));
+    return true;
+}
+
+void ExcelPreviewModel::finishOpenWorkbookLoad(int generation,
+                                               const BusinessDataManager::OpenWorkbookResult& result)
+{
+    if (generation != m_loadGeneration) {
+        return;
+    }
+
+    setLoading(false);
+    if (!result.op.success) {
+        applyOperationResult(result.op, false);
+        resetModelFromBusinessData();
+        emit loadFinished(false);
+        return;
+    }
+
+    m_dataManager->applyOpenWorkbookResult(result);
+    applyOperationResult(result.op);
     resetModelFromBusinessData();
     emit loadFinished(true);
-    return true;
 }
 
 void ExcelPreviewModel::clear()
@@ -250,16 +291,50 @@ void ExcelPreviewModel::setCurrentSheetIndex(int index)
         return;
     }
 
-    setLoading(true);
-    const BusinessDataManager::OperationResult result = m_dataManager->loadSheetAtIndex(index);
-    setLoading(false);
+    if (m_sheetLoadWatcher && m_sheetLoadWatcher->isRunning()) {
+        m_sheetLoadWatcher->cancel();
+        m_sheetLoadWatcher->waitForFinished();
+    }
 
-    if (!result.success) {
-        applyOperationResult(result, false);
+    setLoading(true);
+    setStatusMessage(QStringLiteral("正在加载工作表..."));
+
+    const ExcelWorkbookInfo workbookInfo = m_dataManager->workbookInfo();
+    const int generation = ++m_loadGeneration;
+    if (!m_sheetLoadWatcher) {
+        m_sheetLoadWatcher = new QFutureWatcher<BusinessDataManager::SheetLoadResult>(this);
+    }
+
+    connect(m_sheetLoadWatcher,
+            &QFutureWatcher<BusinessDataManager::SheetLoadResult>::finished,
+            this,
+            [this, generation]() {
+                if (!m_sheetLoadWatcher) {
+                    return;
+                }
+                finishSheetLoad(generation, m_sheetLoadWatcher->result());
+            },
+            Qt::SingleShotConnection);
+
+    m_sheetLoadWatcher->setFuture(QtConcurrent::run([workbookInfo, index]() {
+        return BusinessDataManager::loadSheetBlocking(workbookInfo, index);
+    }));
+}
+
+void ExcelPreviewModel::finishSheetLoad(int generation, const BusinessDataManager::SheetLoadResult& result)
+{
+    if (generation != m_loadGeneration) {
+        return;
+    }
+
+    setLoading(false);
+    if (!result.op.success) {
+        applyOperationResult(result.op, false);
         emit loadFinished(false);
         return;
     }
 
+    m_dataManager->applySheetLoadResult(result);
     setErrorMessage(QString());
     emit currentSheetIndexChanged();
 }

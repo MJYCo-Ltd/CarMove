@@ -35,40 +35,32 @@ Item {
     property bool _targetPlacemarkComponentHooked: false
 
     property var pendingCapture: null
-    /// 当前视口已稳定且可见瓦片齐全，可以截图
-    readonly property bool viewportReadyState: tileMonitor.viewportReadyState
 
     signal batchCaptureFinished(bool success, string captureLabel)
 
     function markViewportPending() {
         tileMonitor.beginViewportChange()
-        _batchPerfLog("viewport.pending", "")
     }
 
-    function cancelTileWait() {
-        tileWaitTimer.stop()
+    function cancelPendingCapture() {
         pendingCapture = null
     }
 
     function _beginBatchCaptureViewport(kind, filePath, captureLabel, plateNumber, vehicleColor) {
-        cancelTileWait()
+        cancelPendingCapture()
         const label = captureLabel || kind || ""
         pendingCapture = {
             filePath: filePath,
             label: label,
-            stage: "waitTiles"
+            stage: "waitViewport"
         }
         _batchPerfLog("capture.begin", label)
-        markViewportPending()
         if (kind === "trajectory")
             prepareCaptureTrajectory(plateNumber, vehicleColor || "#3498db")
         else if (kind === "targetArea")
-            centerToLocation(true, 18, true)
-        _batchPerfLog("capture.viewport.requested", label)
-        tileWaitTimer.interval = captureTileTimeoutMs
-        tileWaitTimer.restart()
-        _batchPerfLog("viewport.wait", label + " ready=" + viewportReadyState)
-        tryFinishPendingCapture(false)
+            prepareCaptureTargetArea()
+        if (tileMonitor.viewportReadyState)
+            _grabPendingCapture("immediate")
     }
 
     function beginBatchCaptureTrajectory(plateNumber, vehicleColor, filePath, captureLabel) {
@@ -79,15 +71,11 @@ Item {
         _beginBatchCaptureViewport("targetArea", filePath, captureLabel || "targetArea", "", "")
     }
 
-    function tryFinishPendingCapture(viaTimeout) {
-        if (!pendingCapture || pendingCapture.stage !== "waitTiles")
-            return
-        if (!viaTimeout && !viewportReadyState)
+    function _grabPendingCapture(reason) {
+        if (!pendingCapture || pendingCapture.stage !== "waitViewport")
             return
 
-        tileWaitTimer.stop()
-        _batchPerfLog("viewport.ready", pendingCapture.label + (viaTimeout ? " timeout" : " ready"))
-        _batchPerfLog("capture.viewport.ready", pendingCapture.label)
+        _batchPerfLog("viewport.ready", pendingCapture.label + (reason ? " " + reason : ""))
         pendingCapture.stage = "grab"
         _executePendingGrab()
     }
@@ -139,21 +127,17 @@ Item {
         targetAreaRelayoutTimer.restart()
     }
 
+    function prepareCaptureTargetArea() {
+        vehicleLayer.autoFitEnabled = false
+        vehicleLayer.fitViewportMargin = captureFitMargin
+        syncTargetAreaMapMarkers()
+        refreshTargetAreaMarkerLayout()
+        vehicleLayer.fitTargetAreaCaptureViewportNow()
+    }
+
     function resetCaptureViewportMargin() {
         vehicleLayer.fitViewportMargin = 80
     }
-
-    Timer {
-        id: tileWaitTimer
-        repeat: false
-        onTriggered: {
-            const label = pendingCapture ? pendingCapture.label : ""
-            _batchPerfLog("viewport.timeout", label + " ready=" + viewportReadyState)
-            tryFinishPendingCapture(true)
-        }
-    }
-
-    readonly property int captureTileTimeoutMs: 5000
 
     property real _batchPerfLastMs: 0
 
@@ -398,10 +382,8 @@ Item {
         id: tileMonitor
         map: mapView.map
         onViewportReadyStateChanged: {
-            if (viewportReadyState) {
-                _batchPerfLog("viewport.signal", mapDisplay.pendingCapture ? mapDisplay.pendingCapture.label : "")
-                mapDisplay.tryFinishPendingCapture(false)
-            }
+            if (viewportReadyState)
+                mapDisplay._grabPendingCapture("signal")
         }
     }
 
@@ -579,27 +561,14 @@ Item {
         vehicleLayer.resetInteraction()
     }
 
-    function centerToLocation(instant, zoomLevel, forCapture) {
-        if (forCapture)
-            vehicleLayer.autoFitEnabled = false
+    function centerToLocation(instant, zoomLevel) {
         var zoom = (zoomLevel !== undefined) ? zoomLevel : 18
         focusTargetArea(zoom, instant === true)
         if (!controller)
             return
         var coord = controller.targetAreaMapCoordinate()
-        if (coord && coord.isValid) {
-            if (forCapture && vehicleLayer.currentVehicle) {
-                var marker = controller.trajectoryDisplayNearestMarker(coord.latitude, coord.longitude)
-                if (marker && marker.coordinate && marker.coordinate.isValid)
-                    vehicleLayer.applyVehicleMarker(vehicleLayer.currentVehicle, marker)
-                else
-                    snapVehicleToNearestTrajectoryPoint(coord.latitude, coord.longitude)
-            } else {
-                snapVehicleToNearestTrajectoryPoint(coord.latitude, coord.longitude)
-            }
-        }
-        if (forCapture)
-            vehicleLayer.autoFitEnabled = false
+        if (coord && coord.isValid)
+            snapVehicleToNearestTrajectoryPoint(coord.latitude, coord.longitude)
     }
 
     function takeScreenshot() {

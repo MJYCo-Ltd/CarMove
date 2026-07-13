@@ -13,7 +13,7 @@ ApplicationWindow {
 
     onClosing: function(close) {
         batchScreenshotController.stopSilently()
-        mapDisplay.cancelTileWait()
+        mapDisplay.cancelPendingCapture()
         close.accepted = true
     }
 
@@ -256,7 +256,7 @@ ApplicationWindow {
                 return
             }
 
-            mapDisplay.cancelTileWait()
+            mapDisplay.cancelPendingCapture()
             _perfLog("task.loop", "processed=" + processedCount)
 
             const task = excelModel.nextScreenshotTask()
@@ -287,7 +287,7 @@ ApplicationWindow {
             if (!running)
                 return
 
-            mapDisplay.cancelTileWait()
+            mapDisplay.cancelPendingCapture()
             _perfLog("trajectory.load.ready", "success=" + success + " points=" + pointCount)
 
             if (!success || pointCount < 2) {
@@ -374,7 +374,7 @@ ApplicationWindow {
             capturePhase = ""
             if (excelModel)
                 excelModel.cancelScreenshotTasks()
-            mapDisplay.cancelTileWait()
+            mapDisplay.cancelPendingCapture()
             mapDisplay.resetCaptureViewportMargin()
             businessPanel.unmountMap(mapDisplay, mapColumn)
             successDialog.showSuccess("截图完成：共处理 " + processedCount + " 条，大图 "
@@ -392,7 +392,7 @@ ApplicationWindow {
             capturePhase = ""
             if (excelModel)
                 excelModel.cancelScreenshotTasks()
-            mapDisplay.cancelTileWait()
+            mapDisplay.cancelPendingCapture()
             mapDisplay.resetCaptureViewportMargin()
             businessPanel.unmountMap(mapDisplay, mapColumn)
         }

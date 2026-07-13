@@ -81,12 +81,14 @@ void markPlateColumns(ExcelSheetPreview& sheet)
         }
     }
 
+    const int maxRowIndex = qMin(sheet.grid.size(), headerRowCount + 120);
     for (int columnIndex = 0; columnIndex < sheet.columnCount; ++columnIndex) {
         if (sheet.isPlateColumn.at(columnIndex)) {
             continue;
         }
 
-        for (const QVector<QString>& row : sheet.grid) {
+        for (int rowIndex = 0; rowIndex < maxRowIndex; ++rowIndex) {
+            const QVector<QString>& row = sheet.grid.at(rowIndex);
             if (columnIndex >= row.size()) {
                 continue;
             }

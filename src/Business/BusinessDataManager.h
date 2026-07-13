@@ -25,7 +25,25 @@ public:
         QString statusMessage;
     };
 
+    struct OpenWorkbookResult {
+        OperationResult op;
+        ExcelWorkbookInfo workbookInfo;
+        ExcelSheetPreview sheet;
+        QString fileName;
+        QString workbookStatusMessage;
+        int sheetIndex = -1;
+    };
+
+    struct SheetLoadResult {
+        OperationResult op;
+        ExcelSheetPreview sheet;
+        int sheetIndex = -1;
+    };
+
     explicit BusinessDataManager(QObject* parent = nullptr);
+
+    static OpenWorkbookResult openWorkbookBlocking(const QString& filePath);
+    static SheetLoadResult loadSheetBlocking(const ExcelWorkbookInfo& workbookInfo, int index);
 
     QString filePath() const { return m_workbookInfo.filePath; }
     QString fileName() const { return m_fileName; }
@@ -37,6 +55,8 @@ public:
 
     OperationResult openWorkbook(const QString& filePath);
     OperationResult loadSheetAtIndex(int index);
+    void applyOpenWorkbookResult(const OpenWorkbookResult& result);
+    void applySheetLoadResult(const SheetLoadResult& result);
     void clearWorkbook();
 
     OperationResult exportToFile(const QString& filePath, const QVariantMap& columnConfig);

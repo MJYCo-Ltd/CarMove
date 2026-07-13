@@ -155,7 +155,7 @@ bool saxPreviewCellCallback(const QXlsx::sax_cell& cell, SaxPreviewContext* cont
         return true;
     }
 
-    const QString text = ExcelCellFormatter::formatVariant(cell.value).trimmed();
+    const QString text = ExcelCellFormatter::formatPreviewCellValue(cell.value).trimmed();
     if (text.isEmpty()) {
         return true;
     }

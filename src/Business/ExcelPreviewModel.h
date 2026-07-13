@@ -9,6 +9,9 @@
 #include <QUrl>
 #include <QVariantMap>
 
+#include <QFutureWatcher>
+#include <QtConcurrent>
+
 #include "Business/BusinessDataManager.h"
 
 class ExcelPreviewModel : public QAbstractTableModel
@@ -112,11 +115,16 @@ private:
     void setErrorMessage(const QString& message);
     void setStatusMessage(const QString& message);
     void resetModelFromBusinessData();
+    void finishOpenWorkbookLoad(int generation, const BusinessDataManager::OpenWorkbookResult& result);
+    void finishSheetLoad(int generation, const BusinessDataManager::SheetLoadResult& result);
 
     BusinessDataManager* m_dataManager = nullptr;
     QString m_statusMessage;
     QString m_errorMessage;
     bool m_loading = false;
+    int m_loadGeneration = 0;
+    QFutureWatcher<BusinessDataManager::OpenWorkbookResult>* m_openWorkbookWatcher = nullptr;
+    QFutureWatcher<BusinessDataManager::SheetLoadResult>* m_sheetLoadWatcher = nullptr;
 };
 
 #endif // EXCELPREVIEWMODE_H

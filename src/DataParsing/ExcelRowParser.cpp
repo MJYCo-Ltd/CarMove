@@ -183,21 +183,21 @@ QDateTime ExcelRowParser::parseTimestamp(const QVariant& value)
         }
 
         const QStringList formats = {
-            QStringLiteral("yyyy-MM-dd hh:mm:ss"),
-            QStringLiteral("yyyy/MM/dd hh:mm:ss"),
-            QStringLiteral("yyyy-MM-dd hh:mm"),
-            QStringLiteral("yyyy/MM/dd hh:mm"),
+            QStringLiteral("yyyy-MM-dd HH:mm:ss"),
+            QStringLiteral("yyyy/MM/dd HH:mm:ss"),
+            QStringLiteral("yyyy-MM-dd HH:mm"),
+            QStringLiteral("yyyy/MM/dd HH:mm"),
             QStringLiteral("yyyy-MM-dd"),
             QStringLiteral("yyyy/MM/dd"),
-            QStringLiteral("MM/dd/yyyy hh:mm:ss"),
-            QStringLiteral("MM-dd-yyyy hh:mm:ss"),
-            QStringLiteral("dd/MM/yyyy hh:mm:ss"),
-            QStringLiteral("dd-MM-yyyy hh:mm:ss"),
-            QStringLiteral("yyyy年MM月dd日 hh:mm:ss"),
-            QStringLiteral("yyyy年MM月dd日 hh时mm分ss秒"),
+            QStringLiteral("MM/dd/yyyy HH:mm:ss"),
+            QStringLiteral("MM-dd-yyyy HH:mm:ss"),
+            QStringLiteral("dd/MM/yyyy HH:mm:ss"),
+            QStringLiteral("dd-MM-yyyy HH:mm:ss"),
+            QStringLiteral("yyyy年MM月dd日 HH:mm:ss"),
+            QStringLiteral("yyyy年MM月dd日 HH时mm分ss秒"),
             QStringLiteral("yyyy年MM月dd日"),
-            QStringLiteral("MM月dd日 hh:mm:ss"),
-            QStringLiteral("hh:mm:ss")
+            QStringLiteral("MM月dd日 HH:mm:ss"),
+            QStringLiteral("HH:mm:ss")
         };
 
         for (const QString& format : formats) {

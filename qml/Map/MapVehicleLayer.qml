@@ -438,6 +438,25 @@ Item {
             _doFitViewportShape(shape)
     }
 
+    function fitTargetAreaCaptureViewportNow() {
+        if (typeof controller === 'undefined' || !controller || !mapTarget)
+            return
+        pendingFitTimer.stop()
+        _pendingFitShape = null
+        _pendingFitAttempts = 0
+
+        var shape = controller.targetAreaCaptureViewportShape()
+        if (shape)
+            _doFitViewportShape(shape)
+
+        var coord = controller.targetAreaMapCoordinate()
+        if (currentVehicle && coord && coord.isValid) {
+            var marker = controller.trajectoryDisplayNearestMarker(coord.latitude, coord.longitude)
+            if (marker && marker.coordinate && marker.coordinate.isValid)
+                applyVehicleMarker(currentVehicle, marker)
+        }
+    }
+
     Connections {
         target: typeof controller !== 'undefined' ? controller : null
         function onTargetAreaChanged() {

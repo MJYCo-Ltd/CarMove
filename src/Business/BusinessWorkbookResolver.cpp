@@ -55,16 +55,6 @@ bool validateColumnSelection(const ExcelSheetPreview& referenceSheet,
         return false;
     }
 
-    const BusinessExportOptions options = buildExportOptions(referenceSheet, selection);
-    if (options.singleDateColumn) {
-        return true;
-    }
-
-    if (selection.startColumnNumber == selection.endColumnNumber) {
-        errorMessage = QStringLiteral("开始时间和结束时间不能选择同一列");
-        return false;
-    }
-
     return true;
 }
 
@@ -106,12 +96,6 @@ bool validateResolvedColumns(const ResolvedSheetExportColumns& columns,
             errorMessage = BusinessWorkbookResolver::formatSheetError(
                 sheetName,
                 QStringLiteral("未检测到开始时间或结束时间列"));
-            return false;
-        }
-        if (columns.startDataColumn == columns.endDataColumn) {
-            errorMessage = BusinessWorkbookResolver::formatSheetError(
-                sheetName,
-                QStringLiteral("开始时间和结束时间不能选择同一列"));
             return false;
         }
     }

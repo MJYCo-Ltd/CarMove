@@ -73,6 +73,69 @@ BusinessDataManager::OperationResult BusinessDataManager::makeClassifyResult(
     return op;
 }
 
+BusinessDataManager::OpenWorkbookResult BusinessDataManager::openWorkbookBlocking(const QString& filePath)
+{
+    OpenWorkbookResult result;
+    if (filePath.isEmpty()) {
+        result.op.errorMessage = QStringLiteral("未选择文件");
+        return result;
+    }
+
+    const QString localPath = LocalFilePath::normalizeLocalFilePath(filePath);
+    if (localPath.isEmpty()) {
+        result.op.errorMessage = QStringLiteral("未选择文件");
+        return result;
+    }
+
+    ExcelParserManager parser;
+    QString errorMessage;
+    if (!parser.inspectWorkbook(localPath, result.workbookInfo, errorMessage)) {
+        result.op.errorMessage = errorMessage;
+        return result;
+    }
+
+    ExcelSheetPreview sheet;
+    if (!parser.loadSheet(result.workbookInfo, 0, sheet, errorMessage)) {
+        result.op.errorMessage = errorMessage;
+        result.sheetIndex = 0;
+        return result;
+    }
+
+    BusinessColumnIdentifier::identifyColumns(sheet);
+    BusinessColumnIdentifier::appendColumnStatus(sheet);
+
+    result.fileName = QFileInfo(localPath).fileName();
+    result.workbookStatusMessage = ExcelParserManager::formatWorkbookStatus(result.workbookInfo);
+    result.sheet = std::move(sheet);
+    result.sheetIndex = 0;
+    result.op.success = true;
+    result.op.statusMessage = result.workbookStatusMessage;
+    return result;
+}
+
+BusinessDataManager::SheetLoadResult BusinessDataManager::loadSheetBlocking(
+    const ExcelWorkbookInfo& workbookInfo,
+    int index)
+{
+    SheetLoadResult result;
+    result.sheetIndex = index;
+
+    ExcelParserManager parser;
+    QString errorMessage;
+    ExcelSheetPreview sheet;
+    if (!parser.loadSheet(workbookInfo, index, sheet, errorMessage)) {
+        result.op.errorMessage = errorMessage;
+        return result;
+    }
+
+    BusinessColumnIdentifier::identifyColumns(sheet);
+    BusinessColumnIdentifier::appendColumnStatus(sheet);
+
+    result.sheet = std::move(sheet);
+    result.op.success = true;
+    return result;
+}
+
 void BusinessDataManager::clearWorkbook()
 {
     m_workbookInfo = ExcelWorkbookInfo{};
@@ -86,57 +149,49 @@ void BusinessDataManager::clearWorkbook()
 
 BusinessDataManager::OperationResult BusinessDataManager::openWorkbook(const QString& filePath)
 {
-    OperationResult op;
-    if (filePath.isEmpty()) {
-        op.errorMessage = QStringLiteral("未选择文件");
-        return op;
-    }
-
-    const QString localPath = LocalFilePath::normalizeLocalFilePath(filePath);
-    if (localPath.isEmpty()) {
-        op.errorMessage = QStringLiteral("未选择文件");
-        return op;
-    }
-
     clearWorkbook();
 
-    QString errorMessage;
-    if (!m_excelParser->inspectWorkbook(localPath, m_workbookInfo, errorMessage)) {
-        op.errorMessage = errorMessage;
+    const OpenWorkbookResult loaded = openWorkbookBlocking(filePath);
+    OperationResult op = loaded.op;
+    if (!op.success) {
         return op;
     }
 
-    m_fileName = QFileInfo(localPath).fileName();
-    m_workbookStatusMessage = ExcelParserManager::formatWorkbookStatus(m_workbookInfo);
-
-    op = loadSheetAtIndex(0);
-    if (op.success) {
-        op.statusMessage = m_workbookStatusMessage;
-    }
+    applyOpenWorkbookResult(loaded);
     return op;
+}
+
+void BusinessDataManager::applyOpenWorkbookResult(const OpenWorkbookResult& result)
+{
+    m_workbookInfo = result.workbookInfo;
+    m_currentSheet = result.sheet;
+    m_currentSheetIndex = result.sheetIndex;
+    m_fileName = result.fileName;
+    m_workbookStatusMessage = result.workbookStatusMessage;
+    emit sheetChanged();
+}
+
+void BusinessDataManager::applySheetLoadResult(const SheetLoadResult& result)
+{
+    m_currentSheet = result.sheet;
+    m_currentSheetIndex = result.sheetIndex;
+    emit sheetChanged();
 }
 
 BusinessDataManager::OperationResult BusinessDataManager::loadSheetAtIndex(int index)
 {
     OperationResult op;
 
-    m_currentSheet = ExcelSheetPreview{};
-    QString errorMessage;
-    ExcelSheetPreview sheet;
-    if (!m_excelParser->loadSheet(m_workbookInfo, index, sheet, errorMessage)) {
-        op.errorMessage = errorMessage;
+    const SheetLoadResult loaded = loadSheetBlocking(m_workbookInfo, index);
+    if (!loaded.op.success) {
+        op = loaded.op;
         m_currentSheetIndex = index;
         emit sheetChanged();
         return op;
     }
 
-    BusinessColumnIdentifier::identifyColumns(sheet);
-    BusinessColumnIdentifier::appendColumnStatus(sheet);
-
-    m_currentSheet = std::move(sheet);
-    m_currentSheetIndex = index;
+    applySheetLoadResult(loaded);
     op.success = true;
-    emit sheetChanged();
     return op;
 }
 

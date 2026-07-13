@@ -109,6 +109,7 @@ public:
     /// 地图展示：C++ 内跳点分段 + 折线路径（优先时间轴分段，否则用内存轨迹）
     Q_INVOKABLE QVariantList trajectoryDisplayPolylinePaths() const;
     Q_INVOKABLE QVariant trajectoryDisplayViewportShape() const;
+    Q_INVOKABLE QVariant targetAreaCaptureViewportShape() const;
     Q_INVOKABLE QVariantMap trajectoryDisplayStartMarker() const;
     Q_INVOKABLE QVariantMap trajectoryDisplayNearestMarker(double latitude, double longitude) const;
     Q_INVOKABLE void setTargetAreaCenter(double latitude, double longitude, const QString& name);

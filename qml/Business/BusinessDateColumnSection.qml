@@ -72,10 +72,6 @@ ColumnLayout {
             return "当前数据无法处理"
         }
 
-        if (hasTwoDateColumns && config.startColumnNumber === config.endColumnNumber) {
-            return "开始时间和结束时间不能选择同一列"
-        }
-
         return ""
     }
 

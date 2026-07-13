@@ -192,6 +192,25 @@ const TrajectoryPoint* nearestTrajectoryPointTo(const QList<TrajectoryPoint>& tr
     return &trajectory.at(nearestIndex);
 }
 
+QGeoPath geoPathFromTargetAndNearestPoint(const QList<TrajectoryPoint>& records,
+                                          const QGeoCoordinate& targetArea)
+{
+    QGeoPath path;
+    if (targetArea.isValid()) {
+        path.addCoordinate(targetArea);
+    }
+
+    const TrajectoryPoint* nearest =
+        nearestTrajectoryPointTo(records, targetArea.latitude(), targetArea.longitude());
+    if (nearest) {
+        const QGeoCoordinate nearestCoord = nearest->coordinate();
+        if (nearestCoord.isValid()) {
+            path.addCoordinate(nearestCoord);
+        }
+    }
+    return path;
+}
+
 } // namespace
 
 const QList<TrajectoryPoint>& MainController::activeTrajectoryRecords() const
@@ -242,6 +261,21 @@ QVariant MainController::trajectoryDisplayViewportShape() const
         return {};
     }
     return QVariant::fromValue(geoPathFromRecords(records, targetAreaMapCoordinate()));
+}
+
+QVariant MainController::targetAreaCaptureViewportShape() const
+{
+    const QGeoCoordinate target = targetAreaMapCoordinate();
+    if (!target.isValid()) {
+        return {};
+    }
+
+    const QList<TrajectoryPoint>& records = activeTrajectoryRecords();
+    const QGeoPath path = geoPathFromTargetAndNearestPoint(records, target);
+    if (path.size() < 2) {
+        return {};
+    }
+    return QVariant::fromValue(path);
 }
 
 QVariantMap MainController::trajectoryDisplayStartMarker() const

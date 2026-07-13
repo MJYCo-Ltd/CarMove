@@ -10,6 +10,9 @@ namespace DateColumnDetector {
 
 namespace {
 
+constexpr int kHeaderScanRowCount = 3;
+constexpr int kMaxDataRowsToSample = 120;
+
 bool isExcelDateSerialString(const QString& text, double* serialOut = nullptr)
 {
     bool ok = false;
@@ -29,54 +32,50 @@ bool isExcelDateSerialString(const QString& text, double* serialOut = nullptr)
     return true;
 }
 
-bool matchesDatePattern(const QString& text)
+QString normalizeDateTimeText(const QString& text)
 {
-    static const QRegularExpression patterns[] = {
-        QRegularExpression(
-            QStringLiteral(R"(^\d{4}-\d{1,2}-\d{1,2}(\s+\d{1,2}:\d{1,2}(:\d{1,2})?)?$)")),
-        QRegularExpression(
-            QStringLiteral(R"(^\d{4}/\d{1,2}/\d{1,2}(\s+\d{1,2}:\d{1,2}(:\d{1,2})?)?$)")),
-        QRegularExpression(
-            QStringLiteral(R"(^\d{4}\.\d{1,2}\.\d{1,2}(\s+\d{1,2}:\d{1,2}(:\d{1,2})?)?$)")),
-        QRegularExpression(QStringLiteral(R"(^\d{4}年\d{1,2}月\d{1,2}日$)")),
-        QRegularExpression(
-            QStringLiteral(R"(^\d{4}年\d{1,2}月\d{1,2}日\s+\d{1,2}:\d{1,2}(:\d{1,2})?$)")),
-        QRegularExpression(
-            QStringLiteral(R"(^\d{4}年\d{1,2}月\d{1,2}日\s+\d{1,2}时\d{1,2}分(\d{1,2}秒)?$)")),
-    };
-
-    for (const QRegularExpression& pattern : patterns) {
-        if (pattern.match(text).hasMatch()) {
-            return true;
-        }
+    QString normalized = text.trimmed();
+    normalized.replace(QChar(0x00A0), QLatin1Char(' '));
+    normalized.replace(QChar(0x3000), QLatin1Char(' '));
+    while (normalized.contains(QStringLiteral("  "))) {
+        normalized.replace(QStringLiteral("  "), QStringLiteral(" "));
     }
-
-    return false;
+    if (normalized.contains(QLatin1Char('T'))) {
+        normalized.replace(QLatin1Char('T'), QLatin1Char(' '));
+    }
+    if (normalized.contains(QLatin1Char(':'))) {
+        static const QRegularExpression trailingFraction(QStringLiteral(R"(\.\d+$)"));
+        normalized.remove(trailingFraction);
+    }
+    return normalized.trimmed();
 }
 
 QStringList dateTimeFormatPatterns()
 {
     return {
-        QStringLiteral("yyyy-MM-dd hh:mm:ss"),
-        QStringLiteral("yyyy/MM/dd hh:mm:ss"),
-        QStringLiteral("yyyy-MM-dd hh:mm"),
-        QStringLiteral("yyyy/MM/dd hh:mm"),
+        QStringLiteral("yyyy-MM-dd HH:mm:ss"),
+        QStringLiteral("yyyy/MM/dd HH:mm:ss"),
+        QStringLiteral("yyyy-MM-dd HH:mm"),
+        QStringLiteral("yyyy/MM/dd HH:mm"),
         QStringLiteral("yyyy-MM-dd"),
         QStringLiteral("yyyy/MM/dd"),
-        QStringLiteral("yyyy/M/d hh:mm:ss"),
-        QStringLiteral("yyyy/M/d hh:mm"),
+        QStringLiteral("yyyy-M-d HH:mm:ss"),
+        QStringLiteral("yyyy-M-d HH:mm"),
+        QStringLiteral("yyyy-M-d"),
+        QStringLiteral("yyyy/M/d HH:mm:ss"),
+        QStringLiteral("yyyy/M/d HH:mm"),
         QStringLiteral("yyyy/M/d"),
-        QStringLiteral("yyyy.M.d hh:mm:ss"),
-        QStringLiteral("yyyy.M.d hh:mm"),
+        QStringLiteral("yyyy.M.d HH:mm:ss"),
+        QStringLiteral("yyyy.M.d HH:mm"),
         QStringLiteral("yyyy.M.d"),
-        QStringLiteral("yyyy.MM.dd hh:mm:ss"),
-        QStringLiteral("yyyy.MM.dd hh:mm"),
+        QStringLiteral("yyyy.MM.dd HH:mm:ss"),
+        QStringLiteral("yyyy.MM.dd HH:mm"),
         QStringLiteral("yyyy.MM.dd"),
-        QStringLiteral("yyyy年M月d日 hh:mm:ss"),
-        QStringLiteral("yyyy年M月d日 hh时mm分ss秒"),
+        QStringLiteral("yyyy年M月d日 HH:mm:ss"),
+        QStringLiteral("yyyy年M月d日 HH时mm分ss秒"),
         QStringLiteral("yyyy年M月d日"),
-        QStringLiteral("yyyy年MM月dd日 hh:mm:ss"),
-        QStringLiteral("yyyy年MM月dd日 hh时mm分ss秒"),
+        QStringLiteral("yyyy年MM月dd日 HH:mm:ss"),
+        QStringLiteral("yyyy年MM月dd日 HH时mm分ss秒"),
         QStringLiteral("yyyy年MM月dd日"),
     };
 }
@@ -96,75 +95,105 @@ QDate parseChineseDateText(const QString& text)
     return date.isValid() ? date : QDate();
 }
 
-} // namespace
-
-bool looksLikeDate(const QString& text)
+bool quickLooksLikeDate(const QString& text)
 {
     const QString trimmed = text.trimmed();
-    if (trimmed.isEmpty()) {
+    if (trimmed.isEmpty() || trimmed.size() < 6) {
         return false;
     }
 
-    if (matchesDatePattern(trimmed)) {
-        return true;
-    }
-
-    if (isExcelDateSerialString(trimmed)) {
-        return true;
-    }
-
-    const QStringList formats = dateTimeFormatPatterns();
-
-    for (const QString& format : formats) {
-        const QDateTime dateTime = QDateTime::fromString(trimmed, format);
-        if (dateTime.isValid()) {
-            return true;
-        }
-    }
-
-    if (parseChineseDateText(trimmed).isValid()) {
-        return true;
-    }
-
-    const QDateTime isoDateTime = QDateTime::fromString(trimmed, Qt::ISODate);
-    return isoDateTime.isValid();
-}
-
-QDate parseToDate(const QString& text)
-{
-    const QString trimmed = text.trimmed();
-    if (trimmed.isEmpty()) {
-        return QDate();
+    static const QRegularExpression hasDigit(QStringLiteral(R"(\d)"));
+    if (!hasDigit.match(trimmed).hasMatch()) {
+        return false;
     }
 
     double serial = 0.0;
     if (isExcelDateSerialString(trimmed, &serial)) {
         const QDateTime dateTime = BusinessExcelDateUtils::dateTimeFromExcelSerial(serial, false);
-        if (dateTime.isValid()) {
-            return dateTime.date();
+        const int year = dateTime.date().year();
+        if (year >= 1990 && year <= 2035) {
+            return true;
         }
     }
 
-    const QStringList formats = dateTimeFormatPatterns();
+    static const QRegularExpression quickPatterns[] = {
+        QRegularExpression(
+            QStringLiteral(R"(^\d{4}-\d{1,2}-\d{1,2}([T\s]+\d{1,2}:\d{1,2}(:\d{1,2})?(\.\d+)?)?$)")),
+        QRegularExpression(
+            QStringLiteral(R"(^\d{4}/\d{1,2}/\d{1,2}([T\s]+\d{1,2}:\d{1,2}(:\d{1,2})?(\.\d+)?)?$)")),
+        QRegularExpression(
+            QStringLiteral(R"(^\d{4}\.\d{1,2}\.\d{1,2}([T\s]+\d{1,2}:\d{1,2}(:\d{1,2})?(\.\d+)?)?$)")),
+        QRegularExpression(QStringLiteral(R"(^\d{4}年\d{1,2}月\d{1,2}日$)")),
+        QRegularExpression(
+            QStringLiteral(R"(^\d{4}年\d{1,2}月\d{1,2}日\s+\d{1,2}:\d{1,2}(:\d{1,2})?(\.\d+)?$)")),
+        QRegularExpression(
+            QStringLiteral(R"(^\d{4}年\d{1,2}月\d{1,2}日\s+\d{1,2}时\d{1,2}分(\d{1,2}秒)?$)")),
+    };
 
-    for (const QString& format : formats) {
-        const QDateTime dateTime = QDateTime::fromString(trimmed, format);
-        if (dateTime.isValid()) {
-            return dateTime.date();
+    for (const QRegularExpression& pattern : quickPatterns) {
+        if (pattern.match(trimmed).hasMatch()) {
+            return true;
         }
     }
 
-    const QDate chineseDate = parseChineseDateText(trimmed);
+    return false;
+}
+
+QDateTime parseNormalizedDateTime(const QString& text)
+{
+    const QString normalized = normalizeDateTimeText(text);
+    if (normalized.isEmpty()) {
+        return QDateTime();
+    }
+
+    double serial = 0.0;
+    if (isExcelDateSerialString(normalized, &serial)) {
+        const QDateTime dateTime = BusinessExcelDateUtils::dateTimeFromExcelSerial(serial, false);
+        if (dateTime.isValid()) {
+            return dateTime;
+        }
+    }
+
+    for (const QString& format : dateTimeFormatPatterns()) {
+        const QDateTime dateTime = QDateTime::fromString(normalized, format);
+        if (dateTime.isValid()) {
+            return dateTime;
+        }
+    }
+
+    const QDate chineseDate = parseChineseDateText(normalized);
     if (chineseDate.isValid()) {
-        return chineseDate;
+        return QDateTime(chineseDate.startOfDay());
     }
 
-    const QDateTime isoDateTime = QDateTime::fromString(trimmed, Qt::ISODate);
+    QDateTime isoDateTime = QDateTime::fromString(normalized, Qt::ISODate);
     if (isoDateTime.isValid()) {
-        return isoDateTime.date();
+        return isoDateTime;
     }
 
-    return QDate();
+    isoDateTime = QDateTime::fromString(normalized, Qt::ISODateWithMs);
+    return isoDateTime;
+}
+
+int maxRowsToScanForColumnDetection(int gridRowCount)
+{
+    return qMin(gridRowCount, kHeaderScanRowCount + kMaxDataRowsToSample);
+}
+
+} // namespace
+
+bool looksLikeDate(const QString& text)
+{
+    if (!quickLooksLikeDate(text)) {
+        return false;
+    }
+    return parseNormalizedDateTime(text).isValid();
+}
+
+QDate parseToDate(const QString& text)
+{
+    const QDateTime dateTime = parseNormalizedDateTime(text);
+    return dateTime.isValid() ? dateTime.date() : QDate();
 }
 
 QList<int> DateColumnDetector::markedColumnIndices(const ExcelSheetPreview& sheet)
@@ -189,7 +218,7 @@ int DateColumnDetector::dataColumnAtOrdinal(const ExcelSheetPreview& sheet, int 
 bool headerLooksLikeTime(const QString& text)
 {
     const QString trimmed = text.trimmed();
-    if (trimmed.isEmpty() || looksLikeDate(trimmed)) {
+    if (trimmed.isEmpty() || quickLooksLikeDate(trimmed)) {
         return false;
     }
 
@@ -203,7 +232,7 @@ void markDateColumns(ExcelSheetPreview& sheet)
 {
     sheet.isDateColumn = QVector<bool>(sheet.columnCount, false);
 
-    const int headerRowCount = qMin(3, sheet.grid.size());
+    const int headerRowCount = qMin(kHeaderScanRowCount, sheet.grid.size());
     for (int rowIndex = 0; rowIndex < headerRowCount; ++rowIndex) {
         const QVector<QString>& row = sheet.grid.at(rowIndex);
         for (int columnIndex = 0; columnIndex < sheet.columnCount && columnIndex < row.size(); ++columnIndex) {
@@ -213,17 +242,19 @@ void markDateColumns(ExcelSheetPreview& sheet)
         }
     }
 
+    const int maxRowIndex = maxRowsToScanForColumnDetection(sheet.grid.size());
     for (int columnIndex = 0; columnIndex < sheet.columnCount; ++columnIndex) {
         if (sheet.isDateColumn.at(columnIndex)) {
             continue;
         }
 
-        for (const QVector<QString>& row : sheet.grid) {
+        for (int rowIndex = 0; rowIndex < maxRowIndex; ++rowIndex) {
+            const QVector<QString>& row = sheet.grid.at(rowIndex);
             if (columnIndex >= row.size()) {
                 continue;
             }
 
-            if (looksLikeDate(row.at(columnIndex))) {
+            if (quickLooksLikeDate(row.at(columnIndex))) {
                 sheet.isDateColumn[columnIndex] = true;
                 break;
             }

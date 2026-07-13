@@ -226,6 +226,29 @@ QString ExcelCellFormatter::formatVariant(const QVariant& value)
     return value.toString();
 }
 
+QString ExcelCellFormatter::formatPreviewCellValue(const QVariant& value, bool isDate1904)
+{
+    if (value.isNull()) {
+        return QString();
+    }
+
+    if (value.typeId() == QMetaType::Double || value.typeId() == QMetaType::Int
+        || value.typeId() == QMetaType::LongLong) {
+        const double number = value.toDouble();
+        if (number >= 20000.0 && number <= 80000.0) {
+            const QDateTime dateTime = dateTimeFromExcelSerial(number, isDate1904);
+            if (dateTime.isValid()) {
+                if (dateTime.time() == QTime(0, 0)) {
+                    return dateTime.date().toString(QStringLiteral("yyyy-MM-dd"));
+                }
+                return dateTime.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+            }
+        }
+    }
+
+    return formatVariant(value);
+}
+
 QString ExcelCellFormatter::formatQXlsxCell(const std::shared_ptr<Cell>& cell, bool isDate1904)
 {
     if (!cell) {
@@ -250,7 +273,7 @@ QString ExcelCellFormatter::formatQXlsxCell(const std::shared_ptr<Cell>& cell, b
         if (dateTime.time() == QTime(0, 0)) {
             return dateTime.date().toString(QStringLiteral("yyyy-MM-dd"));
         }
-        return dateTime.toString(QStringLiteral("yyyy-MM-dd hh:mm:ss"));
+        return dateTime.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
     }
 
     return formatVariant(cell->value());

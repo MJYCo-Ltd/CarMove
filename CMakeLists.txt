@@ -38,6 +38,7 @@ find_package(Qt6 REQUIRED COMPONENTS
     Location
     Positioning
     Qml
+    Concurrent
     QuickControls2
     Network
     GuiPrivate
@@ -170,6 +171,7 @@ target_link_libraries(${PROJECT_NAME}
     Qt6::Network
     Qt6::GuiPrivate
     Qt6::Sql
+    Qt6::Concurrent
     QXlsx::QXlsx
     xlsxio::xlsxio_read_SHARED
     spdlog::spdlog
