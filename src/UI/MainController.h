@@ -85,7 +85,9 @@ public:
     Q_INVOKABLE void connectPostGisDatabase();
     Q_INVOKABLE void setTrajectorySourceMode(const QString& mode);
     Q_INVOKABLE void savePostGisSettings();
-    Q_INVOKABLE void selectVehicle(const QString& plateNumber);
+    Q_INVOKABLE void selectVehicle(const QString& plateNumber,
+                                   const QString& startDateTimeText = QString(),
+                                   const QString& endDateTimeText = QString());
     Q_INVOKABLE void loadTrajectoryForCapture(const QString& plateNumber,
                                               const QString& startDateIso,
                                               const QString& endDateIso);
@@ -111,6 +113,10 @@ public:
     Q_INVOKABLE QVariant trajectoryDisplayViewportShape() const;
     Q_INVOKABLE QVariant targetAreaCaptureViewportShape() const;
     Q_INVOKABLE QVariantMap trajectoryDisplayStartMarker() const;
+    /// 当前轨迹末点（与 start 对称，供地图钉与补全路线选用）
+    Q_INVOKABLE QVariantMap trajectoryDisplayEndMarker() const;
+    /// 轨迹首点/末点 WGS84 经纬度，供天地图路线规划（不受坐标转换影响）
+    Q_INVOKABLE QVariantMap trajectoryRoutePointWgs84(bool useLastPoint) const;
     Q_INVOKABLE QVariantMap trajectoryDisplayNearestMarker(double latitude, double longitude) const;
     Q_INVOKABLE void setTargetAreaCenter(double latitude, double longitude, const QString& name);
     Q_INVOKABLE int calculateTargetAreaVisitCount(const QString& plateNumber, double targetLat, double targetLon, double radiusMeters) const;
@@ -133,6 +139,9 @@ public:
     Q_INVOKABLE bool seekVehicleToNearestTrajectoryPoint(double latitude, double longitude);
     Q_INVOKABLE QString getDocumentsPath();
     Q_INVOKABLE void clearSearch();
+    Q_INVOKABLE void reportError(const QString& message);
+    /// 车辆在数据源中的轨迹时间范围（PostGIS: first_seen_at / last_seen_at）
+    Q_INVOKABLE QVariantMap vehicleTrajectoryTimeRange(const QString& plateNumber) const;
 
     void prepareForApplicationShutdown();
 
@@ -183,6 +192,11 @@ private:
     void clearVehicleDataState();
     void finishVehicleListLoad(const QList<TrajectoryDataManager::VehicleInfo>& vehicles);
     void updateDatabaseConnectionState();
+    bool parseTrajectoryQueryTimeRange(const QString& startDateTimeText,
+                                       const QString& endDateTimeText,
+                                       QDateTime& startDateTime,
+                                       QDateTime& endDateTime,
+                                       QString& errorMessage) const;
 
     QStringList m_vehicleList;
     QStringList m_filteredVehicleList;

@@ -525,7 +525,18 @@ Item {
         if (controller)
             controller.setTargetAreaCenter(lat, lon, name ? name : "")
     }
-    function showNavigationRoute(points)                 { vehicleLayer.setNavigationPath(points) }
+    function showNavigationRoute(points, lineColor, lineWidth, opacity) {
+        vehicleLayer.setNavigationPath(points, lineColor, lineWidth, opacity)
+    }
+    /// 补全路线：与当前已显示轨迹同色、同线宽；arrivalTimeText 供定位目标区域时显示
+    function showComplementRoute(points, arrivalTimeText) {
+        vehicleLayer.setComplementRoute(points, vehicleLayer.currentVehicleColor, 3, 0.9,
+                                        arrivalTimeText || "")
+    }
+    function updateComplementArrivalTime(arrivalTimeText) {
+        if (vehicleLayer.complementRouteActive)
+            vehicleLayer.complementArrivalTimeText = arrivalTimeText ? String(arrivalTimeText) : ""
+    }
     function clearNavigationRoute()                      { vehicleLayer.clearNavigationRoute() }
     function setNavigationStartMarker(lat, lon, name, plateNumber) {
         vehicleLayer.setNavigationStartMarker(lat, lon, name, plateNumber)
@@ -565,6 +576,9 @@ Item {
         var zoom = (zoomLevel !== undefined) ? zoomLevel : 18
         focusTargetArea(zoom, instant === true)
         if (!controller)
+            return
+        // 已显示导航补全路线时：车辆落到导航终点，时间用到场时间
+        if (vehicleLayer.complementRouteActive && vehicleLayer.placeVehicleAtComplementEnd())
             return
         var coord = controller.targetAreaMapCoordinate()
         if (coord && coord.isValid)

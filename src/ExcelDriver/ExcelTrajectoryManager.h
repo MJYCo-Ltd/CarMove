@@ -3,7 +3,7 @@
 
 #include "Domain/TrajectoryTypes.h"
 
-#include <QDate>
+#include <QDateTime>
 #include <QObject>
 #include <QString>
 
@@ -30,9 +30,8 @@ public:
 
     TrajectoryLoadResult loadTrajectory(const VehicleSummary& vehicle,
                                         const QString& plateNumber,
-                                        const QDate& startDate = {},
-                                        const QDate& endDate = {},
-                                        bool hasDateRange = false);
+                                        const QDateTime& startDateTime = {},
+                                        const QDateTime& endDateTime = {});
 
 signals:
     void scanCompleted(const QList<VehicleSummary>& vehicles);

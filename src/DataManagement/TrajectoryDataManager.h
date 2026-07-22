@@ -3,7 +3,7 @@
 
 #include "Domain/TrajectoryTypes.h"
 
-#include <QDate>
+#include <QDateTime>
 #include <QObject>
 #include <QString>
 
@@ -24,10 +24,14 @@ public:
 
     struct TrajectoryLoadRequest {
         QString plateNumber;
-        QDate startDate;
-        QDate endDate;
+        QDateTime startDateTime;
+        QDateTime endDateTime;
         bool preserveAllPoints = false;
-        bool hasDateRange = false;
+
+        bool hasDateTimeRange() const
+        {
+            return startDateTime.isValid() && endDateTime.isValid();
+        }
     };
 
     struct TrajectoryLoadResult {

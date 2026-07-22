@@ -200,8 +200,8 @@ def find_header_columns(ws) -> tuple[int, int, int] | None:
     for row in range(1, min(ws.max_row, 10) + 1):
         scan_cols = min(ws.max_column, 50)
         headers = {clean_text(ws.cell(row=row, column=col).value): col for col in range(1, scan_cols + 1)}
-        date_col = headers.get("日期")
-        plate_col = headers.get("车号") or headers.get("车牌号")
+        date_col = headers.get("过毛时间") or headers.get("毛重时间") or headers.get("日期")
+        plate_col = headers.get("车号") or headers.get("车牌号") or headers.get("车牌号码")
         if date_col and plate_col:
             return row, date_col, plate_col
     return None

@@ -6,6 +6,7 @@
 #include "DataParsing/TrajectoryFileNaming.h"
 
 #include <QDate>
+#include <QDateTime>
 #include <QMap>
 #include <QObject>
 #include <QString>
@@ -40,8 +41,8 @@ public:
     QList<VehicleSummary> listVehicles(QString& errorMessage) const;
     QList<TrajectoryPoint> loadTrajectoryPoints(const QString& plateNumber,
                                                 QString& errorMessage,
-                                                const QDate& startDate = {},
-                                                const QDate& endDate = {}) const;
+                                                const QDateTime& startDateTime = {},
+                                                const QDateTime& endDateTime = {}) const;
     QList<VehicleDayTrajectory> loadTrajectoryByDay(const QString& plateNumber,
                                                       QString& errorMessage,
                                                       const QDate& startDate = {},

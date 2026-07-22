@@ -32,6 +32,11 @@ Item {
     property var    navigationPolyline:  null
     property var    navigationStartPin:   null
     property var    navigationEndPin:     null
+    /// 轨迹补全路线（区别于导航面板路线）
+    property bool   complementRouteActive: false
+    property var    complementEndCoordinate: null
+    property real   complementEndDirection: 0
+    property string complementArrivalTimeText: ""
 
     signal vehicleClicked(string plateNumber, double speed, int direction)
 
@@ -198,6 +203,8 @@ Item {
             }
         }
         vehicleItems = {}
+        // 切换车辆/重载轨迹时一并清掉补全路线，避免残留
+        clearNavigationRoute()
         resetInteraction()
     }
 
@@ -210,7 +217,12 @@ Item {
         var counts = controller.batchTargetAreaVisitCounts(plates, lat, lon, 1000)
         for (var q in vehicleItems) {
             var v = vehicleItems[q]
-            if (v)
+            if (!v)
+                continue
+            // 补全路线生效时，当前车到场次数固定为 1，不被轨迹统计覆盖
+            if (complementRouteActive && q === currentVehicle)
+                v.visitDays = 1
+            else
                 v.visitDays = counts[q]
         }
     }
@@ -254,19 +266,82 @@ Item {
         }
     }
 
-    function setNavigationPath(points) {
+    function setNavigationPath(points, lineColor, lineWidth, opacity, fitToRoute) {
         clearNavigationRoute()
-        if (!points || points.length < 2 || !mapTarget) return
-        var line = _createMapLineOnMap(points, "#e67e22", 5, 0.88)
+        if (!points || points.length < 2 || !mapTarget)
+            return
+        var color = (lineColor !== undefined && lineColor !== null && String(lineColor).length > 0)
+                    ? lineColor : "#e67e22"
+        var width = (lineWidth !== undefined && lineWidth !== null) ? lineWidth : 5
+        var op = (opacity !== undefined && opacity !== null) ? opacity : 0.88
+        var line = _createMapLineOnMap(points, color, width, op)
         if (!line)
             return
         mapTarget.addMapItem(line)
         navigationPolyline = line
+        // fitToRoute 默认 true；补全路线会改为 false，改用整段车辆轨迹视口
+        if (fitToRoute === false)
+            return
         if (typeof controller !== 'undefined' && controller) {
             var navShape = controller.geoPathForViewport(points)
             if (navShape)
                 _doFitViewportShape(navShape)
         }
+    }
+
+    function _coordinateFromPathPoint(point) {
+        if (!point)
+            return null
+        var lat = point.latitude !== undefined ? point.latitude : point.lat
+        var lon = point.longitude !== undefined ? point.longitude : point.lon
+        if (lat === undefined || lon === undefined)
+            return null
+        var c = QtPositioning.coordinate(lat, lon)
+        return (c && c.isValid) ? c : null
+    }
+
+    /// 补全到目标区域：绘制导航线并记住终点 / 到场时间，供「定位目标区域」使用
+    function setComplementRoute(points, lineColor, lineWidth, opacity, arrivalTimeText) {
+        setNavigationPath(points, lineColor, lineWidth, opacity, false)
+        if (!navigationPolyline || !points || points.length < 2)
+            return
+
+        var endCoord = _coordinateFromPathPoint(points[points.length - 1])
+        if (!endCoord)
+            return
+
+        complementRouteActive = true
+        complementEndCoordinate = endCoord
+        complementArrivalTimeText = arrivalTimeText ? String(arrivalTimeText) : ""
+        complementEndDirection = 0
+        if (points.length >= 2) {
+            var from = _coordinateFromPathPoint(points[points.length - 2])
+            if (from)
+                complementEndDirection = from.azimuthTo(endCoord)
+        }
+
+        if (currentVehicle && vehicleItems[currentVehicle])
+            vehicleItems[currentVehicle].visitDays = 1
+
+        // 按整段车辆轨迹（含目标区域）调整视口，而非仅补全折线
+        scheduleTrajectoryDisplayViewportFit()
+    }
+
+    /// 将当前车辆放到补全路线终点，时间用到场时间
+    function placeVehicleAtComplementEnd() {
+        if (!complementRouteActive || !complementEndCoordinate || !complementEndCoordinate.isValid)
+            return false
+        if (!currentVehicle || !vehicleItems[currentVehicle])
+            return false
+
+        var v = vehicleItems[currentVehicle]
+        v.coordinate = complementEndCoordinate
+        v.direction = complementEndDirection
+        v.speed = 0
+        if (complementArrivalTimeText.length > 0)
+            v.positionTimeText = complementArrivalTimeText
+        v.visitDays = 1
+        return true
     }
 
     function clearNavigationRoute() {
@@ -275,6 +350,10 @@ Item {
             navigationPolyline.destroy()
             navigationPolyline = null
         }
+        complementRouteActive = false
+        complementEndCoordinate = null
+        complementEndDirection = 0
+        complementArrivalTimeText = ""
     }
 
     function setNavigationStartMarker(lat, lon, name, plateNumber) {

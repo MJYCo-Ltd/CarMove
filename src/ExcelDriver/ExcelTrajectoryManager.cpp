@@ -164,9 +164,8 @@ void ExcelTrajectoryManager::scanFolder(const QString& folderPath)
 ExcelTrajectoryManager::TrajectoryLoadResult ExcelTrajectoryManager::loadTrajectory(
     const VehicleSummary& vehicle,
     const QString& plateNumber,
-    const QDate& startDate,
-    const QDate& endDate,
-    bool hasDateRange)
+    const QDateTime& startDateTime,
+    const QDateTime& endDateTime)
 {
     TrajectoryLoadResult result;
 
@@ -178,6 +177,7 @@ ExcelTrajectoryManager::TrajectoryLoadResult ExcelTrajectoryManager::loadTraject
     QList<TrajectoryPoint> allRecords;
     const int totalFiles = vehicle.sourceFilePaths.size();
     int processedFiles = 0;
+    const bool hasTimeRange = startDateTime.isValid() && endDateTime.isValid();
 
     for (const QString& filePath : vehicle.sourceFilePaths) {
         QList<TrajectoryPoint> fileRecords;
@@ -194,9 +194,14 @@ ExcelTrajectoryManager::TrajectoryLoadResult ExcelTrajectoryManager::loadTraject
 
         if (loadSuccess) {
             for (const TrajectoryPoint& record : fileRecords) {
-                if (record.plateNumber == plateNumber) {
-                    allRecords.append(record);
+                if (record.plateNumber != plateNumber) {
+                    continue;
                 }
+                if (hasTimeRange
+                    && (record.timestamp < startDateTime || record.timestamp > endDateTime)) {
+                    continue;
+                }
+                allRecords.append(record);
             }
         } else {
             AppLogger::warn(QStringLiteral("读取文件失败: %1 | %2").arg(filePath, loadError));
@@ -204,18 +209,6 @@ ExcelTrajectoryManager::TrajectoryLoadResult ExcelTrajectoryManager::loadTraject
 
         ++processedFiles;
         emit loadProgress((processedFiles * 100) / totalFiles);
-    }
-
-    if (hasDateRange && startDate.isValid() && endDate.isValid()) {
-        QList<TrajectoryPoint> filteredRecords;
-        filteredRecords.reserve(allRecords.size());
-        for (const TrajectoryPoint& record : allRecords) {
-            const QDate recordDate = record.timestamp.date();
-            if (recordDate >= startDate && recordDate <= endDate) {
-                filteredRecords.append(record);
-            }
-        }
-        allRecords = filteredRecords;
     }
 
     if (allRecords.isEmpty()) {

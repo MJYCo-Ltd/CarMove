@@ -4,7 +4,7 @@
 #include <QObject>
 #include <QString>
 #include <QList>
-#include <QDate>
+#include <QDateTime>
 #include "DataManagement/TrajectoryDataManager.h"
 #include "Domain/TrajectoryTypes.h"
 
@@ -17,10 +17,12 @@ public:
     
     void setDataManager(TrajectoryDataManager* manager);
     void setVehicleList(const QList<TrajectoryDataManager::VehicleInfo>& vehicles);
-    void selectVehicle(const QString& plateNumber);
+    void selectVehicle(const QString& plateNumber,
+                       const QDateTime& startDateTime = {},
+                       const QDateTime& endDateTime = {});
     void loadTrajectory(const QString& plateNumber,
-                        const QDate& startDate = {},
-                        const QDate& endDate = {},
+                        const QDateTime& startDateTime = {},
+                        const QDateTime& endDateTime = {},
                         bool preserveAllPoints = false);
     void applyCoordinateConversion(bool enabled);
     QList<TrajectoryPoint> getCurrentTrajectory() const;

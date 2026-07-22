@@ -256,8 +256,8 @@ TrajectoryDataManager::TrajectoryLoadResult TrajectoryDataManager::loadTrajector
     emit loadProgress(10);
     result.records = m_postGisData->loadTrajectoryPoints(request.plateNumber,
                                                          result.errorMessage,
-                                                         request.startDate,
-                                                         request.endDate);
+                                                         request.startDateTime,
+                                                         request.endDateTime);
     emit loadProgress(80);
 
     result.success = !result.records.isEmpty();
@@ -292,9 +292,8 @@ TrajectoryDataManager::TrajectoryLoadResult TrajectoryDataManager::loadTrajector
     const ExcelTrajectoryManager::TrajectoryLoadResult loadResult =
         m_excelTrajectory->loadTrajectory(matchedVehicle,
                                           request.plateNumber,
-                                          request.startDate,
-                                          request.endDate,
-                                          request.hasDateRange);
+                                          request.startDateTime,
+                                          request.endDateTime);
 
     result.records = loadResult.points;
     result.errorMessage = loadResult.errorMessage;

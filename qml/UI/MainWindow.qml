@@ -106,6 +106,7 @@ ApplicationWindow {
             Layout.preferredWidth: 300
             Layout.fillHeight: true
             visible: sidebarPanel.currentMode === "trajectory" && !mainWindow.batchScreenshotActive
+            mapRef: mapDisplay
             onOpenFolderDialogRequested: folderDialog.open()
         }
 
@@ -140,6 +141,21 @@ ApplicationWindow {
                 mapVehicleContextActive: mapDisplay.mapVehicleContextActive
                                          && mapDisplay.trajectoryModeActive
                                          && !batchScreenshotController.running
+                vehicleDataStart: trajectoryPanel.vehicleDataStart
+                vehicleDataEnd: trajectoryPanel.vehicleDataEnd
+                clipStart: trajectoryPanel.clipStart
+                clipEnd: trajectoryPanel.clipEnd
+                onClipStartMoved: function(dateTime) {
+                    trajectoryPanel.applyClipTimesFromTimeline(
+                                dateTime, trajectoryPanel.clipEnd || dateTime, false)
+                }
+                onClipEndMoved: function(dateTime) {
+                    trajectoryPanel.applyClipTimesFromTimeline(
+                                trajectoryPanel.clipStart || dateTime, dateTime, false)
+                }
+                onClipRangeCommitRequested: {
+                    trajectoryPanel.loadTrajectoryForCurrentSelection(true)
+                }
             }
         }
 

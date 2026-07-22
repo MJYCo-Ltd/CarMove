@@ -287,6 +287,37 @@ QVariantMap MainController::trajectoryDisplayStartMarker() const
     return markerMapFromTrajectoryPoint(records.first());
 }
 
+QVariantMap MainController::trajectoryDisplayEndMarker() const
+{
+    const QList<TrajectoryPoint>& records = activeTrajectoryRecords();
+    if (records.isEmpty()) {
+        return {};
+    }
+    return markerMapFromTrajectoryPoint(records.last());
+}
+
+QVariantMap MainController::trajectoryRoutePointWgs84(bool useLastPoint) const
+{
+    if (!m_vehicleManager) {
+        return {};
+    }
+
+    const QList<TrajectoryPoint>& records = m_vehicleManager->currentTrajectoryRef();
+    if (records.isEmpty()) {
+        return {};
+    }
+
+    const TrajectoryPoint& point = useLastPoint ? records.last() : records.first();
+    if (!point.isValid()) {
+        return {};
+    }
+
+    QVariantMap result;
+    result.insert(QStringLiteral("latitude"), point.latitude);
+    result.insert(QStringLiteral("longitude"), point.longitude);
+    return result;
+}
+
 QVariantMap MainController::trajectoryDisplayNearestMarker(double latitude, double longitude) const
 {
     const QList<TrajectoryPoint>& records = activeTrajectoryRecords();

@@ -48,19 +48,21 @@ void VehicleManager::setVehicleList(const QList<TrajectoryDataManager::VehicleIn
     }
 }
 
-void VehicleManager::selectVehicle(const QString& plateNumber)
+void VehicleManager::selectVehicle(const QString& plateNumber,
+                                   const QDateTime& startDateTime,
+                                   const QDateTime& endDateTime)
 {
     m_selectedVehicle = plateNumber;
     m_currentTrajectory.clear();
     m_convertedTrajectory.clear();
 
     emit vehicleSelected(plateNumber);
-    loadTrajectory(plateNumber);
+    loadTrajectory(plateNumber, startDateTime, endDateTime);
 }
 
 void VehicleManager::loadTrajectory(const QString& plateNumber,
-                                    const QDate& startDate,
-                                    const QDate& endDate,
+                                    const QDateTime& startDateTime,
+                                    const QDateTime& endDateTime,
                                     bool preserveAllPoints)
 {
     if (plateNumber.isEmpty()) {
@@ -80,10 +82,9 @@ void VehicleManager::loadTrajectory(const QString& plateNumber,
 
     TrajectoryDataManager::TrajectoryLoadRequest request;
     request.plateNumber = plateNumber;
-    request.startDate = startDate;
-    request.endDate = endDate;
+    request.startDateTime = startDateTime;
+    request.endDateTime = endDateTime;
     request.preserveAllPoints = preserveAllPoints;
-    request.hasDateRange = startDate.isValid() && endDate.isValid();
 
     const TrajectoryDataManager::TrajectoryLoadResult result = m_dataManager->loadTrajectory(request);
     if (!result.success) {

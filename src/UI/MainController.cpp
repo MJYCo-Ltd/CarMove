@@ -4,11 +4,18 @@
 #include "Core/ConfigManager.h"
 #include "Core/ErrorHandler.h"
 #include <QDate>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QTime>
 #include <QVariantMap>
 #include <QUrl>
 #include <QTimer>
+
+namespace {
+constexpr auto kTrajectoryQueryDateTimeFormat = "yyyy-MM-dd HH:mm:ss";
+} // namespace
+
 MainController::MainController(QObject *parent)
     : QObject(parent)
     , m_coordinateConversionEnabled(false)
@@ -128,6 +135,37 @@ void MainController::setSearchText(const QString& text)
 void MainController::clearSearch()
 {
     setSearchText("");
+}
+
+void MainController::reportError(const QString& message)
+{
+    if (!message.trimmed().isEmpty())
+        emit errorOccurred(message.trimmed());
+}
+
+QVariantMap MainController::vehicleTrajectoryTimeRange(const QString& plateNumber) const
+{
+    const QString plate = plateNumber.trimmed();
+    if (plate.isEmpty()) {
+        return {};
+    }
+
+    for (const TrajectoryDataManager::VehicleInfo& info : m_vehicleInfoList) {
+        if (info.plateNumber.compare(plate, Qt::CaseInsensitive) != 0) {
+            continue;
+        }
+
+        QVariantMap range;
+        if (info.firstSeenAt.isValid()) {
+            range.insert(QStringLiteral("startTime"), info.firstSeenAt);
+        }
+        if (info.lastSeenAt.isValid()) {
+            range.insert(QStringLiteral("endTime"), info.lastSeenAt);
+        }
+        return range;
+    }
+
+    return {};
 }
 
 QString MainController::currentFolder() const
@@ -269,7 +307,9 @@ void MainController::selectFolder(const QString& folderPath)
     m_trajectoryDataManager->scanFolder(folderPath);
 }
 
-void MainController::selectVehicle(const QString& plateNumber)
+void MainController::selectVehicle(const QString& plateNumber,
+                                   const QString& startDateTimeText,
+                                   const QString& endDateTimeText)
 {
     if (plateNumber.isEmpty()) {
         emit errorOccurred(QStringLiteral("请选择一个有效的车辆"));
@@ -278,6 +318,15 @@ void MainController::selectVehicle(const QString& plateNumber)
 
     if (!m_vehicleList.contains(plateNumber)) {
         emit errorOccurred(QString(QStringLiteral("车辆 %1 不在当前车辆列表中")).arg(plateNumber));
+        return;
+    }
+
+    QDateTime startDateTime;
+    QDateTime endDateTime;
+    QString timeRangeError;
+    if (!parseTrajectoryQueryTimeRange(startDateTimeText, endDateTimeText,
+                                       startDateTime, endDateTime, timeRangeError)) {
+        emit errorOccurred(timeRangeError);
         return;
     }
 
@@ -302,12 +351,19 @@ void MainController::selectVehicle(const QString& plateNumber)
     }
 
     m_isLoading = true;
-    m_loadingMessage = QString(QStringLiteral("正在加载车辆 %1 的轨迹数据...")).arg(plateNumber);
+    if (startDateTime.isValid() && endDateTime.isValid()) {
+        m_loadingMessage = QStringLiteral("正在加载车辆 %1 的轨迹 (%2 ~ %3)...")
+                               .arg(plateNumber,
+                                    startDateTime.toString(QString::fromLatin1(kTrajectoryQueryDateTimeFormat)),
+                                    endDateTime.toString(QString::fromLatin1(kTrajectoryQueryDateTimeFormat)));
+    } else {
+        m_loadingMessage = QString(QStringLiteral("正在加载车辆 %1 的轨迹数据...")).arg(plateNumber);
+    }
     emit loadingChanged();
     emit loadingMessageChanged();
 
     try {
-        m_vehicleManager->selectVehicle(plateNumber);
+        m_vehicleManager->selectVehicle(plateNumber, startDateTime, endDateTime);
     } catch (const std::exception& e) {
         m_isLoading = false;
         emit loadingChanged();
@@ -317,6 +373,48 @@ void MainController::selectVehicle(const QString& plateNumber)
         emit loadingChanged();
         emit errorOccurred(HANDLE_SYSTEM_ERROR("加载车辆轨迹", "未知异常"));
     }
+}
+
+bool MainController::parseTrajectoryQueryTimeRange(const QString& startDateTimeText,
+                                                   const QString& endDateTimeText,
+                                                   QDateTime& startDateTime,
+                                                   QDateTime& endDateTime,
+                                                   QString& errorMessage) const
+{
+    startDateTime = {};
+    endDateTime = {};
+    errorMessage.clear();
+
+    const QString startText = startDateTimeText.trimmed();
+    const QString endText = endDateTimeText.trimmed();
+    if (startText.isEmpty() && endText.isEmpty()) {
+        return true;
+    }
+
+    if (startText.isEmpty() || endText.isEmpty()) {
+        errorMessage = QStringLiteral("请同时填写开始时间和结束时间，格式：yyyy-MM-dd HH:mm:ss");
+        return false;
+    }
+
+    startDateTime = QDateTime::fromString(startText, QString::fromLatin1(kTrajectoryQueryDateTimeFormat));
+    endDateTime = QDateTime::fromString(endText, QString::fromLatin1(kTrajectoryQueryDateTimeFormat));
+    if (!startDateTime.isValid() || !endDateTime.isValid()) {
+        errorMessage = QStringLiteral("时间格式无效，请使用：yyyy-MM-dd HH:mm:ss");
+        return false;
+    }
+
+    if (startDateTime > endDateTime) {
+        errorMessage = QStringLiteral("结束时间不能早于开始时间");
+        return false;
+    }
+
+    const QDateTime now = QDateTime::currentDateTime();
+    if (startDateTime > now || endDateTime > now) {
+        errorMessage = QStringLiteral("开始/结束时间不能晚于当前时间");
+        return false;
+    }
+
+    return true;
 }
 
 void MainController::loadTrajectoryForCapture(const QString& plateNumber,
@@ -341,6 +439,9 @@ void MainController::loadTrajectoryForCapture(const QString& plateNumber,
         return;
     }
 
+    const QDateTime startDateTime(startDate, QTime(0, 0, 0));
+    const QDateTime endDateTime(endDate, QTime(23, 59, 59));
+
     m_captureTrajectoryPending = true;
     m_captureLoadTimer.start();
     AppLogger::info(QStringLiteral("[BatchShot] trajectory.load.start plate=%1 %2~%3")
@@ -356,7 +457,7 @@ void MainController::loadTrajectoryForCapture(const QString& plateNumber,
     emit loadingChanged();
     emit loadingMessageChanged();
 
-    m_vehicleManager->loadTrajectory(plateNumber.trimmed(), startDate, endDate, true);
+    m_vehicleManager->loadTrajectory(plateNumber.trimmed(), startDateTime, endDateTime, true);
 
     if (m_captureTrajectoryPending) {
         m_captureTrajectoryPending = false;

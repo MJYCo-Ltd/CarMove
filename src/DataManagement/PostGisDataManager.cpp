@@ -16,6 +16,7 @@
 #include <QDateTime>
 #include <QSqlError>
 #include <QSqlQuery>
+#include <QTime>
 #include <QUuid>
 #include <QVariant>
 
@@ -82,8 +83,14 @@ QList<VehicleDayTrajectory> PostGisDataManager::loadTrajectoryByDay(const QStrin
                                                                     const QDate& startDate,
                                                                     const QDate& endDate) const
 {
+    const QDateTime startDateTime = startDate.isValid()
+                                        ? QDateTime(startDate, QTime(0, 0, 0))
+                                        : QDateTime();
+    const QDateTime endDateTime = endDate.isValid()
+                                      ? QDateTime(endDate, QTime(23, 59, 59))
+                                      : QDateTime();
     const QList<TrajectoryPoint> points =
-        loadTrajectoryPoints(plateNumber, errorMessage, startDate, endDate);
+        loadTrajectoryPoints(plateNumber, errorMessage, startDateTime, endDateTime);
     if (points.isEmpty() && !errorMessage.isEmpty()) {
         return {};
     }
@@ -151,8 +158,17 @@ QList<VehicleSummary> PostGisDataManager::listVehicles(QString& errorMessage) co
     while (query.next()) {
         VehicleSummary info;
         info.plateNumber = query.value(QStringLiteral("plate_number")).toString().trimmed();
-        info.firstSeenAt = query.value(QStringLiteral("first_seen_at")).toDateTime();
-        info.lastSeenAt = query.value(QStringLiteral("last_seen_at")).toDateTime();
+        // first/last_seen_at 为 timestamptz，转成上海墙钟，与轨迹点 DATE+TIME 一致
+        const QDateTime firstSeen = query.value(QStringLiteral("first_seen_at")).toDateTime();
+        const QDateTime lastSeen = query.value(QStringLiteral("last_seen_at")).toDateTime();
+        if (firstSeen.isValid()) {
+            const QDateTime shanghai = firstSeen.toTimeZone(PostGisSql::shanghaiTimeZone());
+            info.firstSeenAt = PostGisSql::calendarDateTime(shanghai.date(), shanghai.time());
+        }
+        if (lastSeen.isValid()) {
+            const QDateTime shanghai = lastSeen.toTimeZone(PostGisSql::shanghaiTimeZone());
+            info.lastSeenAt = PostGisSql::calendarDateTime(shanghai.date(), shanghai.time());
+        }
         info.totalPointCount = query.value(QStringLiteral("total_point_count")).toLongLong();
         info.dayCount = query.value(QStringLiteral("day_count")).toInt();
         if (!info.plateNumber.isEmpty()) {
@@ -169,8 +185,8 @@ QList<VehicleSummary> PostGisDataManager::listVehicles(QString& errorMessage) co
 
 QList<TrajectoryPoint> PostGisDataManager::loadTrajectoryPoints(const QString& plateNumber,
                                                                QString& errorMessage,
-                                                               const QDate& startDate,
-                                                               const QDate& endDate) const
+                                                               const QDateTime& startDateTime,
+                                                               const QDateTime& endDateTime) const
 {
     QList<TrajectoryPoint> records;
     errorMessage.clear();
@@ -185,6 +201,7 @@ QList<TrajectoryPoint> PostGisDataManager::loadTrajectoryPoints(const QString& p
         return records;
     }
 
+    const bool hasTimeRange = startDateTime.isValid() && endDateTime.isValid();
     const QSqlDatabase db = QSqlDatabase::database(m_connectionName);
     const QString trajectoryTable = PostGisSql::qualifiedTable(m_config, m_config.trajectoryTable);
     const QString trajectoryDaysTable = PostGisSql::qualifiedTable(m_config, m_config.trajectoryDaysTable);
@@ -197,8 +214,14 @@ QList<TrajectoryPoint> PostGisDataManager::loadTrajectoryPoints(const QString& p
     const QString colorCol = PostGisSql::quotedIdentifier(m_config.colorColumn);
 
     QString dateFilterSql;
-    if (startDate.isValid() && endDate.isValid()) {
-        dateFilterSql = QStringLiteral("AND td.trajectory_date >= :start_date AND td.trajectory_date <= :end_date ");
+    if (hasTimeRange) {
+        // 点表时间为「日历日 + TIME」墙钟，勿直接绑定带时区的 QDateTime（Qt/PSQL 常按 UTC
+        // 会话换算，会把当天下午点截掉）。用无时区 timestamp 文本比较。
+        dateFilterSql = QStringLiteral(
+                            "AND td.trajectory_date >= :start_date AND td.trajectory_date <= :end_date "
+                            "AND (td.trajectory_date + tp.%1) >= CAST(:start_ts AS timestamp) "
+                            "AND (td.trajectory_date + tp.%1) <= CAST(:end_ts AS timestamp) ")
+                            .arg(timeCol);
     }
 
     const QString sql = QStringLiteral(
@@ -227,9 +250,20 @@ QList<TrajectoryPoint> PostGisDataManager::loadTrajectoryPoints(const QString& p
     QSqlQuery query(db);
     query.prepare(sql);
     query.bindValue(QStringLiteral(":plate"), plateNumber.trimmed());
-    if (startDate.isValid() && endDate.isValid()) {
+    if (hasTimeRange) {
+        const QDateTime startWall = startDateTime.toTimeZone(PostGisSql::shanghaiTimeZone());
+        const QDateTime endWall = endDateTime.toTimeZone(PostGisSql::shanghaiTimeZone());
+        const QDate startDate = startWall.isValid() ? startWall.date() : startDateTime.date();
+        const QDate endDate = endWall.isValid() ? endWall.date() : endDateTime.date();
+        const QString startTsText =
+            (startWall.isValid() ? startWall : startDateTime).toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+        const QString endTsText =
+            (endWall.isValid() ? endWall : endDateTime).toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+
         query.bindValue(QStringLiteral(":start_date"), startDate);
         query.bindValue(QStringLiteral(":end_date"), endDate);
+        query.bindValue(QStringLiteral(":start_ts"), startTsText);
+        query.bindValue(QStringLiteral(":end_ts"), endTsText);
     }
 
     if (!query.exec()) {
@@ -257,10 +291,10 @@ QList<TrajectoryPoint> PostGisDataManager::loadTrajectoryPoints(const QString& p
 
     if (records.isEmpty()) {
         errorMessage = QStringLiteral("未找到车辆 %1 的轨迹数据").arg(plateNumber);
-        const QString periodHint = (startDate.isValid() && endDate.isValid())
+        const QString periodHint = hasTimeRange
                                        ? QStringLiteral(" | 时段=%1~%2")
-                                             .arg(startDate.toString(Qt::ISODate),
-                                                  endDate.toString(Qt::ISODate))
+                                             .arg(startDateTime.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss")),
+                                                  endDateTime.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss")))
                                        : QString();
         AppLogger::warn(QStringLiteral("加载轨迹为空: 车牌=%1%2").arg(plateNumber, periodHint));
     }

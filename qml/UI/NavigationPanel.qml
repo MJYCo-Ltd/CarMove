@@ -396,6 +396,7 @@ Rectangle {
 
     Connections {
         target: (typeof routePlanner !== "undefined") ? routePlanner : null
+        enabled: navigationPanel.visible
 
         function onRouteReady(pathPoints) {
             navErrorStrip.text = ""

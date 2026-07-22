@@ -17,6 +17,17 @@ Rectangle {
     readonly property bool timelineEnabled: segmentCount > 0
     readonly property bool showDateOnTimeline: controller && controller.trajectorySpansMultipleDays
 
+    /// 时间轴总范围：车辆数据源全量起止
+    property var vehicleDataStart: null
+    property var vehicleDataEnd: null
+    /// 截取开始/结束竖线
+    property var clipStart: null
+    property var clipEnd: null
+
+    signal clipStartMoved(var dateTime)
+    signal clipEndMoved(var dateTime)
+    signal clipRangeCommitRequested()
+
     readonly property color labelTimeColor: timelineEnabled ? "white" : "#7f8c8d"
     readonly property color labelDateColor: timelineEnabled ? "#bdc3c7" : "#636e72"
 
@@ -71,6 +82,22 @@ Rectangle {
             Layout.preferredHeight: 28
             timelineController: controller
             interactive: trajectoryTimelineBar.timelineEnabled
+            axisStartTime: trajectoryTimelineBar.vehicleDataStart
+            axisEndTime: trajectoryTimelineBar.vehicleDataEnd
+            clipStartTime: trajectoryTimelineBar.clipStart
+            clipEndTime: trajectoryTimelineBar.clipEnd
+            clipMarkersEnabled: trajectoryTimelineBar.mapVehicleContextActive
+                                && trajectoryTimelineBar.vehicleDataStart
+                                && trajectoryTimelineBar.vehicleDataEnd
+                                && trajectoryTimelineBar.clipStart
+                                && trajectoryTimelineBar.clipEnd
+            onClipStartMoved: function(dateTime) {
+                trajectoryTimelineBar.clipStartMoved(dateTime)
+            }
+            onClipEndMoved: function(dateTime) {
+                trajectoryTimelineBar.clipEndMoved(dateTime)
+            }
+            onClipRangeCommitRequested: trajectoryTimelineBar.clipRangeCommitRequested()
         }
 
         TimeDisplay {
