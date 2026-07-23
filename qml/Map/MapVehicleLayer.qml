@@ -11,9 +11,7 @@ Item {
     property var mapTarget          // 地图对象 (mapView.map)
     property var layoutMapView      // MapView，用于视口自适应布局
     property var animationsRef      // MapAnimations 实例
-    property bool animationsEnabled: true
     property int  updateThrottleMs: 16
-    property int  maxVehicleMarkers: 100
     property double targetLat: 0
     property double targetLon: 0
 
@@ -29,6 +27,7 @@ Item {
     property var    _pendingFitShape:   null
     property int    _pendingFitAttempts: 0
     property var    searchResultPin:    null
+    property var    navigationPickPins: []
     property var    navigationPolyline:  null
     property var    navigationStartPin:   null
     property var    navigationEndPin:     null
@@ -37,6 +36,8 @@ Item {
     property var    complementEndCoordinate: null
     property real   complementEndDirection: 0
     property string complementArrivalTimeText: ""
+    /// 由「含自定义点」特殊导航创建的车辆，切回普通导航时需清除（不影响轨迹车标）
+    property bool   customPointNavVehicleActive: false
 
     signal vehicleClicked(string plateNumber, double speed, int direction)
 
@@ -243,16 +244,48 @@ Item {
         }
     }
 
-    function showSearchResult(lat, lon) {
+    /// adjustView：默认 true（搜索定位会挪视口）；地图选点传 false
+    function showSearchResult(lat, lon, adjustView) {
         clearSearchResult()
         var coord = QtPositioning.coordinate(lat, lon)
         var pin = _createPlacemark({ placemarkKind: "searchPin" })
         if (pin) { pin.coordinate = coord; mapTarget.addMapItem(pin); searchResultPin = pin }
+        if (adjustView === false)
+            return
         if (animationsRef) { animationsRef.animateToCenter(coord); animationsRef.animateToZoom(15) }
     }
 
     function clearSearchResult() {
         if (searchResultPin) { mapTarget.removeMapItem(searchResultPin); searchResultPin.destroy(); searchResultPin = null }
+    }
+
+    /// 导航地图选点：落 📍，不调整视口；可叠加多个
+    function addNavigationPickMarker(lat, lon) {
+        if (!mapTarget)
+            return
+        var coord = QtPositioning.coordinate(lat, lon)
+        if (!coord || !coord.isValid)
+            return
+        var pin = _createPlacemark({ placemarkKind: "searchPin" })
+        if (!pin)
+            return
+        pin.coordinate = coord
+        mapTarget.addMapItem(pin)
+        var pins = navigationPickPins.slice()
+        pins.push(pin)
+        navigationPickPins = pins
+    }
+
+    function clearNavigationPickMarkers() {
+        for (var i = 0; i < navigationPickPins.length; i++) {
+            var pin = navigationPickPins[i]
+            if (pin) {
+                if (mapTarget)
+                    mapTarget.removeMapItem(pin)
+                pin.destroy()
+            }
+        }
+        navigationPickPins = []
     }
 
     function _syncNavigationPeerLayout() {
@@ -268,6 +301,7 @@ Item {
 
     function setNavigationPath(points, lineColor, lineWidth, opacity, fitToRoute) {
         clearNavigationRoute()
+        clearNavigationPickMarkers()
         if (!points || points.length < 2 || !mapTarget)
             return
         var color = (lineColor !== undefined && lineColor !== null && String(lineColor).length > 0)
@@ -323,8 +357,87 @@ Item {
         if (currentVehicle && vehicleItems[currentVehicle])
             vehicleItems[currentVehicle].visitDays = 1
 
-        // 按整段车辆轨迹（含目标区域）调整视口，而非仅补全折线
-        scheduleTrajectoryDisplayViewportFit()
+        // 有车辆轨迹时按整段轨迹适配；否则按补全/导航折线+目标区域适配
+        if (typeof controller !== 'undefined' && controller
+                && controller.activeTrajectoryPointCount() > 0) {
+            scheduleTrajectoryDisplayViewportFit()
+        } else if (typeof controller !== 'undefined' && controller) {
+            var shape = controller.geoPathForViewport(points)
+            if (shape)
+                _doFitViewportShape(shape)
+        }
+    }
+
+    /// 含自定义点的特殊导航：蓝线+车辆；定位停靠在 vehicleParkIndex（导航终点，不含自定义点）
+    function showCustomPointNavigationRoute(points, plateNumber, startTimeText, endTimeText, vehicleParkIndex) {
+        clearNavigationEndpointMarkers()
+        clearNavigationPickMarkers()
+        customPointNavVehicleActive = false
+        _clearVehicleMarkersOnly()
+
+        var plate = plateNumber ? String(plateNumber).trim() : ""
+        if (!plate)
+            plate = "导航"
+        var color = "#3498db"
+
+        currentVehicle = plate
+        currentVehicleColor = color
+        setComplementRoute(points, color, 3, 0.9, endTimeText || "")
+
+        // 定位停靠：导航选择的终点（天地图路线末点），不含后续自定义点
+        var parkIdx = points.length - 1
+        if (vehicleParkIndex !== undefined && vehicleParkIndex !== null
+                && vehicleParkIndex >= 0 && vehicleParkIndex < points.length)
+            parkIdx = vehicleParkIndex
+        var parkCoord = _coordinateFromPathPoint(points[parkIdx])
+        if (parkCoord && parkCoord.isValid) {
+            complementEndCoordinate = parkCoord
+            complementEndDirection = 0
+            if (parkIdx >= 1) {
+                var fromPark = _coordinateFromPathPoint(points[parkIdx - 1])
+                if (fromPark)
+                    complementEndDirection = fromPark.azimuthTo(parkCoord)
+            }
+        }
+
+        var startCoord = _coordinateFromPathPoint(points[0])
+        if (!startCoord || !startCoord.isValid)
+            return
+
+        var startDir = 0
+        if (points.length >= 2) {
+            var nextCoord = _coordinateFromPathPoint(points[1])
+            if (nextCoord)
+                startDir = startCoord.azimuthTo(nextCoord)
+        }
+
+        addVehicle(plate, startCoord, startDir, 0, color, startTimeText || "")
+        if (vehicleItems[plate])
+            vehicleItems[plate].visitDays = 1
+        customPointNavVehicleActive = true
+    }
+
+    function _clearVehicleMarkersOnly() {
+        for (var p in vehicleItems) {
+            var item = vehicleItems[p]
+            if (item) {
+                item.layoutMapView = null
+                if (mapTarget)
+                    mapTarget.removeMapItem(item)
+            }
+        }
+        vehicleItems = {}
+        currentVehicle = ""
+    }
+
+    function updateComplementArrivalTime(arrivalTimeText, applyToVehicle) {
+        if (!complementRouteActive)
+            return
+        complementArrivalTimeText = arrivalTimeText ? String(arrivalTimeText) : ""
+        if (applyToVehicle === false)
+            return
+        if (currentVehicle && vehicleItems[currentVehicle] && complementArrivalTimeText.length > 0)
+            vehicleItems[currentVehicle].positionTimeText = complementArrivalTimeText
     }
 
     /// 将当前车辆放到补全路线终点，时间用到场时间
@@ -354,6 +467,11 @@ Item {
         complementEndCoordinate = null
         complementEndDirection = 0
         complementArrivalTimeText = ""
+        // 仅清除「含自定义点」特殊导航创建的车辆，不影响轨迹模式下的车标
+        if (customPointNavVehicleActive) {
+            customPointNavVehicleActive = false
+            _clearVehicleMarkersOnly()
+        }
     }
 
     function setNavigationStartMarker(lat, lon, name, plateNumber) {

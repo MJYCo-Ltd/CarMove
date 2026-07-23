@@ -12,7 +12,6 @@ Rectangle {
     property string currentMode: "trajectory"
 
     signal modeChanged(string mode)
-    signal searchRequested()
 
     function activateMode(mode) {
         if (currentMode !== mode) {
@@ -40,7 +39,6 @@ Rectangle {
             color: "#34495e"
         }
 
-        // 业务 Excel 预览（位于轨迹之前）
         Button {
             id: businessButton
             width: parent.width - 10
@@ -84,7 +82,6 @@ Rectangle {
             ToolTip.text: "打开并预览 Excel 文件"
         }
 
-        // 轨迹功能按钮
         Button {
             id: trajectoryButton
             width: parent.width - 10
@@ -128,51 +125,6 @@ Rectangle {
             ToolTip.text: "车辆轨迹追踪"
         }
 
-        // 地点搜索功能按钮
-        Button {
-            id: searchButton
-            width: parent.width - 10
-            height: 50
-            anchors.horizontalCenter: parent.horizontalCenter
-
-            background: Rectangle {
-                color: sidebarPanel.currentMode === "search" ? "#8e44ad" : "#34495e"
-                border.color: sidebarPanel.currentMode === "search" ? "#7d3c98" : "#2c3e50"
-                border.width: 1
-                radius: 4
-            }
-
-            contentItem: Column {
-                anchors.centerIn: parent
-                spacing: 2
-
-                Text {
-                    text: "🔍"
-                    font.pixelSize: 16
-                    color: "#ecf0f1"
-                    anchors.horizontalCenter: parent.horizontalCenter
-                }
-
-                Text {
-                    text: "搜索"
-                    font.pixelSize: 10
-                    color: "#ecf0f1"
-                    anchors.horizontalCenter: parent.horizontalCenter
-                }
-            }
-
-            onClicked: {
-                if (sidebarPanel.currentMode !== "search") {
-                    sidebarPanel.currentMode = "search"
-                    sidebarPanel.modeChanged("search")
-                }
-            }
-
-            ToolTip.visible: hovered
-            ToolTip.text: "地点搜索"
-        }
-
-        // 驾车导航
         Button {
             id: navButton
             width: parent.width - 10

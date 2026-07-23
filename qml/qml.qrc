@@ -15,8 +15,8 @@
         <file alias="TargetNameEditDialog.qml">UI/TargetNameEditDialog.qml</file>
         <file alias="TrajectoryPanel.qml">UI/TrajectoryPanel.qml</file>
         <file alias="DateTimePickerField.qml">UI/DateTimePickerField.qml</file>
-        <file alias="GeoSearchPanel.qml">UI/GeoSearchPanel.qml</file>
         <file alias="GeoPickSearch.qml">UI/GeoPickSearch.qml</file>
+        <file alias="AdminRegionField.qml">UI/AdminRegionField.qml</file>
         <file alias="GeocodeResultCard.qml">UI/GeocodeResultCard.qml</file>
         <file alias="NavigationPanel.qml">UI/NavigationPanel.qml</file>
         <file alias="MapDisplay.qml">Map/MapDisplay.qml</file>

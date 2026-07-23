@@ -51,17 +51,6 @@ Dialog {
     contentItem: ColumnLayout {
         spacing: 12
 
-        Text {
-            Layout.fillWidth: true
-            wrapMode: Text.WordWrap
-            color: "#2c3e50"
-            text: "按业务数据中的车牌、开始时间、结束时间，将轨迹目录中的文件移动到以 CSV 文件名命名的文件夹。"
-                  + " 轨迹文件命名格式：车牌-开始日期-结束日期.xlsx。"
-                  + (excelModel.sheetCount > 1
-                     ? " 多工作表时每张表对应一个 CSV 和一个同名文件夹。"
-                     : "")
-        }
-
         BusinessPlateColumnHint {
             excelModel: classifyDialog.excelModel
             missingText: "未检测到车牌列，无法归类"

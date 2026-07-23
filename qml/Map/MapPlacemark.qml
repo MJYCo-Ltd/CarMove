@@ -10,6 +10,8 @@ MapQuickItem {
     /// "vehicle" | "target" | "geoName" | "searchPin" | "targetPin"(兼容) | "navEndpoint"
     property string placemarkKind: "geoName"
     property var layoutMapView: null
+    /// 目标区域名称是否可双击编辑（仅轨迹模式为 true）
+    property bool nameInteractive: true
     /// viewport：按屏幕边缘自适应；peer：导航起终点经度相对；fixed：固定锚点
     property string layoutMode: {
         if (placemarkKind === "navEndpoint")
@@ -485,6 +487,8 @@ MapQuickItem {
                     root.vehicleClicked(root.plateNumber, root.speed, root.direction)
             }
             onDoubleClicked: {
+                if (root._isTargetMerged && !root.nameInteractive)
+                    return
                 if (root._isTargetMerged || (root._isGeo && root._usesViewportLayout))
                     root.nameDoubleClicked()
             }

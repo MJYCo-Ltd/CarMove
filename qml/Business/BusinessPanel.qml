@@ -445,10 +445,10 @@ Rectangle {
                 wrapMode: Text.WordWrap
                 text: excelModel.loading
                       ? "正在加载 Excel 文件..."
-                      : "请点击「打开 Excel 文件」选择 .xlsx / .xls，将自动识别并标出车牌列与时间列"
+                      : ""
                 color: "#7f8c8d"
                 font.pixelSize: 14
-                visible: !excelModel.hasData && !excelModel.loading && !businessPanel.batchScreenshotRunning
+                visible: excelModel.loading && !businessPanel.batchScreenshotRunning
             }
         }
     }

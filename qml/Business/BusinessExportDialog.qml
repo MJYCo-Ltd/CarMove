@@ -31,16 +31,6 @@ Dialog {
     contentItem: ColumnLayout {
         spacing: 12
 
-        Text {
-            Layout.fillWidth: true
-            wrapMode: Text.WordWrap
-            color: "#2c3e50"
-            text: "导出工作簿中的车牌、开始时间、结束时间到 CSV 文件。"
-                  + (excelModel.sheetCount > 1
-                     ? " 多工作表时每张表单独导出一个 CSV，文件名格式：Excel名-表名.csv。"
-                     : "")
-        }
-
         BusinessPlateColumnHint {
             excelModel: exportDialog.excelModel
             missingText: "未检测到车牌列，无法导出"

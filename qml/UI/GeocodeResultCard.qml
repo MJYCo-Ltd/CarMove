@@ -74,9 +74,8 @@ Rectangle {
                 visible: root.secondaryButtonText.length > 0
                 text: root.secondaryButtonText
                 height: 32
-                font.pixelSize: 10
-                Layout.preferredWidth: implicitWidth
-                Layout.minimumWidth: 128
+                font.pixelSize: 11
+                Layout.fillWidth: true
                 onClicked: root.secondaryActionTriggered()
             }
         }

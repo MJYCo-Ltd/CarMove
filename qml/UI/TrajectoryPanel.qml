@@ -267,6 +267,37 @@ SidePanelContainer {
     }
 
     GroupBox {
+        title: "目标区域"
+        Layout.fillWidth: true
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 8
+
+            Text {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                color: "#2c3e50"
+                text: {
+                    if (!controller)
+                        return "未设置"
+                    var name = controller.targetAreaName
+                    return (name && name.length > 0) ? name : "未设置"
+                }
+            }
+
+            Button {
+                text: "搜索更改"
+                Layout.fillWidth: true
+                onClicked: {
+                    if (mapRef && mapRef.openTargetAreaSearch)
+                        mapRef.openTargetAreaSearch()
+                }
+            }
+        }
+    }
+
+    GroupBox {
         title: "轨迹数据源"
         Layout.fillWidth: true
 
@@ -274,90 +305,49 @@ SidePanelContainer {
             anchors.fill: parent
             spacing: 8
 
-            RowLayout {
+            ComboBox {
+                id: sourceModeCombo
                 Layout.fillWidth: true
-                spacing: 12
-
-                RadioButton {
-                    id: folderSourceRadio
-                    text: "Excel 文件夹"
-                    checked: !trajectoryPanel.databaseMode
-                    enabled: controller && !controller.isLoading
-                    onClicked: {
-                        if (controller)
-                            controller.setTrajectorySourceMode("folder")
-                    }
-                }
-
-                RadioButton {
-                    id: databaseSourceRadio
-                    text: "PostGIS 数据库"
-                    checked: trajectoryPanel.databaseMode
-                    enabled: controller && !controller.isLoading
-                    onClicked: {
-                        if (controller)
-                            controller.setTrajectorySourceMode("database")
-                    }
+                model: ["Excel 文件夹", "PostGIS 数据库"]
+                enabled: controller && !controller.isLoading
+                currentIndex: trajectoryPanel.databaseMode ? 1 : 0
+                onActivated: function(index) {
+                    if (!controller)
+                        return
+                    controller.setTrajectorySourceMode(index === 1 ? "database" : "folder")
                 }
             }
-
-            Text {
-                Layout.fillWidth: true
-                wrapMode: Text.WordWrap
-                font.pixelSize: 11
-                color: "#7f8c8d"
-                text: databaseMode
-                      ? "从 PostgreSQL/PostGIS 读取轨迹；连接参数在 CarMoveTracker.ini 中配置，切换后自动连接。"
-                      : "从本地 Excel 文件夹读取轨迹文件。"
-            }
-        }
-    }
-
-    GroupBox {
-        title: "Excel 文件夹"
-        Layout.fillWidth: true
-        visible: !databaseMode
-
-        ColumnLayout {
-            anchors.fill: parent
 
             Button {
                 text: "选择文件夹"
                 Layout.fillWidth: true
+                visible: !databaseMode
                 enabled: controller ? !controller.isLoading : true
                 onClicked: trajectoryPanel.openFolderDialogRequested()
             }
 
             Text {
+                visible: !databaseMode
                 text: (controller && controller.currentFolder) ? controller.currentFolder : "未选择文件夹"
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 color: (controller && controller.currentFolder) ? "#2c3e50" : "#7f8c8d"
             }
-        }
-    }
-
-    GroupBox {
-        title: "加载状态"
-        Layout.fillWidth: true
-
-        ColumnLayout {
-            anchors.fill: parent
 
             BusyIndicator {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 30
-                visible: controller ? controller.isLoading : false
+                visible: !databaseMode && controller && controller.isLoading
                 running: visible
             }
 
             Text {
+                visible: !databaseMode && controller && controller.isLoading
                 text: (controller && controller.loadingMessage) ? controller.loadingMessage : ""
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 font.pixelSize: 10
                 color: "#7f8c8d"
-                visible: controller ? controller.isLoading : false
             }
         }
     }
@@ -370,14 +360,6 @@ SidePanelContainer {
         ColumnLayout {
             anchors.fill: parent
             spacing: 8
-
-            Text {
-                Layout.fillWidth: true
-                wrapMode: Text.WordWrap
-                font.pixelSize: 11
-                color: "#7f8c8d"
-                text: "点击下方车牌加载轨迹；可在「轨迹截取」中调整时间范围，调整后自动重新获取。"
-            }
 
             RowLayout {
                 Layout.fillWidth: true
@@ -409,14 +391,6 @@ SidePanelContainer {
                     anchors.fill: parent
                     spacing: 8
 
-                    Text {
-                        Layout.fillWidth: true
-                        wrapMode: Text.WordWrap
-                        font.pixelSize: 11
-                        color: "#7f8c8d"
-                        text: "结束时间不能早于开始时间，且不能晚于当前时间。"
-                    }
-
                     DateTimePickerField {
                         id: startTimeField
                         label: "开始"
@@ -446,14 +420,6 @@ SidePanelContainer {
                 ColumnLayout {
                     anchors.fill: parent
                     spacing: 8
-
-                    Text {
-                        Layout.fillWidth: true
-                        wrapMode: Text.WordWrap
-                        font.pixelSize: 11
-                        color: "#7f8c8d"
-                        text: "复用导航驾车规划：从查询轨迹的首点或末点规划到目标区域。"
-                    }
 
                     RowLayout {
                         Layout.fillWidth: true

@@ -2,24 +2,37 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-// 与「地点搜索」相同的地名检索，但不自动定位；由用户点击「选用」确认
+// 地名检索：弹出搜索；结果含「在地图上定位」与「选为起点/终点/途经点/自定义点/目标」
 Item {
     id: root
 
     /// 为 false 时忽略 geocoder 回调（避免与其他面板共用 geocoder 时串台）
     property bool acceptGeocoderResults: true
-    /// 选用按钮旁提示，如「起点」；mapLocateMode 下用于副标题（可选）
-    property string pickHintText: ""
 
-    /// true：结果按钮为「在地图上定位」并发出 locateRequested；false：导航「选用」并发出 placePicked
-    property bool mapLocateMode: false
+    /// 得到结果后自动在地图上定位第一条（仅预览，不回填）
+    property bool autoLocateFirstResult: true
 
-    /// 地图搜索页：得到结果后自动定位第一条（与旧 GeoSearchPanel 行为一致）
-    property bool autoLocateFirstResult: false
+    /// "" | "origin" | "dest" | "waypoint" | "custom" | "targetArea"
+    property string assignRole: ""
+
+    readonly property string assignButtonText: {
+        if (assignRole === "origin")
+            return "选为起点"
+        if (assignRole === "dest")
+            return "选为终点"
+        if (assignRole === "waypoint")
+            return "选为途经点"
+        if (assignRole === "custom")
+            return "选为自定义点"
+        if (assignRole === "targetArea")
+            return "选为目标"
+        return ""
+    }
+
+    readonly property bool hasResults: pickResultModel.count > 0
 
     signal placePicked(double lat, double lon, string name)
     signal locateRequested(double lat, double lon, string name)
-    /// 地图搜索模式：将坐标设为「目标区域」中心（与定位按钮所用经纬度一致）
     signal targetAreaRequested(double lat, double lon, string name)
 
     onAcceptGeocoderResultsChanged: {
@@ -102,118 +115,11 @@ Item {
                     Layout.fillWidth: true
                     spacing: 6
 
-                    Item {
+                    AdminRegionField {
+                        id: pickAdmin
                         Layout.fillWidth: true
-                        Layout.minimumHeight: pickAdmin.height
-                        implicitHeight: pickAdmin.height
-
-                        TextField {
-                            id: pickAdmin
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.top: parent.top
-                            placeholderText: "输入省/市名称，如：天津"
-                            font.pixelSize: 12
-                            Keys.onReturnPressed: root.doPickSearch()
-                            Keys.onEnterPressed: root.doPickSearch()
-                            Keys.onDownPressed: {
-                                if (pickSuggestList.count > 0) {
-                                    pickSuggestList.currentIndex = 0
-                                    pickSuggestList.forceActiveFocus()
-                                }
-                            }
-                            onTextChanged: pickSuggestPopup.updateSuggestions(text)
-                        }
-
-                        Rectangle {
-                            id: pickSuggestPopup
-                            visible: (pickSuggestList.count > 0 && pickAdmin.activeFocus) || pickSuggestList.activeFocus
-                            width: pickAdmin.width
-                            height: Math.min(pickSuggestList.count, 6) * 32
-                            anchors.top: pickAdmin.bottom
-                            anchors.left: pickAdmin.left
-                            z: 999
-                            color: "white"
-                            border.color: "#bdc3c7"
-                            border.width: 1
-                            radius: 3
-                            clip: true
-
-                            property var allNames: []
-
-                            Component.onCompleted: {
-                                allNames = (typeof geocoder !== "undefined" && geocoder) ? geocoder.adminRegionNames() : []
-                            }
-
-                            function updateSuggestions(input) {
-                                pickSuggestModel.clear()
-                                var kw = input.trim()
-                                if (kw.length === 0)
-                                    return
-                                var cnt = 0
-                                for (var i = 0; i < allNames.length && cnt < 50; i++) {
-                                    if (allNames[i].indexOf(kw) >= 0) {
-                                        pickSuggestModel.append({
-                                                                    "name": allNames[i]
-                                                                })
-                                        cnt++
-                                    }
-                                }
-                            }
-
-                            ListModel {
-                                id: pickSuggestModel
-                            }
-
-                            ListView {
-                                id: pickSuggestList
-                                anchors.fill: parent
-                                model: pickSuggestModel
-                                clip: true
-                                keyNavigationEnabled: true
-                                Keys.onReturnPressed: selectCurrent()
-                                Keys.onEnterPressed: selectCurrent()
-                                Keys.onEscapePressed: {
-                                    pickSuggestModel.clear()
-                                    pickAdmin.forceActiveFocus()
-                                }
-
-                                function selectCurrent() {
-                                    if (currentIndex >= 0 && currentIndex < count) {
-                                        pickAdmin.text = pickSuggestModel.get(currentIndex).name
-                                        pickSuggestModel.clear()
-                                        pickAdmin.forceActiveFocus()
-                                    }
-                                }
-
-                                delegate: Rectangle {
-                                    width: pickSuggestList.width
-                                    height: 32
-                                    color: pickSuggestList.currentIndex === index ? "#d6eaf8" : (pma.containsMouse ? "#eaf4fc" : "white")
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        anchors.left: parent.left
-                                        anchors.leftMargin: 8
-                                        anchors.right: parent.right
-                                        anchors.rightMargin: 8
-                                        text: model.name
-                                        font.pixelSize: 12
-                                        color: "#2c3e50"
-                                        elide: Text.ElideRight
-                                    }
-                                    MouseArea {
-                                        id: pma
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        onClicked: {
-                                            pickAdmin.text = model.name
-                                            pickSuggestModel.clear()
-                                            pickAdmin.forceActiveFocus()
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        placeholderText: "输入省/市名称，如：天津"
+                        onAccepted: root.doPickSearch()
                     }
 
                     Button {
@@ -271,17 +177,16 @@ Item {
                         resultAddress: model.address
                         resultLatitude: model.latitude
                         resultLongitude: model.longitude
-                        actionButtonText: root.mapLocateMode ? "在地图上定位" : (root.pickHintText.length > 0 ? ("选用 — " + root.pickHintText) : "选用此地点")
-                        secondaryButtonText: root.mapLocateMode ? "设为目标区域" : ""
+                        actionButtonText: "📍 在地图上定位"
+                        secondaryButtonText: root.assignButtonText
                         onActionTriggered: {
-                            if (root.mapLocateMode)
-                                root.locateRequested(model.latitude, model.longitude, model.name)
-                            else
-                                root.placePicked(model.latitude, model.longitude, model.name)
+                            root.locateRequested(model.latitude, model.longitude, model.name)
                         }
                         onSecondaryActionTriggered: {
-                            if (root.mapLocateMode)
+                            if (root.assignRole === "targetArea")
                                 root.targetAreaRequested(model.latitude, model.longitude, model.name)
+                            else
+                                root.placePicked(model.latitude, model.longitude, model.name)
                         }
                     }
                 }

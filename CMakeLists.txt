@@ -57,6 +57,7 @@ set(SOURCES
     src/Core/AppLogger.cpp
     src/Core/ErrorHandler.cpp
     src/Core/ConfigManager.cpp
+    src/Core/LicenseGuard.cpp
     src/Core/FilePathManager.cpp
     src/Core/LocalFilePath.cpp
     # UI
@@ -111,6 +112,7 @@ set(HEADERS
     src/Core/AppLogger.h
     src/Core/ErrorHandler.h
     src/Core/ConfigManager.h
+    src/Core/LicenseGuard.h
     src/Core/FilePathManager.h
     src/Core/LocalFilePath.h
     # UI

@@ -214,6 +214,7 @@ private:
     static inline const char* DEFAULT_TRAJECTORY_SOURCE_MODE = "folder";
     static inline const char* DEFAULT_DB_HOST = "localhost";
     static const int DEFAULT_DB_PORT = 5432;
+    static inline const char* DEFAULT_DB_PASSWORD = "mjy@2019";
     static inline const char* DEFAULT_DB_NAME = "carmove";
     static inline const char* DEFAULT_DB_USER = "postgres";
     static inline const char* DEFAULT_DB_SCHEMA = "public";

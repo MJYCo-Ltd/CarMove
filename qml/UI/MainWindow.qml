@@ -78,6 +78,8 @@ ApplicationWindow {
             Layout.preferredWidth: 60
             Layout.fillHeight: true
             onModeChanged: function(mode) {
+                navigationPanel.cancelMapPick()
+                mapDisplay.clearNavigationPickMarkers()
                 if (mode === "trajectory") {
                     mapDisplay.clearSearchResult()
                     mapDisplay.clearNavigationRoute()
@@ -88,6 +90,7 @@ ApplicationWindow {
                     mapDisplay.clearNavigationEndpointMarkers()
                 } else if (mode === "nav") {
                     mapDisplay.clearSearchResult()
+                    mapDisplay.clearTrajectory()
                 }
             }
         }
@@ -110,13 +113,12 @@ ApplicationWindow {
             onOpenFolderDialogRequested: folderDialog.open()
         }
 
-        GeoSearchPanel {
-            id: geoSearchPanel
+        NavigationPanel {
+            id: navigationPanel
             Layout.preferredWidth: 300
             Layout.fillHeight: true
-            visible: sidebarPanel.currentMode === "search"
-            onLocateRequested: function(lat, lon, name) { mapDisplay.locateToPlace(lat, lon) }
-            onTargetAreaRequested: function(lat, lon, name) { mapDisplay.setTargetAreaFromSearch(lat, lon, name) }
+            visible: sidebarPanel.currentMode === "nav"
+            mapRef: mapDisplay
         }
 
         ColumnLayout {
@@ -157,14 +159,6 @@ ApplicationWindow {
                     trajectoryPanel.loadTrajectoryForCurrentSelection(true)
                 }
             }
-        }
-
-        NavigationPanel {
-            id: navigationPanel
-            Layout.preferredWidth: 300
-            Layout.fillHeight: true
-            visible: sidebarPanel.currentMode === "nav"
-            mapRef: mapDisplay
         }
     }
 

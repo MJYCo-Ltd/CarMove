@@ -52,14 +52,6 @@ Dialog {
     contentItem: ColumnLayout {
         spacing: 12
 
-        Text {
-            Layout.fillWidth: true
-            wrapMode: Text.WordWrap
-            color: "#2c3e50"
-            text: "扫描所选文件夹（含子目录）中的轨迹 Excel，解析后写入 PostGIS 数据库。"
-                  + " 车牌号和时间范围会从 Excel 内容读取；同一车牌同一时间段已有数据会自动跳过。"
-        }
-
         GroupBox {
             title: "数据库连接（来自 CarMoveTracker.ini）"
             Layout.fillWidth: true

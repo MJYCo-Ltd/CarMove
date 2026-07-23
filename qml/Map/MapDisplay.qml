@@ -2,6 +2,7 @@ import QtQuick
 import QtLocation
 import QtPositioning
 import QtQuick.Controls
+import QtQuick.Layouts
 import QGroundControl 1.0
 
 Item {
@@ -20,15 +21,27 @@ Item {
     property int currentMapTypeIndex: 0
     property var availableMapTypes: []
 
-    /// geocoder 调用意图：rightClick=右键通知 POI；fillTargetName=名称空时补全目标区域名
+    /// geocoder 调用意图：rightClick=右键通知 POI；fillTargetName=名称空时补全目标区域名；navPick=导航地图选点
     property string geocoderIntent: ""
     property string lastReversePoi: ""
     property string lastReverseFormatted: ""
+
+    /// 导航模式：点击地图选取起点/终点/途经点/自定义点
+    property bool navigationMapPickActive: false
+    property int navigationMapPickRole: 0
+    property real navigationMapPickLat: 0
+    property real navigationMapPickLon: 0
+    property real navPickCursorX: 0
+    property real navPickCursorY: 0
+    property bool navPickCursorVisible: false
 
     /// 轨迹模式下允许双击地图目标区域编辑名称
     property bool trajectoryModeActive: false
     /// 批量截图进行中：隐藏地图工具按钮，避免进入截图
     property bool batchScreenshotActive: false
+
+    signal navigationPointPicked(double lat, double lon, string name)
+    signal navigationMapPickCancelled()
     property int captureFitMargin: 120
     property bool _suppressMapInteractionFlag: false
     property var _targetPlacemarkComponent: null
@@ -249,6 +262,9 @@ Item {
         })
         if (targetAreaMapItem) {
             mapView.map.addMapItem(targetAreaMapItem)
+            targetAreaMapItem.nameInteractive = Qt.binding(function() {
+                return mapDisplay.trajectoryModeActive
+            })
             targetAreaMapItem.nameDoubleClicked.connect(mapDisplay.openTargetNameEditor)
             targetAreaMapItem.text = Qt.binding(function() {
                 if (!controller)
@@ -341,19 +357,42 @@ Item {
             mapDisplay.syncTargetAreaMapMarkers()
         }
 
-        // 右键：上下文菜单「更新目标区域」+ 天地图逆地理（通知仅 POI）
-        // 左键双击：轨迹模式下在目标区域附近编辑目标名称
+        // 右键：仅轨迹模式下「更新目标区域」+ 天地图逆地理（通知仅 POI）
+        // 左键：导航地图选点；左键双击：轨迹模式下在目标区域附近编辑目标名称
         MouseArea {
             id: mapRightClickArea
             anchors.fill: parent
             acceptedButtons: Qt.RightButton | Qt.LeftButton
-            onClicked: function (mouse) {
-                if (mouse.button !== Qt.RightButton)
+            hoverEnabled: mapDisplay.navigationMapPickActive
+            cursorShape: mapDisplay.navigationMapPickActive ? Qt.BlankCursor : Qt.ArrowCursor
+            onPositionChanged: function (mouse) {
+                if (!mapDisplay.navigationMapPickActive)
                     return
+                mapDisplay.navPickCursorX = mouse.x
+                mapDisplay.navPickCursorY = mouse.y
+            }
+            onEntered: {
+                if (mapDisplay.navigationMapPickActive)
+                    mapDisplay.navPickCursorVisible = true
+            }
+            onExited: mapDisplay.navPickCursorVisible = false
+            onClicked: function (mouse) {
                 if (!mapView.map)
                     return
                 var coord = mapView.map.toCoordinate(Qt.point(mouse.x, mouse.y))
                 if (!coord || !coord.isValid)
+                    return
+
+                if (mouse.button === Qt.LeftButton) {
+                    if (mapDisplay.navigationMapPickActive)
+                        mapDisplay._handleNavigationMapPickClick(coord.latitude, coord.longitude)
+                    return
+                }
+
+                if (mouse.button !== Qt.RightButton)
+                    return
+                // 非轨迹模式不允许用鼠标改目标区域
+                if (!mapDisplay.trajectoryModeActive)
                     return
                 mapDisplay.contextMenuLat = coord.latitude
                 mapDisplay.contextMenuLon = coord.longitude
@@ -369,11 +408,89 @@ Item {
                 geocoder.reverseGeocode(coord.longitude, coord.latitude)
             }
             onDoubleClicked: function (mouse) {
+                if (mapDisplay.navigationMapPickActive)
+                    return
                 if (!mapDisplay.trajectoryModeActive)
                     return
                 if (!mapDisplay.isNearTargetAreaScreenPoint(mouse.x, mouse.y))
                     return
                 mapDisplay.openTargetNameEditor()
+            }
+        }
+    }
+
+    // 导航地图选点：红色十字光标
+    Item {
+        id: navPickCrosshair
+        anchors.fill: parent
+        visible: mapDisplay.navigationMapPickActive && mapDisplay.navPickCursorVisible
+                 && !mapDisplay.batchScreenshotActive
+        z: 30
+        enabled: false
+
+        readonly property int arm: 14
+        readonly property int thick: 2
+
+        Rectangle {
+            width: navPickCrosshair.arm * 2
+            height: navPickCrosshair.thick
+            color: "#e74c3c"
+            x: mapDisplay.navPickCursorX - navPickCrosshair.arm
+            y: mapDisplay.navPickCursorY - navPickCrosshair.thick / 2
+        }
+        Rectangle {
+            width: navPickCrosshair.thick
+            height: navPickCrosshair.arm * 2
+            color: "#e74c3c"
+            x: mapDisplay.navPickCursorX - navPickCrosshair.thick / 2
+            y: mapDisplay.navPickCursorY - navPickCrosshair.arm
+        }
+    }
+
+    // 导航地图选点提示条
+    Rectangle {
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.top: parent.top
+        anchors.topMargin: 16
+        width: navPickHintRow.implicitWidth + 28
+        height: 36
+        radius: 6
+        color: "#2c3e50"
+        opacity: 0.92
+        visible: mapDisplay.navigationMapPickActive && !mapDisplay.batchScreenshotActive
+        z: 20
+
+        Row {
+            id: navPickHintRow
+            anchors.centerIn: parent
+            spacing: 12
+            Text {
+                text: {
+                    var role = mapDisplay.navigationMapPickRole
+                    var label = "途经点"
+                    if (role === 0)
+                        label = "起点"
+                    else if (role === 1)
+                        label = "终点"
+                    else if (role === 3)
+                        label = "自定义点"
+                    return "点击地图选择" + label + "（Esc 取消）"
+                }
+                color: "white"
+                font.pixelSize: 13
+                anchors.verticalCenter: parent.verticalCenter
+            }
+            Text {
+                text: "取消"
+                color: "#f1c40f"
+                font.pixelSize: 13
+                font.underline: true
+                anchors.verticalCenter: parent.verticalCenter
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: mapDisplay.cancelNavigationMapPick()
+                }
             }
         }
     }
@@ -392,8 +509,9 @@ Item {
         parent: mapView
         MenuItem {
             text: qsTr("更新目标区域")
+            enabled: mapDisplay.trajectoryModeActive
             onTriggered: {
-                if (!controller)
+                if (!mapDisplay.trajectoryModeActive || !controller)
                     return
                 var label = ""
                 if (mapDisplay.lastReversePoi && mapDisplay.lastReversePoi.length > 0)
@@ -417,10 +535,22 @@ Item {
         onClicked: centerToLocation()
     }
 
+    // 地点搜索（地图上查看；可设为目标区域）
+    StatusButton {
+        id: geoSearchButton
+        anchors.right: parent.right; anchors.top: locationButton.bottom
+        anchors.rightMargin: 20; anchors.topMargin: 10
+        buttonSize: mapDisplay.buttonSize
+        iconText: "🔍"; buttonColor: "#8e44ad"; hoverColor: "#7d3c98"
+        tooltipText: "地点搜索"
+        visible: !mapDisplay.batchScreenshotActive
+        onClicked: mapGeoPickPopup.open()
+    }
+
     // 坐标系切换（逻辑在 C++，完成后经 trajectoryConverted / coordinateConversionChanged 刷新界面）
     StatusButton {
         id: coordinateMapButton
-        anchors.right: parent.right; anchors.top: locationButton.bottom
+        anchors.right: parent.right; anchors.top: geoSearchButton.bottom
         anchors.rightMargin: 20; anchors.topMargin: 10
         buttonSize: mapDisplay.buttonSize
         iconText: "⇄"
@@ -484,6 +614,78 @@ Item {
             mapDisplay.syncTargetAreaMapMarkers()
         }
     }
+
+    Popup {
+        id: mapGeoPickPopup
+        modal: true
+        dim: true
+        focus: true
+        padding: 10
+        closePolicy: Popup.CloseOnEscape
+        parent: Overlay.overlay
+        // 靠左，避免挡住地图主视野（Popup 不用 verticalCenter 锚点）
+        x: 72
+        y: Overlay.overlay ? Math.max(24, (Overlay.overlay.height - height) / 2) : 24
+        width: Math.min(360, Overlay.overlay ? Math.max(280, Overlay.overlay.width * 0.32) : 360)
+        height: mapGeoPickContent.hasResults
+                ? Math.min(520, Overlay.overlay ? Overlay.overlay.height - 48 : 520)
+                : Math.min(260, Overlay.overlay ? Overlay.overlay.height - 48 : 260)
+        onOpened: {
+            if (Overlay.overlay)
+                y = Math.max(24, (Overlay.overlay.height - height) / 2)
+        }
+        onHeightChanged: {
+            if (visible && Overlay.overlay)
+                y = Math.max(24, (Overlay.overlay.height - height) / 2)
+        }
+        onClosed: mapDisplay.clearSearchResult()
+
+        background: Rectangle {
+            color: "#f0f0f0"
+            border.color: "#bdc3c7"
+            border.width: 1
+            radius: 6
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 6
+
+            RowLayout {
+                Layout.fillWidth: true
+                Label {
+                    text: "搜索目标区域"
+                    font.pixelSize: 14
+                    font.bold: true
+                    color: "#2c3e50"
+                    Layout.fillWidth: true
+                }
+                Button {
+                    text: "关闭"
+                    font.pixelSize: 11
+                    onClicked: mapGeoPickPopup.close()
+                }
+            }
+
+            GeoPickSearch {
+                id: mapGeoPickContent
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                autoLocateFirstResult: true
+                assignRole: "targetArea"
+                acceptGeocoderResults: mapGeoPickPopup.visible
+
+                onLocateRequested: function (lat, lon, name) {
+                    mapDisplay.locateToPlace(lat, lon)
+                }
+                onTargetAreaRequested: function (lat, lon, name) {
+                    mapDisplay.setTargetAreaFromSearch(lat, lon, name)
+                    mapGeoPickPopup.close()
+                }
+            }
+        }
+    }
+
     MapAnimations     { id: mapAnimations; mapTarget: mapView.map }
 
     // 车辆层（管理所有车辆/轨迹/搜索图钉）
@@ -509,21 +711,28 @@ Item {
     function updateVehiclePosition(pn, coord, dir, spd, ts) {
         vehicleLayer.updateVehiclePosition(pn, coord, dir, spd, ts)
     }
-    function showSearchResult(lat, lon)                 { vehicleLayer.showSearchResult(lat, lon) }
+    function showSearchResult(lat, lon, adjustView) {
+        vehicleLayer.showSearchResult(lat, lon, adjustView)
+    }
     function clearSearchResult()                         { vehicleLayer.clearSearchResult() }
+    function addNavigationPickMarker(lat, lon)           { vehicleLayer.addNavigationPickMarker(lat, lon) }
+    function clearNavigationPickMarkers()                { vehicleLayer.clearNavigationPickMarkers() }
     function snapVehicleToNearestTrajectoryPoint(lat, lon) {
         if (!mapVehicleContextActive || !controller)
             return false
         return controller.seekVehicleToNearestTrajectoryPoint(lat, lon)
     }
     function locateToPlace(lat, lon) {
-        showSearchResult(lat, lon)
+        showSearchResult(lat, lon, true)
         snapVehicleToNearestTrajectoryPoint(lat, lon)
     }
     /// 搜索面板「设为目标区域」：写入 controller 属性；地图图钉/地名由 MapDisplay.syncTargetAreaMapMarkers 同步
     function setTargetAreaFromSearch(lat, lon, name) {
         if (controller)
             controller.setTargetAreaCenter(lat, lon, name ? name : "")
+    }
+    function openTargetAreaSearch() {
+        mapGeoPickPopup.open()
     }
     function showNavigationRoute(points, lineColor, lineWidth, opacity) {
         vehicleLayer.setNavigationPath(points, lineColor, lineWidth, opacity)
@@ -533,9 +742,12 @@ Item {
         vehicleLayer.setComplementRoute(points, vehicleLayer.currentVehicleColor, 3, 0.9,
                                         arrivalTimeText || "")
     }
-    function updateComplementArrivalTime(arrivalTimeText) {
-        if (vehicleLayer.complementRouteActive)
-            vehicleLayer.complementArrivalTimeText = arrivalTimeText ? String(arrivalTimeText) : ""
+    /// 含自定义点的导航：规划后车辆在起点；定位停在导航终点（不含自定义点）
+    function showCustomPointNavigationRoute(points, plateNumber, startTimeText, endTimeText, vehicleParkIndex) {
+        vehicleLayer.showCustomPointNavigationRoute(points, plateNumber, startTimeText, endTimeText, vehicleParkIndex)
+    }
+    function updateComplementArrivalTime(arrivalTimeText, applyToVehicle) {
+        vehicleLayer.updateComplementArrivalTime(arrivalTimeText, applyToVehicle)
     }
     function clearNavigationRoute()                      { vehicleLayer.clearNavigationRoute() }
     function setNavigationStartMarker(lat, lon, name, plateNumber) {
@@ -543,9 +755,55 @@ Item {
     }
     function updateNavigationStartPlate(plateNumber)   { vehicleLayer.updateNavigationStartPlate(plateNumber) }
     function setNavigationEndMarker(lat, lon, name)     { vehicleLayer.setNavigationEndMarker(lat, lon, name) }
-    function clearNavigationStartMarker()               { vehicleLayer.clearNavigationStartMarker() }
-    function clearNavigationEndMarker()                 { vehicleLayer.clearNavigationEndMarker() }
     function clearNavigationEndpointMarkers()           { vehicleLayer.clearNavigationEndpointMarkers() }
+
+    function beginNavigationMapPick(role) {
+        navigationMapPickActive = true
+        navigationMapPickRole = role
+        navigationMapPickLat = 0
+        navigationMapPickLon = 0
+        navPickCursorVisible = false
+        if (geocoderIntent === "navPick")
+            geocoderIntent = ""
+    }
+
+    function cancelNavigationMapPick() {
+        var wasActive = navigationMapPickActive
+        navigationMapPickActive = false
+        navPickCursorVisible = false
+        if (geocoderIntent === "navPick")
+            geocoderIntent = ""
+        if (wasActive)
+            navigationMapPickCancelled()
+    }
+
+    function _finishNavigationMapPick(lat, lon, name) {
+        if (!navigationMapPickActive)
+            return
+        navigationMapPickActive = false
+        navPickCursorVisible = false
+        if (geocoderIntent === "navPick")
+            geocoderIntent = ""
+        navigationPointPicked(lat, lon, name && name.length > 0 ? name : "地图选点")
+    }
+
+    function _handleNavigationMapPickClick(lat, lon) {
+        if (!navigationMapPickActive)
+            return
+        navigationMapPickLat = lat
+        navigationMapPickLon = lon
+        // 落 📍，不调整地图视口
+        addNavigationPickMarker(lat, lon)
+
+        var cfg = controller && controller.configManager ? controller.configManager : null
+        if (!cfg || !cfg.tiandituKey || cfg.tiandituKey.length === 0
+                || typeof geocoder === "undefined" || !geocoder || geocoder.busy) {
+            _finishNavigationMapPick(lat, lon, "地图选点")
+            return
+        }
+        geocoderIntent = "navPick"
+        geocoder.reverseGeocode(lon, lat)
+    }
 
     // 定位 & 截图
     function focusTargetArea(zoomLevel, instant) {
@@ -574,11 +832,16 @@ Item {
 
     function centerToLocation(instant, zoomLevel) {
         var zoom = (zoomLevel !== undefined) ? zoomLevel : 18
+        // 有特殊/补全航线时：车辆必须落到航线终点（结束时间），再按目标区域挪视口
+        if (vehicleLayer.complementRouteActive)
+            vehicleLayer.placeVehicleAtComplementEnd()
         focusTargetArea(zoom, instant === true)
-        if (!controller)
+        if (vehicleLayer.complementRouteActive) {
+            // 视口动画后再确保一次，避免被其他定位逻辑冲掉
+            vehicleLayer.placeVehicleAtComplementEnd()
             return
-        // 已显示导航补全路线时：车辆落到导航终点，时间用到场时间
-        if (vehicleLayer.complementRouteActive && vehicleLayer.placeVehicleAtComplementEnd())
+        }
+        if (!controller)
             return
         var coord = controller.targetAreaMapCoordinate()
         if (coord && coord.isValid)
@@ -686,6 +949,13 @@ Item {
                 }
                 return
             }
+            if (intent === "navPick") {
+                var pickLabel = poiS.length > 0 ? poiS : (fmt.length > 0 ? fmt : "地图选点")
+                mapDisplay._finishNavigationMapPick(mapDisplay.navigationMapPickLat,
+                                                    mapDisplay.navigationMapPickLon,
+                                                    pickLabel)
+                return
+            }
             if (intent === "rightClick")
                 mapNotifications.showReverseGeocodePoiNotification(poiS)
         }
@@ -695,6 +965,12 @@ Item {
             if (intent === "fillTargetName") {
                 if (controller)
                     controller.targetAreaName = qsTr("（地点名未获取）")
+                return
+            }
+            if (intent === "navPick") {
+                mapDisplay._finishNavigationMapPick(mapDisplay.navigationMapPickLat,
+                                                    mapDisplay.navigationMapPickLon,
+                                                    "地图选点")
                 return
             }
             mapNotifications.showErrorNotification(message)

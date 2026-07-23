@@ -7,6 +7,7 @@
 
 #include "UI/MainController.h"
 #include "Core/ConfigManager.h"
+#include "Core/LicenseGuard.h"
 #include "Business/ExcelPreviewModel.h"
 #include "Core/AppLogger.h"
 
@@ -46,6 +47,12 @@ int main(int argc, char* argv[])
 
     AppLogger::initialize();
     AppLogger::info(QStringLiteral("应用启动 | argc=%1").arg(argc));
+
+    const LicenseGuard::Result license = LicenseGuard::verify();
+    if (!license.allowed) {
+        AppLogger::shutdown();
+        return 1;
+    }
 
     QQuickStyle::setStyle("Material");
 

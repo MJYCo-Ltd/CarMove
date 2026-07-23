@@ -30,13 +30,6 @@ Dialog {
     contentItem: ColumnLayout {
         spacing: 8
 
-        Text {
-            Layout.fillWidth: true
-            wrapMode: Text.WordWrap
-            color: "#7f8c8d"
-            text: qsTr("该名称显示在地图目标区域旁，并用于统计车辆经过次数。")
-        }
-
         TextField {
             id: nameField
             Layout.fillWidth: true

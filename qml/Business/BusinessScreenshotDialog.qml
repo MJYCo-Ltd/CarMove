@@ -32,22 +32,6 @@ Dialog {
     contentItem: ColumnLayout {
         spacing: 12
 
-        Text {
-            Layout.fillWidth: true
-            wrapMode: Text.WordWrap
-            color: "#2c3e50"
-            text: "按业务 Excel 中的车牌、开始时间、结束时间，从 PostGIS 加载轨迹并自动截图。"
-                  + " 将自动切换到轨迹页；无轨迹的记录会跳过。"
-        }
-
-        Text {
-            Layout.fillWidth: true
-            wrapMode: Text.WordWrap
-            color: "#7f8c8d"
-            font.pixelSize: 11
-            text: "数据源：CarMoveTracker.ini 中的 PostGIS 配置"
-        }
-
         BusinessPlateColumnHint {
             excelModel: screenshotDialog.excelModel
             missingText: "未检测到车牌列"

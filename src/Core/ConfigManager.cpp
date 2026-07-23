@@ -17,6 +17,7 @@ ConfigManager::ConfigManager(QObject *parent)
     , m_dbPort(DEFAULT_DB_PORT)
     , m_dbName(QString::fromLatin1(DEFAULT_DB_NAME))
     , m_dbUser(QString::fromLatin1(DEFAULT_DB_USER))
+    , m_dbPassword(QString::fromLatin1(DEFAULT_DB_PASSWORD))
     , m_dbSchema(QString::fromLatin1(DEFAULT_DB_SCHEMA))
     , m_dbTrajectoryTable(QString::fromLatin1(DEFAULT_DB_TRAJECTORY_TABLE))
     , m_dbTrajectoryDaysTable(QString::fromLatin1(DEFAULT_DB_TRAJECTORY_DAYS_TABLE))
@@ -114,8 +115,10 @@ void ConfigManager::setDbHost(const QString& host)
 
 void ConfigManager::setDbPort(int port)
 {
-    if (m_dbPort != port) {
-        m_dbPort = port;
+    Q_UNUSED(port);
+    // 端口写死在代码中，不接受外部修改
+    if (m_dbPort != DEFAULT_DB_PORT) {
+        m_dbPort = DEFAULT_DB_PORT;
         emit postGisSettingsChanged();
     }
 }
@@ -138,8 +141,11 @@ void ConfigManager::setDbUser(const QString& user)
 
 void ConfigManager::setDbPassword(const QString& password)
 {
-    if (m_dbPassword != password) {
-        m_dbPassword = password;
+    Q_UNUSED(password);
+    // 密码写死在代码中，不接受外部修改
+    const QString hardcoded = QString::fromLatin1(DEFAULT_DB_PASSWORD);
+    if (m_dbPassword != hardcoded) {
+        m_dbPassword = hardcoded;
         emit postGisSettingsChanged();
     }
 }
@@ -528,10 +534,10 @@ void ConfigManager::saveTrajectorySourceSettings()
 
     m_settings->beginGroup("PostGISDatabase");
     m_settings->setValue("host", m_dbHost);
-    m_settings->setValue("port", m_dbPort);
+    m_settings->remove("port");      // 端口写死在代码中，不再写入 ini
     m_settings->setValue("database", m_dbName);
     m_settings->setValue("username", m_dbUser);
-    m_settings->setValue("password", m_dbPassword);
+    m_settings->remove("password");  // 密码写死在代码中，不再写入 ini
     m_settings->setValue("schema", m_dbSchema);
     m_settings->setValue("trajectoryTable", m_dbTrajectoryTable);
     m_settings->setValue("trajectoryDaysTable", m_dbTrajectoryDaysTable);
@@ -551,10 +557,10 @@ void ConfigManager::loadTrajectorySourceSettings()
 
     m_settings->beginGroup("PostGISDatabase");
     m_dbHost = m_settings->value("host", QString::fromLatin1(DEFAULT_DB_HOST)).toString();
-    m_dbPort = m_settings->value("port", DEFAULT_DB_PORT).toInt();
+    m_dbPort = DEFAULT_DB_PORT;
     m_dbName = m_settings->value("database", QString::fromLatin1(DEFAULT_DB_NAME)).toString();
     m_dbUser = m_settings->value("username", QString::fromLatin1(DEFAULT_DB_USER)).toString();
-    m_dbPassword = m_settings->value("password").toString();
+    m_dbPassword = QString::fromLatin1(DEFAULT_DB_PASSWORD);
     m_dbSchema = m_settings->value("schema", QString::fromLatin1(DEFAULT_DB_SCHEMA)).toString();
     m_dbTrajectoryTable =
         m_settings->value("trajectoryTable", QString::fromLatin1(DEFAULT_DB_TRAJECTORY_TABLE)).toString();

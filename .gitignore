@@ -68,6 +68,7 @@ Thumbs.db
 *.md
 carData
 install
+installer
 test
 *.bat
 *.json
