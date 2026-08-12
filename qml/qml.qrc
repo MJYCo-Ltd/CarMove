@@ -33,7 +33,6 @@
         <file alias="VehicleMarker.qml">Map/VehicleMarker.qml</file>
         <file alias="BusinessPanel.qml">Business/BusinessPanel.qml</file>
         <file alias="BusinessExportDialog.qml">Business/BusinessExportDialog.qml</file>
-        <file alias="BusinessClassifyDialog.qml">Business/BusinessClassifyDialog.qml</file>
         <file alias="BusinessImportDatabaseDialog.qml">Business/BusinessImportDatabaseDialog.qml</file>
         <file alias="BusinessScreenshotDialog.qml">Business/BusinessScreenshotDialog.qml</file>
         <file alias="BusinessDateColumnSection.qml">Business/BusinessDateColumnSection.qml</file>

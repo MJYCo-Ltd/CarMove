@@ -5,7 +5,8 @@
 #include "ExcelDriver/ExcelParserManager.h"
 #include "Business/LicensePlateDetector.h"
 
-#include <algorithm>
+#include <QRegularExpression>
+#include <QSet>
 
 namespace {
 
@@ -141,13 +142,23 @@ bool extractRowDates(const QVector<QString>& row,
     return startDate.isValid() && endDate.isValid();
 }
 
-QString extractPlateNumber(const QVector<QString>& row, int plateDataColumn)
+QString extractPlateNumber(const QVector<QString>& row,
+                           int plateDataColumn,
+                           bool preserveSourceRows)
 {
     if (plateDataColumn < 0 || plateDataColumn >= row.size()) {
         return QString();
     }
 
-    const QString plate = row.at(plateDataColumn).trimmed();
+    QString plate = row.at(plateDataColumn).trimmed();
+    if (preserveSourceRows) {
+        static const QRegularExpression colorSuffix(
+            QStringLiteral(R"([（(]\s*黄色\s*[）)])"));
+        plate.remove(colorSuffix);
+        plate.remove(QRegularExpression(QStringLiteral("\\s+")));
+        return plate.trimmed();
+    }
+
     if (!LicensePlateDetector::isChineseVehiclePlate(plate)) {
         return QString();
     }
@@ -199,61 +210,102 @@ ResolvedSheetExportColumns resolveColumnsAuto(const ExcelSheetPreview& sheet)
 
 QList<BusinessExportRow> collectSheetRows(const ExcelSheetPreview& sheet,
                                           const ResolvedSheetExportColumns& columns,
-                                          const BusinessExportOptions& options)
+                                          const BusinessExportOptions& options,
+                                          bool preserveSourceRows = false,
+                                          QStringList* anomalyMessages = nullptr)
 {
     QList<BusinessExportRow> rows;
     rows.reserve(sheet.grid.size());
+    QSet<QString> seenRows;
 
-    for (const QVector<QString>& gridRow : sheet.grid) {
-        const QString plate = extractPlateNumber(gridRow, columns.plateDataColumn);
-        if (plate.isEmpty()) {
+    for (int rowIndex = 0; rowIndex < sheet.grid.size(); ++rowIndex) {
+        const QVector<QString>& gridRow = sheet.grid.at(rowIndex);
+        const int excelRowNumber = rowIndex + 1;
+        bool rowHasData = false;
+        for (const QString& value : gridRow) {
+            if (!value.trimmed().isEmpty()) {
+                rowHasData = true;
+                break;
+            }
+        }
+        if (!rowHasData) {
             continue;
+        }
+
+        const QString rawPlate = columns.plateDataColumn >= 0
+                                     && columns.plateDataColumn < gridRow.size()
+                                 ? gridRow.at(columns.plateDataColumn).trimmed()
+                                 : QString();
+        const bool isHeaderRow = rowIndex < 3
+                                 && (rawPlate.contains(QStringLiteral("车牌"))
+                                     || rawPlate.contains(QStringLiteral("牌照"))
+                                     || rawPlate.contains(QStringLiteral("车号")));
+        if (isHeaderRow) {
+            continue;
+        }
+
+        const QString plate = extractPlateNumber(gridRow,
+                                                 columns.plateDataColumn,
+                                                 preserveSourceRows);
+        if (plate.isEmpty()) {
+            if (preserveSourceRows && anomalyMessages != nullptr) {
+                anomalyMessages->append(
+                    QStringLiteral("工作表「%1」第 %2 行：车牌为空，未导出。")
+                        .arg(sheet.name)
+                        .arg(excelRowNumber));
+            }
+            continue;
+        }
+
+        if (preserveSourceRows && anomalyMessages != nullptr) {
+            if (rawPlate != plate) {
+                anomalyMessages->append(
+                    QStringLiteral("工作表「%1」第 %2 行：车牌“%3”已规范为“%4”。")
+                        .arg(sheet.name)
+                        .arg(excelRowNumber)
+                        .arg(rawPlate, plate));
+            }
+            if (!LicensePlateDetector::isChineseVehiclePlate(plate)) {
+                anomalyMessages->append(
+                    QStringLiteral("工作表「%1」第 %2 行：车牌“%3”不符合标准格式，已按原值导出。")
+                        .arg(sheet.name)
+                        .arg(excelRowNumber)
+                        .arg(plate));
+            }
         }
 
         QDate startDate;
         QDate endDate;
         if (!extractRowDates(gridRow, columns, options, startDate, endDate)) {
+            if (preserveSourceRows && anomalyMessages != nullptr) {
+                anomalyMessages->append(
+                    QStringLiteral("工作表「%1」第 %2 行：时间数据无效，未导出。")
+                        .arg(sheet.name)
+                        .arg(excelRowNumber));
+            }
             continue;
+        }
+
+        if (preserveSourceRows && anomalyMessages != nullptr) {
+            const QString rowKey = plate.toUpper() + QLatin1Char('|')
+                                   + startDate.toString(Qt::ISODate) + QLatin1Char('|')
+                                   + endDate.toString(Qt::ISODate);
+            if (seenRows.contains(rowKey)) {
+                anomalyMessages->append(
+                    QStringLiteral("工作表「%1」第 %2 行：车牌“%3”与起止时间重复，未导出该记录。")
+                        .arg(sheet.name)
+                        .arg(excelRowNumber)
+                        .arg(plate));
+                continue;
+            } else {
+                seenRows.insert(rowKey);
+            }
         }
 
         rows.append(BusinessExportRow{plate, startDate, endDate});
     }
 
     return rows;
-}
-
-void sortRowsByPlate(QList<BusinessExportRow>& rows)
-{
-    std::stable_sort(rows.begin(), rows.end(), [](const BusinessExportRow& left, const BusinessExportRow& right) {
-        const int plateCompare = left.plate.compare(right.plate, Qt::CaseInsensitive);
-        if (plateCompare != 0) {
-            return plateCompare < 0;
-        }
-        if (left.startDate != right.startDate) {
-            return left.startDate < right.startDate;
-        }
-        return left.endDate < right.endDate;
-    });
-}
-
-void deduplicateRows(QList<BusinessExportRow>& rows)
-{
-    if (rows.size() <= 1) {
-        return;
-    }
-
-    const auto duplicateBegin = std::unique(rows.begin(),
-                                            rows.end(),
-                                            [](const BusinessExportRow& left,
-                                               const BusinessExportRow& right) {
-                                                return QString::compare(left.plate,
-                                                                        right.plate,
-                                                                        Qt::CaseInsensitive)
-                                                           == 0
-                                                    && left.startDate == right.startDate
-                                                    && left.endDate == right.endDate;
-                                            });
-    rows.erase(duplicateBegin, rows.end());
 }
 
 } // namespace
@@ -308,10 +360,12 @@ bool BusinessWorkbookResolver::collectWorkbookRows(const ExcelWorkbookInfo& work
                                                    const BusinessColumnSelection& selection,
                                                    ExcelParserManager& parser,
                                                    BusinessWorkbookRowsResult& result,
-                                                   QString& errorMessage)
+                                                   QString& errorMessage,
+                                                   bool preserveSourceRows)
 {
     result.sheets.clear();
     result.skippedSheetNames.clear();
+    result.anomalyMessages.clear();
     errorMessage.clear();
 
     if (!validateColumnSelection(referenceSheet, selection, errorMessage)) {
@@ -351,7 +405,13 @@ bool BusinessWorkbookResolver::collectWorkbookRows(const ExcelWorkbookInfo& work
                 continue;
             }
 
-            QList<BusinessExportRow> rows = collectSheetRows(sheet, columns, options);
+            QList<BusinessExportRow> rows = collectSheetRows(sheet,
+                                                             columns,
+                                                             options,
+                                                             preserveSourceRows,
+                                                             preserveSourceRows
+                                                                 ? &result.anomalyMessages
+                                                                 : nullptr);
             if (rows.isEmpty()) {
                 result.skippedSheetNames.append(sheetName);
                 continue;
@@ -385,7 +445,13 @@ bool BusinessWorkbookResolver::collectWorkbookRows(const ExcelWorkbookInfo& work
         return false;
     }
 
-    QList<BusinessExportRow> rows = collectSheetRows(sheet, columns, options);
+    QList<BusinessExportRow> rows = collectSheetRows(sheet,
+                                                     columns,
+                                                     options,
+                                                     preserveSourceRows,
+                                                     preserveSourceRows
+                                                         ? &result.anomalyMessages
+                                                         : nullptr);
     if (rows.isEmpty()) {
         errorMessage = QStringLiteral("没有有效的业务数据行（需包含车牌和有效日期）");
         return false;
@@ -393,12 +459,6 @@ bool BusinessWorkbookResolver::collectWorkbookRows(const ExcelWorkbookInfo& work
 
     result.sheets.append(BusinessSheetRows{sheet.name, rows});
     return true;
-}
-
-void BusinessWorkbookResolver::prepareRowsForExport(QList<BusinessExportRow>& rows)
-{
-    sortRowsByPlate(rows);
-    deduplicateRows(rows);
 }
 
 QList<int> BusinessWorkbookResolver::processableSheetIndices(const ExcelWorkbookInfo& workbookInfo,

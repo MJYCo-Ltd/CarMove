@@ -103,7 +103,6 @@ set(SOURCES
     src/Business/BusinessExcelExporter.cpp
     src/Business/BusinessWorkbookResolver.cpp
     src/Business/BusinessDataManager.cpp
-    src/Business/BusinessCsvWriter.cpp
     src/Business/ExcelPreviewModel.cpp
 )
 
@@ -149,7 +148,6 @@ set(HEADERS
     src/Business/BusinessWorkbookResolver.h
     src/Business/BusinessDataManager.h
     src/Business/BusinessExcelExporter.h
-    src/Business/BusinessCsvWriter.h
     src/Business/ExcelPreviewModel.h
     src/Domain/TrajectoryTypes.h
 )

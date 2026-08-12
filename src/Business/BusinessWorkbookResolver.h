@@ -18,10 +18,8 @@ public:
                                     const BusinessColumnSelection& selection,
                                     ExcelParserManager& parser,
                                     BusinessWorkbookRowsResult& result,
-                                    QString& errorMessage);
-
-    /// 导出前对单表业务行排序并按「车牌+开始+结束」去重
-    static void prepareRowsForExport(QList<BusinessExportRow>& rows);
+                                    QString& errorMessage,
+                                    bool preserveSourceRows = false);
 
     /// 批量截图等场景：按 sheet 索引逐表收集业务行（不去重、不排序）
     static bool collectSheetBusinessRows(const ExcelWorkbookInfo& workbookInfo,

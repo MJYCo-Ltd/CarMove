@@ -12,7 +12,7 @@ class ExcelParserManager;
 class TrajectoryImportManager;
 
 /**
- * @brief 业务数据管理器：统一 Excel 预览、列识别、导出/归类/截图/导入，隐藏 ExcelDriver 与 Importer 细节。
+ * @brief 业务数据管理器：统一 Excel 预览、列识别、导出/截图/导入，隐藏 ExcelDriver 与 Importer 细节。
  */
 class BusinessDataManager : public QObject
 {
@@ -61,9 +61,6 @@ public:
 
     OperationResult exportToFile(const QString& filePath, const QVariantMap& columnConfig);
     OperationResult exportToFolder(const QString& folderPath, const QVariantMap& columnConfig);
-    OperationResult classifyToFolder(const QString& outputFolderPath,
-                                       const QString& trajectoryFolderPath,
-                                       const QVariantMap& columnConfig);
     OperationResult importTrajectoryFolder(const QString& folderPath);
 
     OperationResult beginScreenshotTasks(const QVariantMap& columnConfig);
@@ -84,7 +81,6 @@ private:
     bool collectBusinessRows(const BusinessColumnSelection& selection,
                              BusinessWorkbookRowsResult& result,
                              QString& errorMessage) const;
-    OperationResult makeClassifyResult(const BusinessClassifyResult& result);
     bool advanceScreenshotSheet(QString& errorMessage);
 
     TrajectoryImportManager* m_importManager = nullptr;

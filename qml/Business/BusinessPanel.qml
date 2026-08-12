@@ -52,11 +52,11 @@ Rectangle {
     }
 
     FileDialog {
-        id: saveCsvDialog
-        title: "导出 CSV 文件"
+        id: saveXlsxDialog
+        title: "导出 XLSX 文件"
         fileMode: FileDialog.SaveFile
-        nameFilters: ["CSV 文件 (*.csv)", "所有文件 (*)"]
-        defaultSuffix: "csv"
+        nameFilters: ["Excel 文件 (*.xlsx)", "所有文件 (*)"]
+        defaultSuffix: "xlsx"
         onAccepted: {
             if (!exportDialog.pendingConfig)
                 return
@@ -74,8 +74,8 @@ Rectangle {
     }
 
     FolderDialog {
-        id: saveCsvFolderDialog
-        title: "选择 CSV 导出文件夹"
+        id: saveXlsxFolderDialog
+        title: "选择 XLSX 导出文件夹"
         onAccepted: {
             if (!exportDialog.pendingConfig)
                 return
@@ -100,39 +100,15 @@ Rectangle {
         onRequestSaveFile: function(config) {
             exportDialog.pendingConfig = config
             if (excelModel.exportUsesFolder()) {
-                saveCsvFolderDialog.currentFolder = excelModel.suggestedExportFolderUrl()
-                saveCsvFolderDialog.open()
+                saveXlsxFolderDialog.currentFolder = excelModel.suggestedExportFolderUrl()
+                saveXlsxFolderDialog.open()
             } else {
-                saveCsvDialog.currentFile = excelModel.suggestedExportFileUrl()
-                saveCsvDialog.open()
+                saveXlsxDialog.currentFile = excelModel.suggestedExportFileUrl()
+                saveXlsxDialog.open()
             }
         }
 
         onExportFailed: function(message) {
-            errorDialog.showError(message)
-        }
-    }
-
-    BusinessClassifyDialog {
-        id: classifyDialog
-        excelModel: excelModel
-        parent: Overlay.overlay
-
-        onRequestClassify: function(config) {
-            const success = excelModel.classifyWithConfig(
-                config.outputFolderPath,
-                config.trajectoryFolderPath,
-                config
-            )
-
-            if (success) {
-                errorDialog.showSuccess(excelModel.statusMessage)
-            } else if (excelModel.errorMessage.length > 0) {
-                errorDialog.showError(excelModel.errorMessage)
-            }
-        }
-
-        onClassifyFailed: function(message) {
             errorDialog.showError(message)
         }
     }
@@ -186,14 +162,6 @@ Rectangle {
         exportDialog.open()
     }
 
-    function openClassifyDialog() {
-        if (!excelModel.hasData) {
-            errorDialog.showError("请先打开 Excel 文件")
-            return
-        }
-        classifyDialog.open()
-    }
-
     function openImportDatabaseDialog() {
         importDatabaseDialog.open()
     }
@@ -227,12 +195,6 @@ Rectangle {
                 text: "导出"
                 enabled: excelModel.hasData && !excelModel.loading
                 onClicked: openExportDialog()
-            }
-
-            Button {
-                text: "归类"
-                enabled: excelModel.hasData && !excelModel.loading
-                onClicked: openClassifyDialog()
             }
 
             Button {
@@ -341,7 +303,7 @@ Rectangle {
                 Layout.fillWidth: true
                 text: excelModel.detectedPlateColumnCount > 0 || excelModel.detectedDateColumnCount > 0
                       ? ("已识别 " + excelModel.detectedPlateColumnCount + " 列车牌、"
-                         + excelModel.detectedDateColumnCount + " 列时间（导出/归类时再处理数据）")
+                         + excelModel.detectedDateColumnCount + " 列时间（导出时再处理数据）")
                       : "未识别到车牌或时间列，请检查 Excel 内容"
                 font.pixelSize: 11
                 color: excelModel.detectedPlateColumnCount > 0 && excelModel.detectedDateColumnCount > 0

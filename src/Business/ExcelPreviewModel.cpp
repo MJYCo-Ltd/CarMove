@@ -354,16 +354,6 @@ bool ExcelPreviewModel::exportBusinessFolderWithConfig(const QString& folderPath
     return result.success;
 }
 
-bool ExcelPreviewModel::classifyWithConfig(const QString& outputFolderPath,
-                                           const QString& trajectoryFolderPath,
-                                           const QVariantMap& columnConfig)
-{
-    const BusinessDataManager::OperationResult result =
-        m_dataManager->classifyToFolder(outputFolderPath, trajectoryFolderPath, columnConfig);
-    applyOperationResult(result);
-    return result.success;
-}
-
 bool ExcelPreviewModel::beginScreenshotTasks(const QVariantMap& columnConfig)
 {
     const BusinessDataManager::OperationResult result = m_dataManager->beginScreenshotTasks(columnConfig);

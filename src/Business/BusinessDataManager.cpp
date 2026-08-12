@@ -38,39 +38,8 @@ bool BusinessDataManager::collectBusinessRows(const BusinessColumnSelection& sel
                                                          selection,
                                                          *m_excelParser,
                                                          result,
-                                                         errorMessage);
-}
-
-BusinessDataManager::OperationResult BusinessDataManager::makeClassifyResult(
-    const BusinessClassifyResult& result)
-{
-    OperationResult op;
-    op.success = true;
-    op.statusMessage =
-        QStringLiteral("归类完成：已移动 %1 个轨迹文件，导出 %2 个 CSV（共 %3 行）")
-            .arg(result.movedFiles)
-            .arg(result.exportedCsvFiles)
-            .arg(result.exportedRows);
-
-    if (result.missingFiles > 0) {
-        const int previewCount = qMin(result.missingEntries.size(), 5);
-        const QStringList previewEntries = result.missingEntries.mid(0, previewCount);
-        op.statusMessage += QStringLiteral("；未找到 %1 个轨迹文件").arg(result.missingFiles);
-        if (!previewEntries.isEmpty()) {
-            op.statusMessage += QStringLiteral("（如 %1").arg(previewEntries.join(QStringLiteral("、")));
-            if (result.missingEntries.size() > previewCount) {
-                op.statusMessage += QStringLiteral(" 等");
-            }
-            op.statusMessage += QStringLiteral("）");
-        }
-    }
-
-    if (!result.skippedSheetNames.isEmpty()) {
-        op.statusMessage += QStringLiteral("；跳过 %1 张表：%2")
-                                .arg(result.skippedSheetNames.size())
-                                .arg(result.skippedSheetNames.join(QStringLiteral("、")));
-    }
-    return op;
+                                                         errorMessage,
+                                                         true);
 }
 
 BusinessDataManager::OpenWorkbookResult BusinessDataManager::openWorkbookBlocking(const QString& filePath)
@@ -218,17 +187,29 @@ BusinessDataManager::OperationResult BusinessDataManager::exportToFile(const QSt
     }
 
     int exportedRows = 0;
-    if (!BusinessExcelExporter::exportRowsToCsv(collected.sheets.first().rows,
-                                                localPath,
-                                                collected.sheets.first().sheetName,
-                                                errorMessage,
-                                                &exportedRows)) {
+    if (!BusinessExcelExporter::exportRowsToXlsx(collected.sheets.first().rows,
+                                                 localPath,
+                                                 collected.sheets.first().sheetName,
+                                                 errorMessage,
+                                                 &exportedRows)) {
+        op.errorMessage = errorMessage;
+        return op;
+    }
+
+    QString reportPath;
+    if (!BusinessExcelExporter::writeAnomalyReport(collected.anomalyMessages,
+                                                   m_workbookInfo.filePath,
+                                                   QFileInfo(localPath).absolutePath(),
+                                                   errorMessage,
+                                                   &reportPath)) {
         op.errorMessage = errorMessage;
         return op;
     }
 
     op.success = true;
-    op.statusMessage = QStringLiteral("已导出 %1 行（相同车牌已归并）").arg(exportedRows);
+    op.statusMessage = QStringLiteral("已导出 %1 行，并生成异常说明：%2")
+                           .arg(exportedRows)
+                           .arg(QFileInfo(reportPath).fileName());
     return op;
 }
 
@@ -268,55 +249,16 @@ BusinessDataManager::OperationResult BusinessDataManager::exportToFolder(const Q
 
     op.success = true;
     op.statusMessage =
-        QStringLiteral("已导出 %1 个 CSV 文件，共 %2 行（每张表一个文件，相同车牌已归并）")
+        QStringLiteral("已导出 %1 个 XLSX 文件，共 %2 行（重复记录已写入异常说明，不导出）")
             .arg(exportedFiles)
             .arg(exportedRows);
+    op.statusMessage += QStringLiteral("；已生成与源 Excel 同名的异常说明 TXT");
     if (!skippedSheets.isEmpty()) {
         op.statusMessage += QStringLiteral("；跳过 %1 张表：%2")
                                 .arg(skippedSheets.size())
                                 .arg(skippedSheets.join(QStringLiteral("、")));
     }
     return op;
-}
-
-BusinessDataManager::OperationResult BusinessDataManager::classifyToFolder(
-    const QString& outputFolderPath,
-    const QString& trajectoryFolderPath,
-    const QVariantMap& columnConfig)
-{
-    OperationResult op;
-    const QString outputPath = LocalFilePath::normalizeLocalFilePath(outputFolderPath);
-    const QString trajectoryPath = LocalFilePath::normalizeLocalFilePath(trajectoryFolderPath);
-    if (outputPath.isEmpty()) {
-        op.errorMessage = QStringLiteral("未选择输出目录");
-        return op;
-    }
-    if (trajectoryPath.isEmpty()) {
-        op.errorMessage = QStringLiteral("未选择轨迹文件目录");
-        return op;
-    }
-    if (!hasWorkbook()) {
-        op.errorMessage = QStringLiteral("当前没有可归类的数据");
-        return op;
-    }
-
-    QString errorMessage;
-    BusinessClassifyResult result;
-    const BusinessColumnSelection selection = makeColumnSelection(columnConfig);
-    if (!BusinessExcelExporter::classifyWorkbookToDirectory(m_workbookInfo,
-                                                            m_currentSheet,
-                                                            m_currentSheetIndex,
-                                                            selection,
-                                                            *m_excelParser,
-                                                            trajectoryPath,
-                                                            outputPath,
-                                                            errorMessage,
-                                                            &result)) {
-        op.errorMessage = errorMessage;
-        return op;
-    }
-
-    return makeClassifyResult(result);
 }
 
 BusinessDataManager::OperationResult BusinessDataManager::importTrajectoryFolder(const QString& folderPath)

@@ -16,7 +16,6 @@ struct BusinessColumnSelection {
                                         const QString& singleTimeRole,
                                         int dayOffset);
 };
-
 struct BusinessExportOptions {
     int startDateOrdinal = 0;
     int endDateOrdinal = 0;
@@ -45,19 +44,11 @@ struct BusinessSheetRows {
 struct BusinessWorkbookRowsResult {
     QList<BusinessSheetRows> sheets;
     QStringList skippedSheetNames;
+    QStringList anomalyMessages;
 
     bool isEmpty() const { return sheets.isEmpty(); }
 
     int totalRowCount() const;
 
     QList<BusinessExportRow> allRowsFlat() const;
-};
-
-struct BusinessClassifyResult {
-    int movedFiles = 0;
-    int missingFiles = 0;
-    int exportedCsvFiles = 0;
-    int exportedRows = 0;
-    QStringList missingEntries;
-    QStringList skippedSheetNames;
 };

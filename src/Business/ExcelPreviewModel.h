@@ -76,9 +76,6 @@ public:
     Q_INVOKABLE bool exportBusinessWithConfig(const QString& filePath, const QVariantMap& columnConfig);
     Q_INVOKABLE bool exportBusinessFolderWithConfig(const QString& folderPath,
                                                     const QVariantMap& columnConfig);
-    Q_INVOKABLE bool classifyWithConfig(const QString& outputFolderPath,
-                                        const QString& trajectoryFolderPath,
-                                        const QVariantMap& columnConfig);
     Q_INVOKABLE bool beginScreenshotTasks(const QVariantMap& columnConfig);
     Q_INVOKABLE QVariantMap nextScreenshotTask();
     Q_INVOKABLE void cancelScreenshotTasks();
