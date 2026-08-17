@@ -9,6 +9,7 @@ Dialog {
     required property var excelModel
 
     property string outputFolderPath: ""
+    property bool onlyLargeImage: false
 
     title: "批量轨迹截图"
     modal: true
@@ -21,7 +22,10 @@ Dialog {
                                    && excelModel.detectedDateColumnCount > 0
                                    && outputFolderPath.length > 0
 
-    onOpened: columnSection.resetSelections()
+    onOpened: {
+        columnSection.resetSelections()
+        onlyLargeImageCheck.checked = onlyLargeImage
+    }
 
     background: Rectangle {
         color: "#ffffff"
@@ -67,6 +71,22 @@ Dialog {
                 onClicked: outputFolderDialog.open()
             }
         }
+
+        CheckBox {
+            id: onlyLargeImageCheck
+            text: "只截大图"
+            checked: screenshotDialog.onlyLargeImage
+            onCheckedChanged: screenshotDialog.onlyLargeImage = checked
+        }
+
+        Text {
+            Layout.fillWidth: true
+            visible: onlyLargeImageCheck.checked
+            wrapMode: Text.WordWrap
+            color: "#7f8c8d"
+            font.pixelSize: 12
+            text: "视口仅覆盖全部航点，不包含目标位置，且不截目标区小图"
+        }
     }
 
     footer: DialogButtonBox {
@@ -109,9 +129,9 @@ Dialog {
         }
 
         screenshotDialog.close()
-        requestBatchScreenshot(config, outputFolderPath)
+        requestBatchScreenshot(config, outputFolderPath, onlyLargeImage)
     }
 
-    signal requestBatchScreenshot(var config, string outputFolderPath)
+    signal requestBatchScreenshot(var config, string outputFolderPath, bool onlyLargeImage)
     signal screenshotFailed(string message)
 }

@@ -24,6 +24,8 @@ Item {
     property bool   userHasInteracted:  false
     property bool   suppressInteractionTracking: false
     property int    fitViewportMargin:  80
+    /// 轨迹视口是否纳入目标位置（批量「只截大图」时为 false）
+    property bool   viewportFitIncludeTarget: true
     property var    _pendingFitShape:   null
     property int    _pendingFitAttempts: 0
     property var    searchResultPin:    null
@@ -577,7 +579,7 @@ Item {
     function scheduleTrajectoryDisplayViewportFit() {
         if (typeof controller === 'undefined' || !controller || !mapTarget)
             return
-        _pendingFitShape = controller.trajectoryDisplayViewportShape()
+        _pendingFitShape = controller.trajectoryDisplayViewportShape(viewportFitIncludeTarget)
         _pendingFitAttempts = 0
         _retryPendingFit()
     }
@@ -630,7 +632,7 @@ Item {
         pendingFitTimer.stop()
         _pendingFitShape = null
         _pendingFitAttempts = 0
-        var shape = controller.trajectoryDisplayViewportShape()
+        var shape = controller.trajectoryDisplayViewportShape(viewportFitIncludeTarget)
         if (shape)
             _doFitViewportShape(shape)
     }

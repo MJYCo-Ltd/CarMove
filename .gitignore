@@ -72,3 +72,4 @@ installer
 test
 *.bat
 *.json
+/out

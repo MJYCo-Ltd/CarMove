@@ -134,7 +134,7 @@ Rectangle {
         excelModel: excelModel
         parent: Overlay.overlay
 
-        onRequestBatchScreenshot: function(config, outputFolderPath) {
+        onRequestBatchScreenshot: function(config, outputFolderPath, onlyLargeImage) {
             if (!excelModel.beginScreenshotTasks(config)) {
                 errorDialog.showError(excelModel.errorMessage.length > 0
                                       ? excelModel.errorMessage
@@ -142,7 +142,7 @@ Rectangle {
                 return
             }
             if (businessPanel.batchScreenshotController)
-                businessPanel.batchScreenshotController.start(outputFolderPath)
+                businessPanel.batchScreenshotController.start(outputFolderPath, onlyLargeImage)
         }
 
         onScreenshotFailed: function(message) {

@@ -185,6 +185,8 @@ ApplicationWindow {
         property string currentLabel: ""
         /// 当前批量截图阶段："" | "trajectory" | "targetArea"
         property string capturePhase: ""
+        /// 只截大图：跳过目标区小图，且大图视口不含目标位置
+        property bool onlyLargeImage: false
 
         property real _perfBatchStartMs: 0
         property real _perfTaskStartMs: 0
@@ -217,7 +219,7 @@ ApplicationWindow {
             return controller.normalizeLocalPath(path)
         }
 
-        function start(outputFolderPath) {
+        function start(outputFolderPath, onlyLarge) {
             if (!controller || !excelModel) {
                 errorDialog.showError("没有可截图的业务行")
                 return
@@ -236,11 +238,12 @@ ApplicationWindow {
             targetCapturedCount = 0
             skippedCount = 0
             capturePhase = ""
+            onlyLargeImage = !!onlyLarge
             running = true
             businessPanel.mountMap(mapDisplay)
             _perfBatchStartMs = Date.now()
             _perfLastMs = _perfBatchStartMs
-            _perfLog("batch.start", "outputDir=" + folder)
+            _perfLog("batch.start", "outputDir=" + folder + " onlyLargeImage=" + onlyLargeImage)
 
             if (!controller.useDatabaseTrajectorySource)
                 controller.setTrajectorySourceMode("database")
@@ -317,7 +320,8 @@ ApplicationWindow {
                 "#3498db",
                 controller.screenshotFilePath(outputDir, currentTask.plate,
                                               currentTask.startDate, currentTask.endDate),
-                "trajectory")
+                "trajectory",
+                !onlyLargeImage)
         }
 
         function onBatchCaptureFinished(success, captureLabel) {
@@ -334,7 +338,12 @@ ApplicationWindow {
                 }
                 capturedCount++
                 _perfLog("trajectory.capture.done", currentTask.plate)
-                beginTargetAreaCaptureIfNeeded()
+                if (onlyLargeImage) {
+                    capturePhase = ""
+                    processNext()
+                } else {
+                    beginTargetAreaCaptureIfNeeded()
+                }
                 return
             }
 
@@ -373,23 +382,33 @@ ApplicationWindow {
         function finish() {
             if (!running)
                 return
+            const onlyLarge = onlyLargeImage
+            const doneProcessed = processedCount
+            const doneCaptured = capturedCount
+            const doneTarget = targetCapturedCount
+            const doneSkipped = skippedCount
             _perfLog("batch.finish",
-                     "processed=" + processedCount
-                     + " captured=" + capturedCount
-                     + " target=" + targetCapturedCount
-                     + " skipped=" + skippedCount)
+                     "processed=" + doneProcessed
+                     + " captured=" + doneCaptured
+                     + " target=" + doneTarget
+                     + " skipped=" + doneSkipped
+                     + " onlyLargeImage=" + onlyLarge)
             running = false
             currentTask = null
             currentLabel = ""
             capturePhase = ""
+            onlyLargeImage = false
             if (excelModel)
                 excelModel.cancelScreenshotTasks()
             mapDisplay.cancelPendingCapture()
             mapDisplay.resetCaptureViewportMargin()
             businessPanel.unmountMap(mapDisplay, mapColumn)
-            successDialog.showSuccess("截图完成：共处理 " + processedCount + " 条，大图 "
-                                    + capturedCount + " 张，目标区小图 " + targetCapturedCount
-                                    + " 张，跳过 " + skippedCount + " 条")
+            successDialog.showSuccess("截图完成：共处理 " + doneProcessed + " 条，大图 "
+                                    + doneCaptured + " 张"
+                                    + (onlyLarge
+                                       ? ""
+                                       : ("，目标区小图 " + doneTarget + " 张"))
+                                    + "，跳过 " + doneSkipped + " 条")
         }
 
         function stopSilently() {
@@ -400,6 +419,7 @@ ApplicationWindow {
             currentTask = null
             currentLabel = ""
             capturePhase = ""
+            onlyLargeImage = false
             if (excelModel)
                 excelModel.cancelScreenshotTasks()
             mapDisplay.cancelPendingCapture()

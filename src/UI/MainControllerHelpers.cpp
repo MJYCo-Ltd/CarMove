@@ -254,13 +254,14 @@ QVariantList MainController::trajectoryDisplayPolylinePaths() const
     return segmentPolylinePathsFromRecords(records, m_selectedVehicle, true);
 }
 
-QVariant MainController::trajectoryDisplayViewportShape() const
+QVariant MainController::trajectoryDisplayViewportShape(bool includeTargetArea) const
 {
     const QList<TrajectoryPoint>& records = activeTrajectoryRecords();
     if (records.isEmpty()) {
         return {};
     }
-    return QVariant::fromValue(geoPathFromRecords(records, targetAreaMapCoordinate()));
+    const QGeoCoordinate target = includeTargetArea ? targetAreaMapCoordinate() : QGeoCoordinate();
+    return QVariant::fromValue(geoPathFromRecords(records, target));
 }
 
 QVariant MainController::targetAreaCaptureViewportShape() const

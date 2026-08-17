@@ -59,7 +59,7 @@ Item {
         pendingCapture = null
     }
 
-    function _beginBatchCaptureViewport(kind, filePath, captureLabel, plateNumber, vehicleColor) {
+    function _beginBatchCaptureViewport(kind, filePath, captureLabel, plateNumber, vehicleColor, includeTargetInViewport) {
         cancelPendingCapture()
         const label = captureLabel || kind || ""
         pendingCapture = {
@@ -69,15 +69,18 @@ Item {
         }
         _batchPerfLog("capture.begin", label)
         if (kind === "trajectory")
-            prepareCaptureTrajectory(plateNumber, vehicleColor || "#3498db")
+            prepareCaptureTrajectory(plateNumber, vehicleColor || "#3498db",
+                                     includeTargetInViewport !== false)
         else if (kind === "targetArea")
             prepareCaptureTargetArea()
         if (tileMonitor.viewportReadyState)
             _grabPendingCapture("immediate")
     }
 
-    function beginBatchCaptureTrajectory(plateNumber, vehicleColor, filePath, captureLabel) {
-        _beginBatchCaptureViewport("trajectory", filePath, captureLabel || "trajectory", plateNumber, vehicleColor)
+    function beginBatchCaptureTrajectory(plateNumber, vehicleColor, filePath, captureLabel, includeTargetInViewport) {
+        _beginBatchCaptureViewport("trajectory", filePath, captureLabel || "trajectory",
+                                   plateNumber, vehicleColor,
+                                   includeTargetInViewport !== false)
     }
 
     function beginBatchCaptureTargetArea(filePath, captureLabel) {
@@ -117,10 +120,12 @@ Item {
     }
 
     /// 批量截图：轨迹绘制与视口计算均在 C++ 完成
-    function prepareCaptureTrajectory(plateNumber, vehicleColor) {
+    /// includeTargetInViewport：false 时视口只包航点（只截大图）
+    function prepareCaptureTrajectory(plateNumber, vehicleColor, includeTargetInViewport) {
         vehicleLayer.userHasInteracted = false
         vehicleLayer.autoFitEnabled = true
         vehicleLayer.fitViewportMargin = captureFitMargin
+        vehicleLayer.viewportFitIncludeTarget = includeTargetInViewport !== false
         clearTrajectory()
         vehicleLayer.showVehicleTrajectory(plateNumber, vehicleColor || "#3498db", "now")
         syncTargetAreaMapMarkers()
@@ -150,6 +155,7 @@ Item {
 
     function resetCaptureViewportMargin() {
         vehicleLayer.fitViewportMargin = 80
+        vehicleLayer.viewportFitIncludeTarget = true
     }
 
     property real _batchPerfLastMs: 0

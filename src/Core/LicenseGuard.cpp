@@ -141,7 +141,7 @@ LicenseGuard::Result LicenseGuard::verify()
     Result result;
 
     // 运行许可到期日写死在代码中（含当天有效）。注意：6 月无 31 日，按 2026-06-30。
-    const QDate expireDate(2026, 7, 31);
+    const QDate expireDate(2026, 8, 31);
 
     const QDateTime networkUtc = fetchNetworkUtc();
     if (!networkUtc.isValid()) {

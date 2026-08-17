@@ -110,7 +110,8 @@ public:
     Q_INVOKABLE int activeTrajectoryPointCount() const;
     /// 地图展示：C++ 内跳点分段 + 折线路径（优先时间轴分段，否则用内存轨迹）
     Q_INVOKABLE QVariantList trajectoryDisplayPolylinePaths() const;
-    Q_INVOKABLE QVariant trajectoryDisplayViewportShape() const;
+    /// includeTargetArea：为 false 时视口只包航点，不纳入目标位置
+    Q_INVOKABLE QVariant trajectoryDisplayViewportShape(bool includeTargetArea = true) const;
     Q_INVOKABLE QVariant targetAreaCaptureViewportShape() const;
     Q_INVOKABLE QVariantMap trajectoryDisplayStartMarker() const;
     /// 当前轨迹末点（与 start 对称，供地图钉与补全路线选用）
