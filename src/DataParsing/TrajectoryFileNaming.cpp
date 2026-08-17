@@ -1,5 +1,7 @@
 #include "DataParsing/TrajectoryFileNaming.h"
 
+#include "DataParsing/LicensePlate.h"
+
 #include <QDir>
 #include <QFileInfo>
 #include <QRegularExpression>
@@ -8,28 +10,11 @@ namespace TrajectoryFileNaming {
 
 namespace {
 
-QRegularExpression rangePattern()
+QRegularExpression fileNamePattern()
 {
     static const QRegularExpression regex(
-        u8"^([京津沪渝冀豫云辽黑湘皖鲁新苏浙赣鄂桂甘晋蒙陕吉闽贵粤青藏川宁琼][A-Z][A-Z0-9]{5,6})"
-        u8"-(\\d{4}-\\d{2}-\\d{2})-(\\d{4}-\\d{2}-\\d{2})\\.(xlsx|xls)$",
-        QRegularExpression::CaseInsensitiveOption);
-    return regex;
-}
-
-QRegularExpression singleDatePattern()
-{
-    static const QRegularExpression regex(
-        u8"^([京津沪渝冀豫云辽黑湘皖鲁新苏浙赣鄂桂甘晋蒙陕吉闽贵粤青藏川宁琼][A-Z][A-Z0-9]{5,6})"
-        u8"-(\\d{4}-\\d{2}-\\d{2})\\.(xlsx|xls)$",
-        QRegularExpression::CaseInsensitiveOption);
-    return regex;
-}
-
-QRegularExpression plateOnlyPattern()
-{
-    static const QRegularExpression regex(
-        u8"^([京津沪渝冀豫云辽黑湘皖鲁新苏浙赣鄂桂甘晋蒙陕吉闽贵粤青藏川宁琼][A-Z][A-Z0-9]{5,6})\\.(xlsx|xls)$",
+        QStringLiteral("^") + LicensePlate::capturePattern()
+            + QStringLiteral(R"((?:-(\d{4}-\d{2}-\d{2})(?:-(\d{4}-\d{2}-\d{2}))?)?\.(xlsx|xls)$)"),
         QRegularExpression::CaseInsensitiveOption);
     return regex;
 }
@@ -54,14 +39,14 @@ QString formatPeriodDate(const QDate& date)
 
 QString lookupKey(const QString& plate, const QDate& startDate, const QDate& endDate)
 {
-    return plate.trimmed().toUpper() + QLatin1Char('|') + formatPeriodDate(startDate)
-           + QLatin1Char('|') + formatPeriodDate(endDate);
+    return LicensePlate::canonicalPlateNumber(plate).toUpper() + QLatin1Char('|')
+           + formatPeriodDate(startDate) + QLatin1Char('|') + formatPeriodDate(endDate);
 }
 
 QString fileBaseName(const QString& plate, const QDate& startDate, const QDate& endDate)
 {
-    return plate.trimmed() + QLatin1Char('-') + formatPeriodDate(startDate) + QLatin1Char('-')
-           + formatPeriodDate(endDate);
+    return LicensePlate::canonicalPlateNumber(plate) + QLatin1Char('-') + formatPeriodDate(startDate)
+           + QLatin1Char('-') + formatPeriodDate(endDate);
 }
 
 TrajectoryFileInfo parseFileName(const QString& filePath, ParseMode mode)
@@ -70,33 +55,31 @@ TrajectoryFileInfo parseFileName(const QString& filePath, ParseMode mode)
     parsed.filePath = filePath;
     parsed.fileName = QFileInfo(filePath).fileName();
 
-    QRegularExpressionMatch match = rangePattern().match(parsed.fileName);
-    if (match.hasMatch()) {
-        parsed.plateNumber = match.captured(1);
-        parsed.periodStart = QDate::fromString(match.captured(2), QStringLiteral("yyyy-MM-dd"));
-        parsed.periodEnd = QDate::fromString(match.captured(3), QStringLiteral("yyyy-MM-dd"));
-        parsed.hasPeriod = parsed.periodStart.isValid() && parsed.periodEnd.isValid();
+    const QRegularExpressionMatch match = fileNamePattern().match(parsed.fileName);
+    if (!match.hasMatch()) {
         return parsed;
     }
 
-    if (mode == ParseMode::RangeOnly) {
+    parsed.plateNumber = LicensePlate::canonicalPlateNumber(match.captured(1));
+    if (parsed.plateNumber.isEmpty() || !LicensePlate::isChineseVehiclePlate(parsed.plateNumber)) {
+        parsed.plateNumber.clear();
         return parsed;
     }
 
-    match = singleDatePattern().match(parsed.fileName);
-    if (match.hasMatch()) {
-        parsed.plateNumber = match.captured(1);
-        parsed.periodStart = QDate::fromString(match.captured(2), QStringLiteral("yyyy-MM-dd"));
-        parsed.periodEnd = parsed.periodStart;
-        parsed.hasPeriod = parsed.periodStart.isValid();
+    const QString startText = match.captured(2);
+    const QString endText = match.captured(3);
+    if (startText.isEmpty() || (mode == ParseMode::RangeOnly && endText.isEmpty())) {
+        if (mode == ParseMode::RangeOnly) {
+            parsed.plateNumber.clear();
+        }
         return parsed;
     }
 
-    match = plateOnlyPattern().match(parsed.fileName);
-    if (match.hasMatch()) {
-        parsed.plateNumber = match.captured(1);
-    }
-
+    parsed.periodStart = QDate::fromString(startText, QStringLiteral("yyyy-MM-dd"));
+    parsed.periodEnd = endText.isEmpty()
+                           ? parsed.periodStart
+                           : QDate::fromString(endText, QStringLiteral("yyyy-MM-dd"));
+    parsed.hasPeriod = parsed.periodStart.isValid() && parsed.periodEnd.isValid();
     return parsed;
 }
 

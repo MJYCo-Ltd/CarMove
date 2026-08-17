@@ -83,6 +83,8 @@ set(SOURCES
     src/DataParsing/ExcelRowParser.cpp
     src/DataParsing/ExcelLoadUtils.cpp
     src/DataParsing/TrajectoryFileNaming.cpp
+    src/DataParsing/LicensePlate.cpp
+    src/DataParsing/DateTimeParser.cpp
     # ExcelDriver
     src/ExcelDriver/ExcelPreviewTypes.cpp
     src/ExcelDriver/ExcelParserPreview.cpp
@@ -135,6 +137,8 @@ set(HEADERS
     src/DataParsing/ExcelRowParser.h
     src/DataParsing/ExcelLoadUtils.h
     src/DataParsing/TrajectoryFileNaming.h
+    src/DataParsing/LicensePlate.h
+    src/DataParsing/DateTimeParser.h
     # ExcelDriver (public API only)
     src/ExcelDriver/ExcelPreviewTypes.h
     src/ExcelDriver/ExcelParserManager.h

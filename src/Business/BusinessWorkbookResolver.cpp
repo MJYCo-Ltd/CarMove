@@ -4,8 +4,9 @@
 #include "Business/DateColumnDetector.h"
 #include "ExcelDriver/ExcelParserManager.h"
 #include "Business/LicensePlateDetector.h"
+#include "DataParsing/DateTimeParser.h"
+#include "DataParsing/LicensePlate.h"
 
-#include <QRegularExpression>
 #include <QSet>
 
 namespace {
@@ -117,7 +118,7 @@ bool extractRowDates(const QVector<QString>& row,
             return false;
         }
 
-        const QDate baseDate = DateColumnDetector::parseToDate(row.at(dateColumn));
+        const QDate baseDate = DateTimeParser::parseToDate(row.at(dateColumn));
         if (!baseDate.isValid()) {
             return false;
         }
@@ -137,8 +138,8 @@ bool extractRowDates(const QVector<QString>& row,
         return false;
     }
 
-    startDate = DateColumnDetector::parseToDate(row.at(columns.startDataColumn));
-    endDate = DateColumnDetector::parseToDate(row.at(columns.endDataColumn));
+    startDate = DateTimeParser::parseToDate(row.at(columns.startDataColumn));
+    endDate = DateTimeParser::parseToDate(row.at(columns.endDataColumn));
     return startDate.isValid() && endDate.isValid();
 }
 
@@ -150,16 +151,16 @@ QString extractPlateNumber(const QVector<QString>& row,
         return QString();
     }
 
-    QString plate = row.at(plateDataColumn).trimmed();
-    if (preserveSourceRows) {
-        static const QRegularExpression colorSuffix(
-            QStringLiteral(R"([（(]\s*黄色\s*[）)])"));
-        plate.remove(colorSuffix);
-        plate.remove(QRegularExpression(QStringLiteral("\\s+")));
-        return plate.trimmed();
+    const QString plate = LicensePlate::canonicalPlateNumber(row.at(plateDataColumn));
+    if (plate.isEmpty()) {
+        return QString();
     }
 
-    if (!LicensePlateDetector::isChineseVehiclePlate(plate)) {
+    if (preserveSourceRows) {
+        return plate;
+    }
+
+    if (!LicensePlate::isChineseVehiclePlate(plate)) {
         return QString();
     }
 
@@ -265,7 +266,7 @@ QList<BusinessExportRow> collectSheetRows(const ExcelSheetPreview& sheet,
                         .arg(excelRowNumber)
                         .arg(rawPlate, plate));
             }
-            if (!LicensePlateDetector::isChineseVehiclePlate(plate)) {
+            if (!LicensePlate::isChineseVehiclePlate(plate)) {
                 anomalyMessages->append(
                     QStringLiteral("工作表「%1」第 %2 行：车牌“%3”不符合标准格式，已按原值导出。")
                         .arg(sheet.name)

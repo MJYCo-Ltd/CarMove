@@ -1,6 +1,7 @@
 #include "ExcelDriver/ExcelTrajectoryManager.h"
 
 #include "ExcelDriver/ExcelParserManager.h"
+#include "DataParsing/TrajectoryFileNaming.h"
 #include "Core/ErrorHandler.h"
 #include "Core/AppLogger.h"
 
@@ -8,9 +9,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QMap>
-#include <QRegularExpression>
 #include <algorithm>
-#include <numeric>
 
 ExcelTrajectoryManager::ExcelTrajectoryManager(QObject* parent)
     : QObject(parent)
@@ -39,10 +38,8 @@ void ExcelTrajectoryManager::scanFolder(const QString& folderPath)
         return;
     }
 
-    QStringList filters;
-    filters << QStringLiteral("*.xlsx") << QStringLiteral("*.xls")
-            << QStringLiteral("*.XLSX") << QStringLiteral("*.XLS");
-    const QFileInfoList files = dir.entryInfoList(filters, QDir::Files | QDir::Readable);
+    const QFileInfoList files = dir.entryInfoList(TrajectoryFileNaming::excelFileFilters(),
+                                                 QDir::Files | QDir::Readable);
 
     if (files.isEmpty()) {
         const QFileInfoList allFiles = dir.entryInfoList(QDir::Files);
@@ -70,9 +67,6 @@ void ExcelTrajectoryManager::scanFolder(const QString& folderPath)
     emit scanProgress(0);
 
     try {
-        const QRegularExpression plateRegex(
-            u8"([京津沪渝冀豫云辽黑湘皖鲁新苏浙赣鄂桂甘晋蒙陕吉闽贵粤青藏川宁琼][A-Z][A-Z0-9]{5,6})");
-
         for (const QFileInfo& fileInfo : files) {
             const QString fileName = fileInfo.fileName();
             const QString filePath = fileInfo.absoluteFilePath();
@@ -93,9 +87,10 @@ void ExcelTrajectoryManager::scanFolder(const QString& folderPath)
                 continue;
             }
 
-            const QRegularExpressionMatch match = plateRegex.match(fileName);
-            if (match.hasMatch()) {
-                const QString plateNumber = match.captured(1);
+            const TrajectoryFileInfo parsed =
+                TrajectoryFileNaming::parseFileName(filePath, TrajectoryFileNaming::ParseMode::AllPatterns);
+            if (!parsed.plateNumber.isEmpty()) {
+                const QString plateNumber = parsed.plateNumber;
                 if (vehicleMap.contains(plateNumber)) {
                     VehicleSummary& info = vehicleMap[plateNumber];
                     if (!info.sourceFilePaths.contains(filePath)) {

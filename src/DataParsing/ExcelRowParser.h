@@ -16,8 +16,6 @@ public:
                                           const QString& dataType,
                                           const QString& fieldName,
                                           QString& errorMessage);
-
-    static QDateTime parseTimestamp(const QVariant& value);
 };
 
 #endif // EXCELROWPARSER_H

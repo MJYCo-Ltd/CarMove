@@ -1,4 +1,5 @@
 #include "ExcelDriver/ExcelCellFormatter.h"
+#include "DataParsing/DateTimeParser.h"
 
 #include <QDate>
 #include <QDateTime>
@@ -59,30 +60,6 @@ QString formatMinuteOrSecond(int value, int length)
 }
 
 } // namespace
-
-QDateTime ExcelCellFormatter::dateTimeFromExcelSerial(double serial, bool isDate1904)
-{
-    if (serial < 0.0) {
-        return QDateTime();
-    }
-
-    double adjustedSerial = serial;
-    if (!isDate1904 && adjustedSerial > 60.0) {
-        adjustedSerial -= 1.0;
-    }
-
-    const QDate epoch(1899, 12, 31);
-    const int wholeDays = static_cast<int>(adjustedSerial);
-    const double fractionalPart = adjustedSerial - static_cast<double>(wholeDays);
-    const int totalSeconds = static_cast<int>(fractionalPart * 24.0 * 60.0 * 60.0 + 0.5);
-
-    QDateTime dateTime(epoch.addDays(wholeDays).startOfDay());
-    if (totalSeconds > 0) {
-        dateTime = dateTime.addSecs(totalSeconds);
-    }
-
-    return dateTime;
-}
 
 int ExcelCellFormatter::repeatCharCount(const QString& formatCode, int index, QChar ch)
 {
@@ -236,7 +213,7 @@ QString ExcelCellFormatter::formatPreviewCellValue(const QVariant& value, bool i
         || value.typeId() == QMetaType::LongLong) {
         const double number = value.toDouble();
         if (number >= 20000.0 && number <= 80000.0) {
-            const QDateTime dateTime = dateTimeFromExcelSerial(number, isDate1904);
+            const QDateTime dateTime = DateTimeParser::dateTimeFromExcelSerial(number, isDate1904);
             if (dateTime.isValid()) {
                 if (dateTime.time() == QTime(0, 0)) {
                     return dateTime.date().toString(QStringLiteral("yyyy-MM-dd"));
@@ -257,7 +234,7 @@ QString ExcelCellFormatter::formatQXlsxCell(const std::shared_ptr<Cell>& cell, b
 
     if (cell->isDateTime()) {
         const double serial = cell->value().toDouble();
-        const QDateTime dateTime = dateTimeFromExcelSerial(serial, isDate1904);
+        const QDateTime dateTime = DateTimeParser::dateTimeFromExcelSerial(serial, isDate1904);
         if (!dateTime.isValid()) {
             return formatVariant(cell->value());
         }

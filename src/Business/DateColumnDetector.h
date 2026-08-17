@@ -3,14 +3,9 @@
 
 #include "ExcelDriver/ExcelPreviewTypes.h"
 
-#include <QDate>
 #include <QList>
 
 namespace DateColumnDetector {
-
-bool looksLikeDate(const QString& text);
-
-QDate parseToDate(const QString& text);
 
 void markDateColumns(ExcelSheetPreview& sheet);
 

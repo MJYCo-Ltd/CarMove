@@ -1,47 +1,9 @@
 #include "Business/LicensePlateDetector.h"
-#include "Business/BusinessColumnUtils.h"
 
-#include <QRegularExpression>
+#include "Business/BusinessColumnUtils.h"
+#include "DataParsing/LicensePlate.h"
 
 namespace LicensePlateDetector {
-
-namespace {
-
-QRegularExpression standardPlateRegex()
-{
-    static const QRegularExpression regex(
-        QStringLiteral("^[京津沪渝冀豫云辽黑湘皖鲁新苏浙赣鄂桂甘晋蒙陕吉闽贵粤青藏川宁琼使领]"
-                       "[A-HJ-NP-Z][A-HJ-NP-Z0-9]{4}[A-HJ-NP-Z0-9挂学警港澳]?$"));
-    return regex;
-}
-
-QRegularExpression newEnergyPlateRegex()
-{
-    static const QRegularExpression regex(
-        QStringLiteral("^[京津沪渝冀豫云辽黑湘皖鲁新苏浙赣鄂桂甘晋蒙陕吉闽贵粤青藏川宁琼使领]"
-                       "[A-HJ-NP-Z][A-HJ-NP-Z0-9]{5}[DF]$"));
-    return regex;
-}
-
-QString normalizePlateText(const QString& text)
-{
-    QString normalized = text.trimmed();
-    normalized.remove(QRegularExpression(QStringLiteral("\\s+")));
-    return normalized.toUpper();
-}
-
-} // namespace
-
-bool isChineseVehiclePlate(const QString& text)
-{
-    const QString normalized = normalizePlateText(text);
-    if (normalized.size() < 7 || normalized.size() > 8) {
-        return false;
-    }
-
-    return standardPlateRegex().match(normalized).hasMatch()
-           || newEnergyPlateRegex().match(normalized).hasMatch();
-}
 
 QList<int> markedColumnIndices(const ExcelSheetPreview& sheet)
 {
@@ -57,7 +19,7 @@ int firstColumnIndex(const ExcelSheetPreview& sheet)
 bool headerLooksLikePlate(const QString& text)
 {
     const QString trimmed = text.trimmed();
-    if (trimmed.isEmpty() || isChineseVehiclePlate(trimmed)) {
+    if (trimmed.isEmpty() || LicensePlate::isChineseVehiclePlate(trimmed)) {
         return false;
     }
 
@@ -93,7 +55,7 @@ void markPlateColumns(ExcelSheetPreview& sheet)
                 continue;
             }
 
-            if (isChineseVehiclePlate(row.at(columnIndex))) {
+            if (LicensePlate::isChineseVehiclePlate(row.at(columnIndex))) {
                 sheet.isPlateColumn[columnIndex] = true;
                 break;
             }

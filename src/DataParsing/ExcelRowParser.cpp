@@ -1,5 +1,8 @@
 #include "DataParsing/ExcelRowParser.h"
+
 #include "Core/ConfigManager.h"
+#include "DataParsing/DateTimeParser.h"
+#include "DataParsing/LicensePlate.h"
 
 bool ExcelRowParser::parseRow(const QHash<int, QVariant>& cells,
                               TrajectoryPoint& record,
@@ -17,7 +20,7 @@ bool ExcelRowParser::parseRow(const QHash<int, QVariant>& cells,
             QString fieldError;
 
             if (mapping.fieldName == QStringLiteral("车牌号")) {
-                record.plateNumber = cellValue.toString().trimmed();
+                record.plateNumber = LicensePlate::canonicalPlateNumber(cellValue.toString());
                 if (record.plateNumber.isEmpty() && mapping.isRequired) {
                     errorMessage = QStringLiteral("车牌号为空");
                     return false;
@@ -108,7 +111,7 @@ bool ExcelRowParser::parseRow(const QHash<int, QVariant>& cells,
                     }
                 }
             } else if (mapping.fieldName == QStringLiteral("上报时间")) {
-                record.timestamp = parseTimestamp(cellValue);
+                record.timestamp = DateTimeParser::parseDateTime(cellValue);
                 if (!record.timestamp.isValid()) {
                     errorMessage = QStringLiteral("时间格式错误: %1").arg(cellValue.toString());
                     return false;
@@ -151,7 +154,7 @@ QVariant ExcelRowParser::parseAndValidateField(const QVariant& cellValue,
     }
 
     if (dataType == QStringLiteral("datetime")) {
-        const QDateTime dateTime = parseTimestamp(cellValue);
+        const QDateTime dateTime = DateTimeParser::parseDateTime(cellValue);
         if (!dateTime.isValid()) {
             errorMessage = QStringLiteral("%1时间格式错误: %2").arg(fieldName, cellValue.toString());
             return QVariant();
@@ -164,71 +167,4 @@ QVariant ExcelRowParser::parseAndValidateField(const QVariant& cellValue,
     }
 
     return cellValue.toString().trimmed();
-}
-
-QDateTime ExcelRowParser::parseTimestamp(const QVariant& value)
-{
-    if (value.isNull()) {
-        return QDateTime();
-    }
-
-    if (value.typeId() == QMetaType::QDateTime) {
-        return value.toDateTime();
-    }
-
-    if (value.typeId() == QMetaType::QString) {
-        const QString timeStr = value.toString().trimmed();
-        if (timeStr.isEmpty()) {
-            return QDateTime();
-        }
-
-        const QStringList formats = {
-            QStringLiteral("yyyy-MM-dd HH:mm:ss"),
-            QStringLiteral("yyyy/MM/dd HH:mm:ss"),
-            QStringLiteral("yyyy-MM-dd HH:mm"),
-            QStringLiteral("yyyy/MM/dd HH:mm"),
-            QStringLiteral("yyyy-MM-dd"),
-            QStringLiteral("yyyy/MM/dd"),
-            QStringLiteral("MM/dd/yyyy HH:mm:ss"),
-            QStringLiteral("MM-dd-yyyy HH:mm:ss"),
-            QStringLiteral("dd/MM/yyyy HH:mm:ss"),
-            QStringLiteral("dd-MM-yyyy HH:mm:ss"),
-            QStringLiteral("yyyy年MM月dd日 HH:mm:ss"),
-            QStringLiteral("yyyy年MM月dd日 HH时mm分ss秒"),
-            QStringLiteral("yyyy年MM月dd日"),
-            QStringLiteral("MM月dd日 HH:mm:ss"),
-            QStringLiteral("HH:mm:ss")
-        };
-
-        for (const QString& format : formats) {
-            const QDateTime dt = QDateTime::fromString(timeStr, format);
-            if (dt.isValid()) {
-                return dt;
-            }
-        }
-
-        const QDateTime isoDt = QDateTime::fromString(timeStr, Qt::ISODate);
-        if (isoDt.isValid()) {
-            return isoDt;
-        }
-    }
-
-    if (value.typeId() == QMetaType::Double || value.typeId() == QMetaType::Int
-        || value.typeId() == QMetaType::LongLong) {
-        const double serialDate = value.toDouble();
-        if (serialDate > 0) {
-            const QDate excelEpoch(1899, 12, 30);
-            QDateTime dt = QDateTime(excelEpoch.addDays(static_cast<int>(serialDate)).startOfDay());
-
-            const double fractionalPart = serialDate - static_cast<int>(serialDate);
-            const int totalSeconds = static_cast<int>(fractionalPart * 24 * 60 * 60);
-            dt = dt.addSecs(totalSeconds);
-
-            if (dt.isValid()) {
-                return dt;
-            }
-        }
-    }
-
-    return QDateTime();
 }

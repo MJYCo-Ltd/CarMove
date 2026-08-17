@@ -7,8 +7,6 @@
 
 namespace LicensePlateDetector {
 
-bool isChineseVehiclePlate(const QString& text);
-
 void markPlateColumns(ExcelSheetPreview& sheet);
 
 QList<int> markedColumnIndices(const ExcelSheetPreview& sheet);
